@@ -1,228 +1,186 @@
-<p align="center"><img src="docs/assets/logo/assets/qianwen/logo-square.png" width="96" alt="TaiJi logo" /></p>
+# tai-ji-yang-shell
 
-<h1 align="center">太极 TaiJi</h1>
+太极（TaiJi）的视觉身份插件，以 **DSH 组合包**（bundle）形态交付：装进 DeepSeek Harness（下称 DSH）的 web 类型 profile 后，打开即呈现太极的六种配色、圆角与字重、双鱼标与产品名、设置页的外观行。
 
-<p align="center"><strong>面向长时间、多任务协作的 AI Agent 桌面工作台</strong></p>
+本包只负责「打开就认得出是太极」这一层。对话流、会话管理、模型切换、工具调用、右栏面板等日常能力全部走 DSH 原生，本包不接管、不替换。
 
-<p align="center">
-  <a href="README.md">简体中文</a> ｜ <a href="README_EN.md">English</a> ｜ <a href="https://github.com/zhushanwen321/tai-ji/releases">下载安装</a>
-</p>
+一个包同时承载两个半场（单包 = profile 里的单行条目，两个半场的生命周期因此一致）：
 
-太极是一个 AI Agent 桌面工作台（macOS / Windows / Linux）。它把多个 AI 会话放进同一个窗口，你可以同时推进多个任务，实时看到 AI 的思考、文件编辑和命令执行过程，随时分叉重试。基于 [pi](https://github.com/badlogic/pi-mono) agent 内核，内置 19 个扩展（15 个通用扩展随应用打包，4 个为 TaiJi 集成专用），支持接入各类模型服务。
+| 半场 | 产物 | 职责 |
+|------|------|------|
+| Node 半场 | 源 `index.js`；安装后入口 = `lib/index.js`（`package.json` 的 `main`） | 订阅宿主 `webserver/index-inject`，把首帧样式行推入注入表；装载期检查 profile 是否具备 web 承载能力并给出可行动诊断 |
+| 浏览器半场 | `client/` → 安装后的 `lib/client.js` | 经宿主 `window.__ModuleLoader__.load({ id, factory })` 契约物化；装配主题 token 覆盖层、结构值（圆角与字重/行高）、品牌槽与外观行，以及持久状态通道 |
 
-<p align="center">
-  <img src="docs/assets/screenshot/screenshot.png" alt="太极 TaiJi 主界面：侧栏多会话管理与 Agent 对话流，思考、工具调用、文件编辑实时可见" width="900" />
-</p>
+## 前置条件
 
-> 开发约定、关键规则与调试纪律见 [AGENTS.md](AGENTS.md)。
+- **DSH**：需满足本包的 `engines.dsh` 范围 `>=0.1.7-rc.2 <0.3.0`（见「版本门禁」）。
+- **pnpm**：`dsh plugin` 把参数原样转发给 pnpm，因此安装与卸载要求 PATH 上有 pnpm。
+- **构建机**：Node ≥ 18（打包器 esbuild 0.25 的要求）。
+- **产物先构建、再安装**：本包运行时不安装任何宿主 client 包，`lib/client.js` 必须由本仓的构建命令产出（见下一节）。
 
----
+## 构建
 
-## 快速开始
-
-当前最新版本：**v0.11.16**（[查看全部版本](https://github.com/zhushanwen321/tai-ji/releases)）。安装后 app 内会自动检测新版本，提示一键升级。
-
-<!-- INSTALL:BEGIN -->
-<!-- 本区块内的版本号由 .agents/skills/merge/scripts/update-readme-install.mjs 在每次正式发布后自动替换；区块外仅上方「当前最新版本」行会同步更新，其余内容不会被打扰。 -->
-
-<details>
-<summary><b>国内下载（GitCode 镜像，~15 MB/s）</b></summary>
-
-镜像仓库：[gitcode.com/qq_18433817/tai-ji](https://gitcode.com/qq_18433817/tai-ji)
-
-**macOS（Apple Silicon）**
-```bash
-curl -L https://gitcode.com/qq_18433817/tai-ji/releases/download/v0.11.16/TaiJi-0.11.16-mac-arm64.dmg -o /tmp/TaiJi.dmg && open /tmp/TaiJi.dmg
-```
-
-**Linux**
-```bash
-curl -L https://gitcode.com/qq_18433817/tai-ji/releases/download/v0.11.16/TaiJi-0.11.16-x86_64.AppImage -o ~/TaiJi.AppImage && chmod +x ~/TaiJi.AppImage && ~/TaiJi.AppImage
-```
-
-**Windows（PowerShell）**
-```powershell
-Invoke-WebRequest -Uri "https://gitcode.com/qq_18433817/tai-ji/releases/download/v0.11.16/TaiJi-0.11.16-setup-x64.exe" -OutFile "$env:TEMP\TaiJi-setup.exe" -UseBasicParsing; & "$env:TEMP\TaiJi-setup.exe"
-```
-
-</details>
-
-<details>
-<summary><b>国外下载（GitHub）</b></summary>
-
-仓库：[github.com/zhushanwen321/tai-ji](https://github.com/zhushanwen321/tai-ji)
-
-**macOS（Apple Silicon）**
-```bash
-curl -L https://github.com/zhushanwen321/tai-ji/releases/download/v0.11.16/TaiJi-0.11.16-mac-arm64.dmg -o /tmp/TaiJi.dmg && open /tmp/TaiJi.dmg
-```
-
-**Linux**
-```bash
-curl -L https://github.com/zhushanwen321/tai-ji/releases/download/v0.11.16/TaiJi-0.11.16-x86_64.AppImage -o ~/TaiJi.AppImage && chmod +x ~/TaiJi.AppImage && ~/TaiJi.AppImage
-```
-
-**Windows（PowerShell）**
-```powershell
-Invoke-WebRequest -Uri "https://github.com/zhushanwen321/tai-ji/releases/download/v0.11.16/TaiJi-0.11.16-setup-x64.exe" -OutFile "$env:TEMP\TaiJi-setup.exe" -UseBasicParsing; & "$env:TEMP\TaiJi-setup.exe"
-```
-
-</details>
-
-<details>
-<summary><b>首次启动遇到问题？</b></summary>
-
-- **macOS 提示「已损坏」或「无法验证开发者」**：运行 `xattr -cr /Applications/TaiJi.app`
-- **Linux AppImage 无法启动**：确认已 `chmod +x`，或尝试 `--no-sandbox` 参数
-- **Windows SmartScreen 警告**：点击「更多信息」→「仍要运行」
-
-</details>
-
-<!-- INSTALL:END -->
-
-> **macOS Intel 用户**：当前仅提供 Apple Silicon (arm64) DMG，暂不支持 Intel Mac。
-
----
-
-## 核心能力
-
-### 多会话并行
-同时运行多个 AI 任务，侧栏实时显示每个会话的状态。随时从任意回复分叉新会话、交接上下文、导入已有会话。
-
-### 执行过程完全可见
-思考链、工具调用、文件编辑逐步流出；每轮结束折叠成一行摘要，点开可查看完整过程。Trace 视图支持按类型筛选和全文搜索。
-
-### Subagent & Workflow
-把独立任务派给子 agent 并行执行，或用 chain/parallel 模板编排多步工作流。任务托盘实时汇总进度，每个子任务带预算与轮次上限。
-
-### 工作台集成
-侧栏文件树（大目录流畅 + git 标记）、抽屉终端（每会话独立现场）、Git/worktree 管理、内置浏览器面板。
-
-### 19 个内置扩展
-Agent 能力通过 pi 扩展机制实现，涵盖权限控制、定时任务、上下文压缩、结构化输出等。19 个扩展随应用打包（15 个通用扩展 + 4 个 TaiJi 集成专用），16 个通用扩展均可脱离 taiji 独立使用（其中 9 个包的低频工具标记 `exposure: "deferred"`，依赖 pi 内置 `tool_search` 按需激活——独立 pi 使用需在 `settings.json` 加 `"defaultTools": ["+tool_search"]`，详见各包 README），详见[扩展开发指南](docs/extensions/development-guide.md)。
-
----
-
-<details>
-<summary><b>完整功能列表（点击展开）</b></summary>
-
-### Agent 执行
-- **并行 Subagent**：输入框上方的任务托盘汇总运行中的子任务，点开可在抽屉查看完整对话和产出。
-- **Workflow 编排**：用 chain、parallel 等模板把多个 subagent 组成有状态工作流，中断后可从断点恢复。
-- **Todo 与 Goal**：Agent 把任务拆成 todo 清单逐项完成；长时间运行的目标走 goal 模式，先定验收标准和预算。
-- **定时任务**：cron 或 interval 定时任务，到点自动唤醒会话执行，支持暂停、删除和手动触发。
-- **上下文管理**：Agent 自主压缩上下文，接近阈值会主动提醒；输入框旁悬停查看当前占用。
-- **会话操作**：⌘G 分叉、⌘J 交接、⌘I 导入；输入框支持 `/` 命令、`#` 引用会话、`$` 引用文件、`@` 派 subagent。
-
-### 执行过程可见
-- **实时对话流**：思考、工具调用、文件编辑逐步流出；每轮结束折叠成一行摘要。
-- **Trace 视图**：条目清单形式列出全部执行记录，支持按类型筛选和全文搜索，可查看压缩边界。
-- **任务状态条**：todo 和 goal 的进度以状态条形式固定显示在对话流中。
-- **结构化问答**：Agent 需要确认时弹出表单，支持多问题、选项和自由输入。
-- **后台任务**：耗时命令可转后台执行，结束后自动通知；抽屉集中查看输出。
-
-### 工作台
-- **文件树**：侧栏文件面板，大目录下依然流畅，改动过的文件带 git 标记。
-- **终端**：抽屉内置终端，每个会话独立保留现场。
-- **Git 与 worktree**：查看当前分支和文件变更；支持创建、切换、清理 worktree。
-- **浏览器面板**：抽屉内置浏览器，可查看 Agent 操作网页的过程。
-
-### 设置与控制
-- **系统提示词**：在设置中整段替换，修改前自动快照，可随时还原。
-- **工具权限**：输入框旁切换权限档位，从只读到全工具。
-- **模型接入**：内置常用 provider 目录，填写 API key 即可使用。
-- **设置中心**：Provider、外观、技能、Agent、扩展等 12 个分区。
-- **自动更新**：自动检测新版本，确认后重启升级。
-
-</details>
-
----
-
-## 扩展生态
-
-taiji 的 Agent 能力通过 pi 扩展机制实现，源码在 [`extensions/`](extensions/)（20 个 `@zhushanwen/pi-*` 包 + `shared/` 共享库），其中 19 个随应用打包（15 个通用扩展 + 4 个 TaiJi 集成专用）。
-
-以下 16 个扩展可脱离 taiji 独立使用（全部经 npm 发布，也可 `--extension` 直接加载）。注意：5 个包的低频工具标记 `exposure: "deferred"`（subagent-workflow / session-manager 除 create_managed_session 外的七件 / session-reader / rename-session / base-tool-enhance），需 pi 内置 `tool_search` 按需激活——独立 pi 使用在 `<agentDir>/settings.json`（默认 `~/.pi/agent/settings.json`）加 `"defaultTools": ["+tool_search"]`（`+` 前缀保留默认工具集），否则这些工具对模型不可见，激活说明见各包 README 的「工具激活」节：
-
-| 扩展 | 用途 |
-|------|------|
-| [`pi-subagent-workflow`](extensions/universal/subagent-workflow/README.md) | 统一 subagent 执行 + 多 agent workflow 编排 |
-| [`pi-goal`](extensions/universal/goal/README.md) | `/goal` 持久目标驱动自治循环 |
-| [`pi-todo`](extensions/universal/todo/README.md) | AI 驱动的 todo 列表 |
-| [`pi-ask-user`](extensions/universal/ask-user/README.md) | 结构化多问题输入 |
-| [`pi-permission`](extensions/universal/permission/README.md) | 四档权限模式 + 三层判定管道 |
-| [`pi-scheduler`](extensions/universal/scheduler/README.md) | 定时任务调度（cron / interval） |
-| [`pi-session-reader`](extensions/universal/session-reader/README.md) | 读取 / 查询 session 历史 |
-| [`pi-session-manager`](extensions/universal/session-manager/README.md) | Agent 托管子会话 |
-| [`pi-rename-session`](extensions/universal/rename-session/README.md) | 自动生成会话标题 |
-| [`pi-smart-context`](extensions/universal/smart-context/README.md) | Agent 自决上下文压缩 |
-| [`pi-structured-output`](extensions/universal/structured-output/README.md) | 结构化输出（JSON Schema） |
-| [`pi-pending-notifications`](extensions/universal/pending-notifications/README.md) | 跨扩展异步操作管理 |
-| [`pi-base-tool-enhance`](extensions/universal/base-tool-enhance/README.md) | bash 工具增强 |
-| [`pi-plan`](extensions/universal/plan/README.md) | 轻量 plan 模式 |
-| [`pi-cache-probe`](extensions/universal/cache-probe/README.md) | 缓存前缀指纹采集 |
-| [`pi-provider-live-sync`](extensions/universal/provider-live-sync/README.md) | Provider 配置实时同步 |
-
-其余 4 个（`agent-ext` / `msg-id-mapper` / `system-prompt` / `system-prompt-trace`，npm 包名带 `pi-` 前缀）为 taiji 集成专用，源码在 `extensions/taiji/` 下。扩展开发见 [docs/extensions/development-guide.md](docs/extensions/development-guide.md)。
-
----
-
-## 开发指南
-
-**前置条件**: Node.js 24 推荐（最低兼容 22.19.0，见 `.nvmrc`），pnpm >= 10
+`package.json` 的 `files` 只带 `lib/`、`cordis.patch.yml` 与 `README.md`，因此安装的前提是先把产物构建出来：
 
 ```bash
-pnpm install          # 安装依赖
-pnpm dev              # 开发模式（Vite HMR + Electron 主进程）
-pnpm build            # 生产构建（DMG/EXE/AppImage/manifest）
-pnpm lint             # ESLint
-pnpm --filter @taiji/frontend run typecheck  # 类型检查
-pnpm test:e2e         # Playwright E2E（需先 pnpm build:e2e）
+pnpm install                      # 安装 devDependencies（打包器）
+node scripts/build-client.mjs     # 产出 lib/index.js（Node 半场）与 lib/client.js（浏览器半场）
 ```
 
-调试 dev app：`pnpm dev` 启动后 Electron 开 CDP 调试端口（`node apps/electron/scripts/dev-instance.mjs --print` 查看端口），可用 Playwright 连接截图/DOM 快照/执行 JS。详见 [AGENTS.md](AGENTS.md)。
+- 构建只依赖本仓与 npm 上可得的通用打包器，不引用任何 DSH 源码仓库路径。
+- 产物自带自检：浏览器半场的 `require` 字面量必须落在宿主模块基线内、注入行不得含结束标签、被禁 token 不得出现。
+- 首次 `pnpm install` 可能被 pnpm ≥10 拦下打包器的安装脚本，按「排障 → build scripts approval」处理。
 
-### 环境变量
+## 安装
 
-| 变量 | 作用 | 默认值 |
-|------|------|--------|
-| `TAIJI_MOCK` | 设为 `1` 跳过 runtime 子进程启动 | — |
-| `VITE_MOCK` | 设为 `true` 在 ws-client 层拦截 WS 消息 | — |
-| `TAIJI_AGENT_DATA_DIR` | 自定义数据目录（dev 模式强制 `~/.taiji-dev`） | `~/.taiji` |
+### 本地路径安装
 
----
+```bash
+# 1. 取本仓并构建（上一节），得到一个同时含 lib/index.js 与 lib/client.js 的目录
+# 2. 装进 web 类型 profile
+dsh plugin --profile web add <本仓绝对路径>
+# 3. 启动
+dsh web
+```
 
-## 技术栈
+`dsh plugin add` 会把这个目录作为 `link:` 依赖写进 profile（相对路径会被解析成绝对路径），并因为本包声明了 `dsh.bundle` 而把它追加进 profile 的 `dsh.profile.bundles`。tarball 方式记的是 `file:` spec。装完用 `dsh --profile web --dump-config` 能看到本包这一层（以 `# == tai-ji-yang-shell` 开头）。
 
-| 层 | 技术 |
-|----|------|
-| 桌面框架 | Electron 42 |
-| 前端 | Vue 3.5 + TypeScript 5.8 + Pinia 3 + Vite 8 + Tailwind CSS v3 |
-| UI | @taiji/ui + reka-ui + @lucide/vue + vue-i18n 10 |
-| 后端通信 | WebSocket + pi 子进程 RPC |
-| 打包 | electron-builder 26 |
+### git 安装
 
-## 发布
+```bash
+dsh plugin --profile web add git+https://github.com/zhushanwen321/tai-ji-yang.git#<commit-sha>
+```
 
-| 管线 | 产物 | 触发 tag | Workflow |
-|------|------|----------|----------|
-| Electron 打包 | DMG / EXE / AppImage / manifest | `v*` | `release.yml` |
-| npm 包发布 | `@zhushanwen/pi-*` 扩展 + 引擎/SDK 包 | `npm-*` | `release-npm.yml` |
-| npm 预发布 | dev dist-tag 测试版 | `dev-npm-*` | `release-npm-dev.yml` |
+git 安装拉取的是**源码，不是构建产物**：pnpm 只在包声明了 `prepare` 脚本时才会在安装期构建，而本包不声明 `prepare`、也不定义 `postinstall`。因此从 git 安装前必须确认目标 commit 已包含 `lib/` 产物；否则改成下面两种方式之一：
 
-## 文档索引
+```bash
+# 构建产物打包后安装（推荐：不需要任何安装期构建权限，也不依赖 pnpm 的 prepare 放行）
+pnpm pack                                  # 产出 tai-ji-yang-shell-<version>.tgz
+dsh plugin --profile web add ./tai-ji-yang-shell-<version>.tgz
+```
 
-| 文档 | 内容 |
-|------|------|
-| [AGENTS.md](AGENTS.md) | 开发约定、关键规则、调试与发布纪律 |
-| [docs/PRODUCT.md](docs/PRODUCT.md) / [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 产品定位 / 架构总览 |
-| [docs/STANDARDS.md](docs/STANDARDS.md) | 编码规范与架构标准 |
-| [docs/DESIGN.md](docs/DESIGN.md) | 视觉设计权威（太极纯灰 token 与范式） |
-| [docs/extensions/](docs/extensions/) | pi 扩展开发全套指南 |
-| [docs/architecture/feature-map.md](docs/architecture/feature-map.md) | 功能规划与阶段现状 |
-| [docs/testing/](docs/testing/) + [docs/TEST-STRATEGY.md](docs/TEST-STRATEGY.md) | 测试策略与分功能测试手册 |
-| [docs/adr/](docs/adr/) | 架构决策记录 |
-| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | 问题排查指南 |
+无论本地路径、tarball 还是 git，都建议锁定具体 commit 或具体版本，避免后续推送悄悄改变实际运行的代码。
+
+### 桌面应用（desktop profile）
+
+桌面应用独占 `desktop` profile —— 系统 PATH 上的 npm 版 `dsh` 会直接拒绝（`profile "desktop" is managed exclusively by the Electron application`），必须改用**桌面应用自带的 CLI**（`DeepSeek Harness.app` 内的 `runtime/cli/bin/dsh`，它的 `desktop-host` 入口被授予 desktop profile 的管理权限）：
+
+1. 先启动一次桌面应用，让它初始化 `desktop` profile；
+2. **完全退出**桌面应用，然后用应用自带的 CLI 安装：`<应用内>/runtime/cli/bin/dsh plugin --profile desktop add <本仓绝对路径>`；
+3. 重新打开桌面应用。
+
+### 卸载
+
+```bash
+dsh plugin --profile web remove tai-ji-yang-shell
+```
+
+卸载会同时移除 profile 依赖与对应的组合包层：页面重载后本包写下的 token 覆盖层与槽位贡献撤除，配色选择随 profile 行一并消失，宿主外观回到装前原状（本包从不写宿主主题偏好）。
+
+## profile 适用性（三类）
+
+本包的浏览器半场只在 `dsh.client.platform === 'web'` 的 profile 里装载；非 web 类型 profile 下宿主会静默跳过浏览器半场，因此本包在 Node 半场加了一条指向本包的诊断日志。
+
+| 类别 | profile | 结果 | 说明 |
+|------|---------|------|------|
+| ① web 类型 | `web`、`desktop` | 两个半场都装载，界面生效 | 呈现太极配色与品牌位，设置页出现外观行 |
+| ② 非 web 应用型 | `headless`、`sdk`、`sdk-minimal`、`acp` | 只有 Node 半场装载，浏览器半场不装载 | 这些 profile 没有 web 承载，界面不会有任何变化；宿主日志里有一条明确指向本包的错误，说明只支持 web 类型 profile |
+| ③ 自定义 profile | `dsh plugin --profile <name> add ...` 建出的任意 profile | 取决于它是否含 web 承载层 | 需要 profile 的 bundle 列表含 web 应用层（例如由 `dsh --profile <name> --from-default-profile web` 建出的 profile）；只含 base 的自定义 profile 归入类别 ② |
+
+类别 ② 的「装上但界面无变化」是该类 profile 的正常表现，不是本包故障：按日志提示改装到 web profile 即可。
+
+## 版本门禁
+
+本包声明：
+
+```json
+"engines": { "dsh": ">=0.1.7-rc.2 <0.3.0" }
+```
+
+- 范围取宽（覆盖当前主版本的全部 rc，直到下一个 minor 之前）：DSH 的 rc 迭代属于常规发版，不该把本包挡在门外；上界 `<0.3.0` 挡住破坏性升级。
+- 门禁语义是「不满足即阻止」：宿主在安装与 profile 启动时拒绝，并给出可行动的提示，而不是装上后运行时崩溃。
+- 本包**不**在 `peerDependencies` 里声明任何 `@deepseek-ai/dsh-*`：一旦声明，宿主会改用 peer 门禁，与宽范围门禁冲突。
+- 版本行为因宿主版本而异：0.1.7 的 `plugin` 命令不检查 `engines.dsh`（写任何值都不影响该版本安装）；0.2.2 起按范围拒绝并给出豁免命令。落在范围外且已确认兼容时，可显式豁免（**承担崩溃与数据丢失风险**，只对该包与该 DSH 版本的组合生效）：
+
+```bash
+dsh plugin --profile web allow-version tai-ji-yang-shell@<版本> --dsh-version <当前 DSH 版本> --accept-risk
+```
+
+## 已知差异（明确不承诺）
+
+布局几何归宿主私有，本包不写、也不承诺对齐：栏宽、卡缝（4px 分隔）、窗口顶条高度、对话区宽度、mac 材质（vibrancy）。装了本包后这些几何与宿主原生一致，而不是太极桌面版的几何。
+
+其余登记差异：
+
+- **代码高亮 / 工具 JSON 面板 / 附件文件图标**保持宿主自带的彩色字面色板（不染成太极灰阶）：这三处是内容区的高差异化信息载体，改色会削弱其信息功能。
+- **字号与字体**完全交回宿主：本包不写字族与字号轴，⌘+/⌘- 与字体选择照常生效。
+- **第三方主题插件**不承诺共存：本包以 token 覆盖层表达配色，与其他覆盖层叠加的结果不做保证。
+- **产品图标**不替换：宿主逐 id 的图标契约需逐个重制，不在本包范围。
+- 装错 profile（非 web 类型）时界面不会有任何变化（见「profile 适用性」类别 ②）。
+
+## 排障
+
+**1. 装完界面没有任何变化**
+
+按顺序核对：① 装的是不是 web 类型 profile（非 web 类型见「profile 适用性」类别 ②，日志有本包诊断）；② 是否已按「非 HMR profile 需停机重启」重新启动；③ DSH 插件页里本包是否已启用；④ `lib/client.js` 是否真的构建出来了（只产出 Node 半场时浏览器半场不会物化，宿主会报 client bundle 缺失）。
+
+**2. 非 HMR profile：装完必须停机重启，不能即时生效**
+
+有 HMR 的应用型 profile（`web`、`desktop`，base 的 `hmr` 行在 profile 上下文里是启用的）装完即生效；没有 HMR 的 profile（`headless`、`sdk`、`acp` 显式关掉 base 的 `hmr` 行，`sdk-minimal` 不基于 base 因此也没有 hmr 行）在装完新包后返回 `restart-required`（0.2.2 起还附带 `restartReason: no-hmr`），含义是「这个 profile 只在启动时应用变更」。处置：停止 DSH，再执行一次同一条 `dsh plugin ... add`，然后启动 profile。以 0.1.7 实装为例，插件管理在无 HMR 的 profile 里对正在运行的组合包直接以 `stop-profile` 拒绝移除（0.2.2 的对应提示文案是：停机后执行 `dsh plugin --profile <profile> remove <bundle>`）。
+
+**3. 包被解析到了别的目录**
+
+若你重建/移动了本地 checkout，或换了一份源码副本，宿主可能发现「已安装的包现在解析到另一个目录」，从而拒绝发布新的运行映射（0.2.2 起以 `restart-required` + `restartReason: package-moved` 报告，组合保持不变）。处置：先移除，再按新路径安装。
+
+```bash
+dsh plugin --profile web remove tai-ji-yang-shell
+dsh plugin --profile web add <新的本仓绝对路径>
+```
+
+**4. build scripts approval：安装期脚本需要显式授权**
+
+pnpm ≥10 在获得显式允许前不执行依赖的安装脚本（git 安装要用 `prepare` 构建时必然撞上）。宿主会把修法直接打出来：把 pnpm 打印的**确切包键**复制进该 profile 的 `pnpm-workspace.yaml`：
+
+```yaml
+allowBuilds:
+  tai-ji-yang-shell: true
+```
+
+然后重新执行 add。请把这项授权理解为「允许该包的代码在安装时于你的机器上执行」，只对源码可信的包授权，并锁定 commit。本包当前不定义 `postinstall`；这一条主要覆盖 git 安装（未来若新增 `prepare`）与依赖自带的安装脚本。
+
+**5. 安装日志里有 `missing peer @deepseek-ai/cordis` 警告**
+
+本包只有一个 peer：`@deepseek-ai/cordis`（运行时由宿主提供，不由插件安装）。git 或 registry 方式安装时 pnpm 会做 peer 检查并打印该警告；宿主侧以模块表供给，不影响装载。要静音警告可保持用本地路径 / tarball 安装。
+
+**6. 版本门禁拒绝安装或启动**
+
+报 unmet `engines.dsh`：把 DSH 调整到范围内，或按「版本门禁」显式豁免（承担风险）。
+
+**7. 想确认本包这一层真的被组合进来**
+
+```bash
+dsh --profile web --dump-config      # 组合后的 entry 列表；本包这一层以 "# == tai-ji-yang-shell" 开头
+```
+
+## 开发约定（本包自身的边界）
+
+- 不注册第三方主题 id、不写宿主主题偏好（否则「跟随系统」失效）；配色走宿主 token 覆盖层，明暗模式归宿主。
+- 不写宿主字族、字号轴与布局几何变量；结构值只覆盖圆角与字重/行高一类独立子 token。
+- 每个贡献点（覆盖层、结构 CSS、槽位、外观行、locale 字典）都挂在 `ctx.effect` 上并返回 disposer，卸载即撤除。
+- 持久状态（配色 id）存宿主管辖的插件 Config，不用浏览器 localStorage：卸载时本包代码已不再执行，Config 随 profile 行一并消失才是可达的清理路径。
+- 浏览器半场的 `require` 只落在宿主模块表基线内；`package.json` 不含任何 `@deepseek-ai/dsh-client-*` 依赖。
+
+开发与提交约定见 [AGENTS.md](AGENTS.md)。
+
+## 静态自检
+
+```bash
+node scripts/check-manifest.mjs          # package.json 契约 + patch 结构 + 依赖键集边界
+node scripts/check-no-host-deps.mjs      # 不含 @deepseek-ai/dsh-client-* 依赖
+node scripts/check-require-baseline.mjs  # 产物 require 字面量 ⊆ 宿主模块基线
+node scripts/check-injection-escape.mjs  # 注入行不含结束标签
+node scripts/check-forbidden-tokens.mjs  # 字族 / 字号 / 复合简写 / 宿主几何变量 / theme.register
+```
 
 ## License
 
