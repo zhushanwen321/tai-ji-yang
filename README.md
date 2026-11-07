@@ -163,6 +163,25 @@ allowBuilds:
 dsh --profile web --dump-config      # 组合后的 entry 列表；本包这一层以 "# == tai-ji-yang-shell" 开头
 ```
 
+**8. 卸载后 `--dump-config` 报 `patch: entry "tai-ji-yang-shell" not found`**
+
+只在**曾经选过配色**的 profile 上出现。原因链条（已实测复现，2026-11-07）：
+
+1. 用户点选配色 → 本包经 `ctx.configForms` 写入插件 Config；
+2. 宿主为保存这个值，把本包那一行**物化进 profile 的用户 patch 层**（`profiles/<name>/cordis.patch.yml`），写成 `- id: tai-ji-yang-shell` + `config: { appearance: <配色 id> }`；
+3. `dsh plugin remove` 只清 profile 依赖与 `dsh.profile.bundles`，**不清它物化进用户 patch 的行**；
+4. 于是该行变成悬空引用，每次 `--dump-config` / 启动都打印一条 `not found` 警告。
+
+**这是宿主行为，不是本包 bug**：任何声明了 `Config` 的 DSH 插件都走同一条路。实测佐证——装完后**从不点选配色**直接卸载，patch 保持 `[]` 完全干净。
+
+影响面：仅一条警告。本包不会因此被装载（行悬空即无 bundle 可组合），token 覆盖层、槽位贡献与配色选择全部随卸载消失，界面回到宿主原状。
+
+要消掉这条警告，手动删掉该 profile patch 里本包那一行（整个 `- id: tai-ji-yang-shell` 块，含其 `config`）：
+
+```bash
+$EDITOR ~/.dsh/profiles/<profile>/cordis.patch.yml
+```
+
 ## 开发约定（本包自身的边界）
 
 - 不注册第三方主题 id、不写宿主主题偏好（否则「跟随系统」失效）；配色走宿主 token 覆盖层，明暗模式归宿主。

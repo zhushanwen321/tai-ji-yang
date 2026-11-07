@@ -1,6 +1,18 @@
 #!/usr/bin/env node
 /**
- * 最小 manifest 自检：package.json 契约（五字段齐备 + exports 各条件路径存在）+ cordis.patch.yml 结构 + 依赖键集边界。
+ * 最小 manifest 自检：package.json 契约（五字段齐备 + exports 各条件路径存在）+ cordis.patch.yml 结构
+ * + 依赖键集边界 + **浏览器半场的宿主服务声明**。
+ *
+ * 最后一项是 2026-11-07 真机验收的发现（见 ledger「D3 真机验收」）：宿主 fiber 的 ctx 是带拦截器
+ * 的 Proxy，`ctx.<service>` 只有在该 service 已被 provide 或本 fiber 的 inject 表里声明了它时才可读，
+ * 否则**抛** `cannot get property "<name>" without inject`。浏览器半场不导出 `inject` 时，`apply`
+ * 第一行就抛、fiber 转 failed、宿主 boot 报 `web boot: 1 entry did not activate`——页面整体白屏，
+ * 而 Node 半场的首帧样式照常注入（所以「界面有太极色但内容是白的」这种半死态最误导）。
+ * 这条断言把该契约钉在可机检的位置：漏声明即红，不等真机。
+ *
+ * **注意与 package.json 的 `dsh.client.inject` 区分**：那是**包名**（脚本抵达排序，宿主
+ * `client-modules` 的 `arriveDependency` 消费）；这里是模块 `exports.inject` 的**服务名**
+ * （ctx 读取门控）。两者同名不同义，不可互相替代——本包两个都要。
  *
  * 只依赖 node 内置模块（不引 js-yaml，保持本单元的零依赖前提）：
  * cordis.patch.yml 的合法性以「非空且首行为 `- ` 条目」这一最小结构检查替代完整 YAML 解析。
@@ -13,11 +25,23 @@ import { fileURLToPath } from 'node:url'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const FORBIDDEN_PREFIX = '@deepseek-ai/dsh-client-'
 const CLIENT_INJECT = [
+  '@deepseek-ai/dsh-client-ui-layout',
   '@deepseek-ai/dsh-client-locale',
   '@deepseek-ai/dsh-client-ui-settings',
   '@deepseek-ai/dsh-client-ui-theme',
   '@deepseek-ai/dsh-api-remotes',
 ]
+/**
+ * 浏览器半场必须导出的宿主服务名（`client/apply.ts` 的 `export const inject`）。
+ *
+ * 取值 = 该文件实际读到的 ctx 面，与 `ClientApplyContext` 的字段一一对应：
+ *   slots（品牌三槽 + 外观行）/ locale（内联字典，apply 第一步读它）/ theme（覆盖层 + 模式按钮）/
+ *   configForms + remote（持久通道；remote 承载 configForms.get 订阅的设置失效通知）。
+ *
+ * 为什么必须写死在这里而不从源码推断：这条断言的价值恰在于「源码改了但忘了同步 inject」时会红——
+ * 若从源码读 inject 再比对自身，任何改动都自动通过，断言退化为恒绿。
+ */
+const REQUIRED_SERVICE_INJECT = ['slots', 'locale', 'theme', 'configForms', 'remote']
 const results = []
 
 function check(label, fn) {
@@ -130,6 +154,26 @@ check('dependencies / peerDependencies 不含 @deepseek-ai/dsh-client-*', () => 
     if (deps == null) continue
     const offenders = Object.keys(deps).filter((dep) => dep.startsWith(FORBIDDEN_PREFIX))
     if (offenders.length > 0) throw new Error(`${name} 含被禁的 client 依赖: ${offenders.join(', ')}`)
+  }
+})
+
+check('浏览器半场导出 inject 且覆盖全部消费的宿主服务', () => {
+  const sourcePath = join(ROOT, 'client', 'apply.ts')
+  if (!existsSync(sourcePath)) throw new Error(`找不到浏览器半场入口: client/apply.ts（属 U3 单元）`)
+  const source = readFileSync(sourcePath, 'utf8')
+  // 形态判定：`export const inject = [...]`（允许 as const 与多行）；不认 exports.inject 的动态形态——
+  // 本包是 TS 源码经 esbuild 打包，唯一合法形态就是这条 export。
+  const match = source.match(/export\s+const\s+inject\s*(?::[^=]+)?=\s*\[([^\]]*)\]/s)
+  if (!match) {
+    throw new Error(
+      'client/apply.ts 未导出 const inject——宿主 fiber 的 ctx 拦截器会令 apply 第一行即抛 ' +
+      '「cannot get property \"locale\" without inject」，浏览器半场整体 failed（页面白屏而首帧样式照常注入的半死态）',
+    )
+  }
+  const declared = [...match[1].matchAll(/['"]([^'"\n]+)['"]/g)].map((m) => m[1])
+  const missing = REQUIRED_SERVICE_INJECT.filter((name) => !declared.includes(name))
+  if (missing.length > 0) {
+    throw new Error(`inject 缺少本包实际消费的宿主服务: ${missing.join(', ')}（已声明: ${declared.join(', ') || '无'}）`)
   }
 })
 

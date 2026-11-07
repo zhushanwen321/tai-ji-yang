@@ -65,6 +65,33 @@ const PERSIST_SUBSCRIBE_LABEL = 'taiji: 持久配色 → 主题层换层（插�
 const PERSIST_DISPOSE_LABEL = 'taiji: 插件 Config 镜像订阅反注册'
 
 /**
+ * 本包消费的宿主服务名（浏览器半场的 `inject` 声明）。
+ *
+ * **为什么必须有这个导出**（2026-11-07 真机验收发现，D2 设计缺口）：宿主的 fiber context 是
+ * 一个带拦截器的 Proxy——`ctx.<service>` 只有在「该 service 已在某层 fiber 的 store 里被
+ * provide」或「本 fiber 的 inject 表里声明了它」时才可读，否则**直接抛**
+ * `cannot get property "<name>" without inject`。本包不声明 inject 时，浏览器半场一进
+ * `apply` 就在第一行 `installLocale(ctx)` 抛错，fiber 状态转 failed，宿主 boot 报
+ * `web boot: 1 entry did not activate`——页面整体白屏。
+ *
+ * **与 package.json 的 `dsh.client.inject` 是两个同名不同义的机制，不可互相替代**：
+ *   · `dsh.client.inject`（manifest）= **包名**，只决定这些包的脚本先于本包抵达
+ *     （`client-modules` 的 `arriveDependency` 消费），属加载排序；
+ *   · 本导出 = **服务名**，决定本 fiber 能否读 `ctx.<name>`，属依赖声明。
+ *     宿主自己的先例：`dsh-client-ui-layout` 导出 `["slots","theme","locale","shortcuts"]`，
+ *     `dsh-client-ui-theme` 导出 `["slots","locale","remote","configForms"]`。
+ *
+ * 取值 = 本文件实际读到的 ctx 面（见 {@link ClientApplyContext}），不多写：
+ *   · `slots` —— 品牌三槽与外观行的 register；
+ *   · `locale` —— 内联双语字典（`installLocale` 是 apply 的第一步，最先读它）；
+ *   · `theme` —— 覆盖层与外观行的模式按钮；
+ *   · `configForms` + `remote` —— 持久通道；`remote` 不可省，宿主 ui-theme 的注释明言
+ *     「`remote` carries the forwarded settings invalidation that
+ *     `ctx.configForms.get(entryId)` subscribes to on this context」。
+ */
+export const inject = ['slots', 'locale', 'theme', 'configForms', 'remote'] as const
+
+/**
  * 装配入口。
  *
  * 每一步的失败形态（都不抛、不静默）：
