@@ -25,6 +25,12 @@
  *   · 字体两层 = gradient-shadow-text.css：复合简写 `--dsw-font-<名>` 与同名独立子 token
  *     `--dsw-font-<名>-font-weight` / `-line-height` / `-font-size` / `-font-family` /
  *     `-font-style`；本包只写前两类子 token。
+ *
+ * 完整性核对（U6 落地时逐档枚举宿主 gradient-shadow-text.css 全量子 token）：宿主字重子
+ * token 30 个、行高子 token 30 个；本表覆盖 19 + 29，未收录的 11 个字重档（h1/h2/h3 宿主
+ * 700、h4/base-strong/base-strong-italic/small-strong/small-strong-italic/xl-24 宿主 600、
+ * l-20/m-18 宿主 500）与 1 个行高档（l-20 宿主 28px/20px = 1.4）均为「宿主默认值已等于
+ * 太极目标值」，覆盖它们只会多写一层同值声明。该期望集由 structure.test.ts 的完整性用例钉死。
  */
 import type { TokenModes, TokenTable } from './tokens'
 

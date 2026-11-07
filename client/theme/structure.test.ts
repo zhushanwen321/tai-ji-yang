@@ -69,6 +69,67 @@ describe('字重/行高只走独立子 token（D7 红线 / RL9）', () => {
     expect(weights.length).toBeGreaterThanOrEqual(19)
     expect(leadings.length).toBeGreaterThanOrEqual(29)
   })
+
+  it('覆盖集完整性（U6 钉死）：宿主 30 个字重 + 30 个行高子 token 中，凡宿主默认值 ≠ 太极目标值的档位全部在表内', () => {
+    // 期望集 = 对宿主 gradient-shadow-text.css 全量子 token 逐档比对（宿主默认值 → 太极目标）后的结果。
+    // 未收录的 11 个字重档与 1 个行高档均为「宿主默认值已等于太极目标」，无需覆盖：
+    //   · 字重 —— h1/h2/h3 宿主 700 = --fw-bold；h4 / base-strong / base-strong-italic /
+    //     small-strong / small-strong-italic / xl-24 宿主 600 = --fw-mid；l-20 / m-18 宿主 500 = --fw-text
+    //   · 行高 —— l-20 宿主 28px/20px = 1.4 = --m-leading-ui
+    // 增删任一键都必须显式改这里——防结构覆盖集静默漂移（漏覆盖 = 识别度损失，多覆盖 = 越权）。
+    expect(Object.keys(FONT_TOKENS).filter((name) => name.endsWith('-font-weight')).sort()).toEqual([
+      '--dsw-font-base-16-font-weight',
+      '--dsw-font-base-strong-16-font-weight',
+      '--dsw-font-markdown-base-font-weight',
+      '--dsw-font-markdown-base-italic-font-weight',
+      '--dsw-font-markdown-code-block-font-weight',
+      '--dsw-font-markdown-code-block-small-font-weight',
+      '--dsw-font-markdown-code-font-weight',
+      '--dsw-font-markdown-small-font-weight',
+      '--dsw-font-markdown-small-italic-font-weight',
+      '--dsw-font-markdown-table-font-weight',
+      '--dsw-font-markdown-table-head-font-weight',
+      '--dsw-font-s-14-font-weight',
+      '--dsw-font-s-strong-14-font-weight',
+      '--dsw-font-xs-13-font-weight',
+      '--dsw-font-xs-strong-13-font-weight',
+      '--dsw-font-xxs-12-font-weight',
+      '--dsw-font-xxs-strong-12-font-weight',
+      '--dsw-font-xxxs-11-font-weight',
+      '--dsw-font-xxxs-strong-11-font-weight',
+    ])
+    expect(Object.keys(FONT_TOKENS).filter((name) => name.endsWith('-line-height')).sort()).toEqual([
+      '--dsw-font-base-16-line-height',
+      '--dsw-font-base-strong-16-line-height',
+      '--dsw-font-m-18-line-height',
+      '--dsw-font-markdown-base-italic-line-height',
+      '--dsw-font-markdown-base-line-height',
+      '--dsw-font-markdown-base-strong-italic-line-height',
+      '--dsw-font-markdown-base-strong-line-height',
+      '--dsw-font-markdown-code-block-line-height',
+      '--dsw-font-markdown-code-block-small-line-height',
+      '--dsw-font-markdown-code-line-height',
+      '--dsw-font-markdown-h1-line-height',
+      '--dsw-font-markdown-h2-line-height',
+      '--dsw-font-markdown-h3-line-height',
+      '--dsw-font-markdown-h4-line-height',
+      '--dsw-font-markdown-small-italic-line-height',
+      '--dsw-font-markdown-small-line-height',
+      '--dsw-font-markdown-small-strong-italic-line-height',
+      '--dsw-font-markdown-small-strong-line-height',
+      '--dsw-font-markdown-table-head-line-height',
+      '--dsw-font-markdown-table-line-height',
+      '--dsw-font-s-14-line-height',
+      '--dsw-font-s-strong-14-line-height',
+      '--dsw-font-xl-24-line-height',
+      '--dsw-font-xs-13-line-height',
+      '--dsw-font-xs-strong-13-line-height',
+      '--dsw-font-xxs-12-line-height',
+      '--dsw-font-xxs-strong-12-line-height',
+      '--dsw-font-xxxs-11-line-height',
+      '--dsw-font-xxxs-strong-11-line-height',
+    ])
+  })
 })
 
 describe('结构层全表', () => {

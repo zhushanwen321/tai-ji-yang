@@ -66,8 +66,17 @@ const TOKEN_RULES = [
   },
   {
     id: 'RL9:font-shorthand',
-    describe: '覆盖 --dsw-font-* 复合简写会连带冻结字号与字族轴',
-    test: (token) => token.startsWith('--dsw-font-'),
+    describe:
+      '覆盖 --dsw-font-* 复合简写会连带冻结字号与字族轴（*-font-weight / *-line-height 等不含字号与字族的独立子 token 除外——D7 明示放行）',
+    // 排除项语义：复合简写 = `--dsw-font-<名>`（值形如 `<weight> <size>/<line-height> <family>`，
+    // 整段覆盖会连字号与字族一起冻结）。以 `-font-weight` / `-line-height` / `-letter-spacing` /
+    // `-font-style` 结尾的是同名独立子 token，值域只有单一性质（权重 / 倍率 / 间距 / 斜体），
+    // 覆盖它们不碰用户字号与字族——宿主真实子 token 全在 --dsw-font- 命名空间下（如
+    // `--dsw-font-markdown-base-font-weight`），不排除就会把 D7 允许的覆盖全误判为简写
+    // （U2 落盘 structure.ts 时被误报 48 处，修法经 U2 runlog 移交本单元）。
+    test: (token) =>
+      token.startsWith('--dsw-font-') &&
+      !/-(?:font-weight|line-height|letter-spacing|font-style)$/.test(token),
   },
   {
     id: 'RL3:host-geometry-var',
@@ -193,6 +202,10 @@ const POSITIVE_SAMPLE = [
   '  "--dsw-alias-radius-md": { light: "6px", dark: "6px" },',
   '  "--dsw-alias-label-primary-font-weight": { light: "500", dark: "500" },',
   '  "--dsw-alias-body-line-height": { light: "1.6", dark: "1.6" },',
+  // 宿主真实子 token 名（--dsw-font- 命名空间下）：证明 RL9:font-shorthand 的排除项真的放行
+  // D7 允许的 *-font-weight / *-line-height 覆盖，而不是只对合成名有效。
+  '  "--dsw-font-markdown-base-font-weight": { light: "500", dark: "500" },',
+  '  "--dsw-font-markdown-h1-line-height": { light: "1.32", dark: "1.32" },',
   '}',
   'ctx.theme.overrideTokens("tai-ji-yang-shell", overrides)',
 ].join('\n')
