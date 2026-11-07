@@ -83,7 +83,10 @@ export function apply(ctx: ClientApplyContext): void {
   const persistence = new AppearancePersistence(ctx, {
     // 日志前缀取 PLUGIN_ENTRY_ID：它与 package.json 的 name、cordis.patch.yml 的行 id、
     // factory 壳的 id 是同一个字面值（u-foundation 裁决 2；两侧不得 import——浏览器半场
-    // import Node 半场会把 schemastery 拖进 bundle）。同一性由 uninstall 测试对拍看守。
+    // import Node 半场会把 schemastery 拖进 bundle）。同一性的看守范围如实说：uninstall 测试
+    // 只对拍 cordis.patch.yml 的行 id ↔ PLUGIN_ENTRY_ID（tests/uninstall-cleanliness.spec.ts
+    // 的 ③ 用例）；package.json name ↔ factory 壳 id ↔ PLUGIN_ENTRY_ID 三条链接当前无断言看守
+    // （factory id 由构建脚本的 PKG_NAME 字面量钉住，package.json name 只与 index.js 的 name 对拍）。
     report: (message) => { ctx.logger?.error(`${PLUGIN_ENTRY_ID}: ${message}`) },
   })
 

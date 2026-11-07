@@ -180,6 +180,7 @@ node scripts/check-no-host-deps.mjs      # 不含 @deepseek-ai/dsh-client-* 依�
 node scripts/check-require-baseline.mjs  # 产物 require 字面量 ⊆ 宿主模块基线
 node scripts/check-injection-escape.mjs  # 注入行不含结束标签
 node scripts/check-forbidden-tokens.mjs  # 字族 / 字号 / 复合简写 / 宿主几何变量 / theme.register
+node scripts/check-profile-probe.mjs     # V8 自检：装错 profile 时 Node 半场报可行动诊断、不误报
 ```
 
 ## License

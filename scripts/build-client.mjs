@@ -30,7 +30,8 @@
  *      类名隔离靠命名约定（本包类名统一 `taiji-` 前缀）。样式内容是单一来源：**目录扫描**，
  *      因此源码里的 `import './x.css'` 只作声明用途（esbuild 侧 `loader: {'.css': 'empty'}`），
  *      不会出现「构建器注入一次 + 代码里再注入一次」的双写。
- *   ③ **Node 半场随构建一起落位**。`lib/index.js` 是 `index.js` 的逐字拷贝（零 import 的纯 ESM），
+ *   ③ **Node 半场随构建一起落位**。`lib/index.js` 是 `index.js` 的逐字拷贝（单 import
+ *      （schemastery）的纯 ESM，无需转译），
  *      这样 `files` 清单只带 `lib/`，安装后 `main` 指向的入口必然存在。
  *
  * 失败语义（一律 exit 1，不静默通过）：
@@ -245,7 +246,7 @@ function missingEntryFailure(entryPath) {
   ]
 }
 
-/** Node 半场产物 = index.js 的逐字拷贝（零 import 的纯 ESM，无需转译）。 */
+/** Node 半场产物 = index.js 的逐字拷贝（单 import（schemastery）的纯 ESM，无需转译）。 */
 function readNodeHalf() {
   const sourcePath = join(ROOT, NODE_ENTRY)
   if (!existsSync(sourcePath)) {

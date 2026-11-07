@@ -20,8 +20,10 @@
  *   · 读 = `form.getSnapshot()`（镜像视图，`status: loading → ready | unavailable`）；
  *     写 = `form.set(field, value)`（`ctx.remote.settings.mutate`，带 revision 栅栏）。
  *
- * 本文件只经 `ctx.configForms` 这一条面读写，**不出现 localStorage / sessionStorage / IndexedDB
- * 字样**（tests/uninstall-cleanliness.spec.ts 对 client/ 全量源码做静态扫描断言这一点）。
+ * 本文件只经 `ctx.configForms` 这一条面读写，**不出现 localStorage / sessionStorage /
+ * IndexedDB 的调用**（字样可出现在注释里——那是被否决方案的登记）；由
+ * tests/uninstall-cleanliness.spec.ts 的 findStorageUsages 断言（禁的是调用形态，
+ * 注释中的字样放行）。
  */
 import { coerceThemeId, type ThemeId } from './theme/resolve'
 
