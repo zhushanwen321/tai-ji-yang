@@ -41,10 +41,18 @@ node scripts/build-client.mjs     # 产出 lib/index.js（Node 半场）与 lib/
 # 2. 装进 web 类型 profile
 dsh plugin --profile web add <本仓绝对路径>
 # 3. 启动
-dsh web
+dsh web          # 等价于 dsh --profile web
 ```
 
 `dsh plugin add` 会把这个目录作为 `link:` 依赖写进 profile（相对路径会被解析成绝对路径），并因为本包声明了 `dsh.bundle` 而把它追加进 profile 的 `dsh.profile.bundles`。tarball 方式记的是 `file:` spec。装完用 `dsh --profile web --dump-config` 能看到本包这一层（以 `# == tai-ji-yang-shell` 开头）。
+
+**启动后的访问方式**：`dsh web` 会打印一行带 token 的地址并自动打开浏览器——
+
+```
+dsh web: http://127.0.0.1:3080/?token=<一长串>
+```
+
+token **每次启动都重新生成**，且只绑 127.0.0.1（本机访问）。不想自动开浏览器加 `--no-open`，然后手动粘贴那行地址。**首次进入有两道门**（点一次就没了）：先弹 “Internal Testing Notice”，点 **Continue**；再弹 “Add an API key to get started”，点 **Configure later** 可跳过，不影响看界面（要用模型功能再回来配 key）。
 
 ### git 安装
 
@@ -64,17 +72,43 @@ dsh plugin --profile web add ./tai-ji-yang-shell-<version>.tgz
 
 ### 桌面应用（desktop profile）
 
-桌面应用独占 `desktop` profile —— 系统 PATH 上的 npm 版 `dsh` 会直接拒绝（`profile "desktop" is managed exclusively by the Electron application`），必须改用**桌面应用自带的 CLI**（`DeepSeek Harness.app` 内的 `runtime/cli/bin/dsh`，它的 `desktop-host` 入口被授予 desktop profile 的管理权限）：
+desktop profile 被桌面应用**独占管理**：系统 PATH 上的 npm 版 `dsh` 对它一律拒绝（`profile "desktop" is managed exclusively by the Electron application`），`--dump-config` 同样被拒（无论用哪个 CLI——启动与配置导出只归 Electron 应用本体）。唯一被授权的入口是**应用自带的 CLI**，它的 `plugin` 子命令持有 desktop profile 的管理权限。
 
-1. 先启动一次桌面应用，让它初始化 `desktop` profile；
-2. **完全退出**桌面应用，然后用应用自带的 CLI 安装：`<应用内>/runtime/cli/bin/dsh plugin --profile desktop add <本仓绝对路径>`；
-3. 重新打开桌面应用。
+完整步骤（macOS，应用装在默认位置）：
+
+```bash
+# ① 先启动一次桌面应用，让它初始化 desktop profile（~/.dsh/profiles/desktop 已存在则跳过）
+open -a "DeepSeek Harness"
+
+# ② 完全退出桌面应用（⌘Q——运行中的应用持有 profile 的锁），然后安装：
+"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
+  plugin --profile desktop add <本仓绝对路径>
+
+# ③ 重新打开桌面应用，界面即生效
+open -a "DeepSeek Harness"
+```
+
+卸载同样走应用内 CLI（先 ⌘Q 退出应用）：
+
+```bash
+"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
+  plugin --profile desktop remove tai-ji-yang-shell
+```
+
+**验证安装**（desktop profile 不能用 `--dump-config`）：看 `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 里出现 `"tai-ji-yang-shell": "link:..."`、`dsh.profile.bundles` 数组末尾多出 `tai-ji-yang-shell` 即在位。
+
+两个桌面版特有的事实：
+
+- **桌面应用自带完整 dsh 运行时**（版本独立于 npm 版，例如应用内 0.2.0-rc.2 + npm 0.1.7-rc.2 可共存），本包的版本门禁按**应用内版本**判定——安装成功即代表在范围内。
+- **应用自带 pnpm**（与 PATH 上的 pnpm 共用同一处全局 store），desktop profile 首次安装是全新创建，不会触发下文排障第 9 条的 store 迁移问题。
 
 ### 卸载
 
 ```bash
 dsh plugin --profile web remove tai-ji-yang-shell
 ```
+
+桌面版卸载见上一节（用应用内 CLI，先 ⌘Q）。
 
 卸载会同时移除 profile 依赖与对应的组合包层：页面重载后本包写下的 token 覆盖层与槽位贡献撤除，配色选择随 profile 行一并消失，宿主外观回到装前原状（本包从不写宿主主题偏好）。
 
@@ -108,6 +142,20 @@ dsh plugin --profile web remove tai-ji-yang-shell
 ```bash
 dsh plugin --profile web allow-version tai-ji-yang-shell@<版本> --dsh-version <当前 DSH 版本> --accept-risk
 ```
+
+**升级 DSH 本体**：npm 版走全局安装——
+
+```bash
+npm i -g @deepseek-ai/dsh@latest
+dsh --version        # 确认
+```
+
+npm 的 `latest` dist-tag 当前指向 0.2.2-rc.1，落在本包范围内（门禁放行）。落在范围内的已发布版本族：`0.1.7-rc.2` / `0.2.0-rc.*` / `0.2.1-*` / `0.2.2-*`。**升级后必须重启正在运行的 DSH**（web profile 的 HMR 只覆盖应用内容，不覆盖宿主本体）。两点提醒：
+
+- 升级 DSH 后 profile 里已装的插件**不需要重装**（依赖与组合层不受宿主升级影响），但建议升级后看一眼启动日志有没有 `did not activate` 一类条目；
+- 本包的真机验收在 0.1.7-rc.2 上完成，对 0.2.x 只做过源码级核对（用到的能力都在，见设计文档 AS23）。升级后若发现配色不对/白屏，回退稳定版本：`npm i -g @deepseek-ai/dsh@0.1.7-rc.2`。
+
+桌面版的宿主升级随应用（App Store / 官网下载）走，不走 npm；应用内 CLI 的版本即判定基准。
 
 ## 已知差异（明确不承诺）
 
@@ -183,6 +231,29 @@ dsh --profile web --dump-config      # 组合后的 entry 列表；本包这一�
 ```bash
 $EDITOR ~/.dsh/profiles/<profile>/cordis.patch.yml
 ```
+
+**9. `[ERR_PNPM_UNEXPECTED_STORE] Unexpected store location`（pnpm 大版本升级后）**
+
+症状（2026-11-07 实机复现）：对已存在的 profile 执行 `dsh plugin ... add` 直接报错，日志说 `node_modules` 链自 `~/.pnpm-store/v10`、而 pnpm 现在要用 `~/Library/pnpm/store/v11`。
+
+成因：profile 是旧版 pnpm（v10 及以前）建的，pnpm 大版本升级会迁移全局 store 位置（v10 → v11），升级后的 pnpm 拒绝在「别人装的 node_modules」上继续操作。这与本包无关，是环境级问题。
+
+修法分两种情况（按 profile 的 `package.json` 里 `dependencies` 是否为空判断）：
+
+```bash
+# 情况 A：profile 无任何依赖（dependencies 为 {}，如 web/desktop 的初始态）
+# node_modules 只是旧 store 的空壳，删掉重建即可，无任何损失：
+rm -rf ~/.dsh/profiles/<profile>/node_modules
+# 然后重新执行 dsh plugin --profile <profile> add ...
+
+# 情况 B：profile 有真实依赖（如 dsh-tui 的 @deepseek-harness-tui/dsh-tui）
+# 不能用 rm 法，要在交互终端里跑一次迁移安装（会问一句「确认清空 node_modules」，答 y，
+# 依赖按 lockfile 从 v11 store 重装）：
+cd ~/.dsh/profiles/<profile> && pnpm install
+# 然后重新执行 dsh plugin --profile <profile> add ...
+```
+
+修完后 `node_modules/.modules.yaml` 的 `storeDir` 会指向新 store（`~/Library/pnpm/store/v11`）。旧 store `~/.pnpm-store/v10` 占数 GB，确认机器上其它项目都不再用它之后可以删除回收空间。
 
 ## 开发约定（本包自身的边界）
 
