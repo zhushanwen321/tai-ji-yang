@@ -1,0 +1,126 @@
+/* 外观行样式（设计 §3.3.8 / D8，U7；与 client/settings/appearance-row.tsx 同目录，
+ * 经构建脚本的目录扫描注入——普通 CSS 文本 + taiji- 前缀类名隔离，不用 CSS Modules）。
+ *
+ * 排版口径逐条对照宿主内置外观行（deepseek-harness packages/client/ui-theme/src/client/
+ * AppearanceRow.module.css 与 GeneralSection.module.css）：行 chrome（16px 0 内距 + 0.5px
+ * 底部分隔线 + 8px 列间距）与标题（14px/22px/400）保持一致——V12 ③ 要求本行与邻行（字号行 /
+ * 开发者工具行 / 当前版本行）逐行一致，chrome 不齐会在这条截图对比里红。
+ *
+ * 取色全部经宿主令牌 var(--dsw-alias-*) 读取（不声明任何被禁 token：RL1/RL2/RL3/RL9 的
+ * 静态检查对 .css 同样生效，且覆盖层换色后本行自动跟随）；圆角经 --dsw-radius-* 读取，
+ * 因此 U6 覆盖的太极四档圆角在本行同样生效（识别度的一环）。 */
+
+.taiji-appearance-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.taiji-appearance-title {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.taiji-appearance-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+}
+
+/* 三段模式：凹陷轨 + 浮起选中块（对照宿主主题选择立方体的选中范式：选中块用浮起面色、
+   未选中透明底，窄面板自动换行不撑破行）。 */
+.taiji-appearance-modes {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.taiji-appearance-mode {
+  box-sizing: border-box;
+  min-width: 52px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--dsw-radius-xs);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-appearance-mode:hover {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.taiji-appearance-mode-active {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 六色平铺：每色一枚 chip（四色点 + 名字），选中态用品牌色细环（不抢色点本身的颜色）。 */
+.taiji-appearance-swatches {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.taiji-appearance-swatch {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 0.5px solid transparent;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-appearance-swatch:hover {
+    border-color: var(--dsw-alias-border-l2);
+  }
+}
+
+.taiji-appearance-swatch-active {
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.taiji-appearance-swatch-dots {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* 色点描边不可省：底色点（bg-base）在同行背景下需要一道 hairline 才看得见。 */
+.taiji-appearance-swatch-dot {
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 50%;
+}
+
+.taiji-appearance-swatch-name {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.taiji-appearance-swatch-active .taiji-appearance-swatch-name {
+  color: var(--dsw-alias-label-primary);
+}
