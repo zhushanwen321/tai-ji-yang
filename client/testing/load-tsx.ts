@@ -9,6 +9,10 @@
  * 于是品牌槽/外观行的**注册契约与组件输出**可以真行为断言（而不是正则扫源码）——
  * 组件函数在本夹具里从不被宿主渲染机调用，我们手动调用它。
  *
+ * 宿主模块表基线里的 `react-dom` 同样没有本地安装：源码里 `createPortal` 一类的引入由
+ * 下方的假 react-dom 供给——portal 不真挂 DOM，记录为 portal 元素（含挂载目标与子树），
+ * 弹层「去了 body」与「内容长什么样」都能在元素树上断言。
+ *
  * 边界（刻意不做什么）：不做真实 DOM、不做 React 协调、不跑 effect 清理的生命周期闭环；
  * 断言范围止于「注册进哪个槽、什么选项、组件树长什么样、点击调到哪」。真渲染归 V1/V12 的
  * 真实宿主场景（L3/L4），单测层不越界。
@@ -46,6 +50,20 @@ function createJsxRuntime(loader: { elements: FakeElement[] }) {
     jsx: (type: unknown, props: Record<string, unknown> | undefined) => record(type, props),
     jsxs: (type: unknown, props: Record<string, unknown> | undefined) => record(type, props),
     Fragment: Symbol('Fragment'),
+  }
+}
+
+/** portal 元素的类型标记（测试据 `element.type === PORTAL_TYPE` 识别弹层挂载去向）。 */
+export const PORTAL_TYPE = Symbol('portal')
+
+/** 假 react-dom：createPortal 记录为 portal 元素（props 含挂载目标与子树），不真挂 DOM——子树仍是普通元素树，collectElements 可继续遍历断言。 */
+function createReactDOM(loader: { elements: FakeElement[] }) {
+  return {
+    createPortal: (children: unknown, container: unknown): FakeElement => {
+      const element: FakeElement = { type: PORTAL_TYPE, props: { container, children } }
+      loader.elements.push(element)
+      return element
+    },
   }
 }
 
@@ -113,6 +131,7 @@ export function createTsxLoader(): TsxLoader {
     const stubRequire = (specifier: string): unknown => {
       if (specifier === 'react') return createReact(state)
       if (specifier === 'react/jsx-runtime') return createJsxRuntime(state)
+      if (specifier === 'react-dom') return createReactDOM(state)
       if (specifier.startsWith('.')) return load(resolveRelative(absPath, specifier))
       throw new Error(`测试夹具不提供宿主模块 ${specifier}（自 ${absPath}）——本包源码只许 require 基线内模块`)
     }

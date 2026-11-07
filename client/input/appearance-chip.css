@@ -1,0 +1,89 @@
+/* 配色 chip 样式（与 client/input/appearance-chip.tsx 同目录，经构建脚本的目录扫描注入——
+ * 普通 CSS 文本 + taiji- 前缀类名隔离，不用 CSS Modules，见 scripts/build-client.mjs 头部 ②）。
+ *
+ * 形态对齐外观行色卡（client/settings/appearance-row.css）：hairline 描边圆点 + 品牌色
+ * 选中环；取色全部经宿主令牌 var(--dsw-alias-*) 读取（覆盖层换色后自动跟随），圆角走
+ * var(--dsw-radius-sm)。六色色点的填充色不走 CSS——它们是 THEME_TOKEN_TABLES 的数据值，
+ * 经组件内联 style 注入（数据，不是样式硬编码）。 */
+
+/* chip 本体：24px 圆按钮，内容 = 当前配色的 accent 色点。 */
+.taiji-appearance-chip {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-appearance-chip:hover {
+    border-color: var(--dsw-alias-border-l2);
+    background: var(--dsw-alias-bg-layer-1);
+  }
+}
+
+.taiji-appearance-chip-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+/* 弹层：portal 到 document.body + position:fixed（宿主槽契约：composer 卡含 overflow 容器，
+   留在原地的 fixed 会被裁）。锚点坐标（top/left）由组件按按钮 getBoundingClientRect 以
+   内联 style 给出；z-index 取宿主 portaled fixed 面板的同值先例（ui-sidebar-documentpreview
+   的面板 z-index: 100——宿主无公开 z-index token，字面栈位只影响本弹层）。 */
+.taiji-appearance-chip-popover {
+  position: fixed;
+  z-index: 100;
+  box-sizing: border-box;
+  padding: 5px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-overlay);
+}
+
+/* 六色色卡：圆点横排（紧凑快选，无名字标签——title 中文名兜底辨识）。 */
+.taiji-appearance-chip-palette {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.taiji-appearance-chip-swatch {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0.5px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-appearance-chip-swatch:hover {
+    border-color: var(--dsw-alias-border-l2);
+  }
+}
+
+/* 当前色描边：品牌色细环（对齐外观行 taiji-appearance-swatch-active 的做法，不抢色点本身
+   的颜色）。 */
+.taiji-appearance-chip-swatch-active {
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.taiji-appearance-chip-swatch-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
