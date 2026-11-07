@@ -175,7 +175,7 @@ dsh --profile web --dump-config      # 组合后的 entry 列表；本包这一�
 ## 静态自检
 
 ```bash
-node scripts/check-manifest.mjs          # package.json 契约 + patch 结构 + 依赖键集边界
+node scripts/check-manifest.mjs          # package.json 契约（含 exports 路径存在性）+ patch 结构 + 依赖键集边界
 node scripts/check-no-host-deps.mjs      # 不含 @deepseek-ai/dsh-client-* 依赖
 node scripts/check-require-baseline.mjs  # 产物 require 字面量 ⊆ 宿主模块基线
 node scripts/check-injection-escape.mjs  # 注入行不含结束标签
