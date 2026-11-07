@@ -168,11 +168,19 @@ dsh --profile web --dump-config      # 组合后的 entry 列表；本包这一�
 - 不写宿主字族、字号轴与布局几何变量；结构值只覆盖圆角与字重/行高一类独立子 token。
 - 每个贡献点（覆盖层、结构 CSS、槽位、外观行、locale 字典）都挂在 `ctx.effect` 上并返回 disposer，卸载即撤除。
 - 持久状态（配色 id）存宿主管辖的插件 Config，不用浏览器 localStorage：卸载时本包代码已不再执行，Config 随 profile 行一并消失才是可达的清理路径。
-- 浏览器半场的 `require` 只落在宿主模块表基线内；`package.json` 不含任何 `@deepseek-ai/dsh-client-*` 依赖。
+- 浏览器半场的 `require` 只落在宿主模块表基线内；`package.json` 的 `dependencies` 为空，唯一对等依赖 `@deepseek-ai/schemastery` 走 `peerDependencies`（宿主 `dsh-settings` 同款惯例，且 `dsh plugin add` 的安装锚点是 dsh 自身 package.json，插件 import 向上解析即命中宿主那一份，单一副本）。
 
 开发与提交约定见 [AGENTS.md](AGENTS.md)。
 
 ## 静态自检
+
+一键入口（静态断言 → 构建 → 全仓单测，固定顺序）：
+
+```bash
+node scripts/check-all.mjs              # 全跑；--static 只跑静态断言、--skip-build 跳过构建
+```
+
+单项脚本（各自由产出单元维护，断言逻辑只此一处）：
 
 ```bash
 node scripts/check-manifest.mjs          # package.json 契约（含 exports 路径存在性）+ patch 结构 + 依赖键集边界
@@ -181,6 +189,13 @@ node scripts/check-require-baseline.mjs  # 产物 require 字面量 ⊆ 宿主�
 node scripts/check-injection-escape.mjs  # 注入行不含结束标签
 node scripts/check-forbidden-tokens.mjs  # 字族 / 字号 / 复合简写 / 宿主几何变量 / theme.register
 node scripts/check-profile-probe.mjs     # V8 自检：装错 profile 时 Node 半场报可行动诊断、不误报
+```
+
+构建入口（`check-all.mjs` 的构建段即调它）：
+
+```bash
+node scripts/build-client.mjs            # 产出 lib/client.js 与 lib/index.js
+node scripts/build-client.mjs --self-test  # 12 项自证，含四条失败支证明会红
 ```
 
 ## License

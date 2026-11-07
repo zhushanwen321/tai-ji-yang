@@ -66,15 +66,22 @@
  * 此时仍缺失才是真的没有 web 承载；无 Loader 的手工装配树本身就是完整树，该分支同步判定。
  * 详见 {@link diagnoseWebCarrier}。
  *
- * 零 import、零依赖：Node 半场只用到 Cordis 注入的 `ctx` 与一个随包安装的 schema 库
- * （schemastery，见下），不 import 任何 `@deepseek-ai/dsh-client-*` 包（D3 禁的正是那一类——
- * 它们由宿主模块表供给、不由插件安装），也可离线自检（`scripts/check-profile-probe.mjs`
- * 不连网、不起宿主）。
+ * 零 `dsh-client-*` import、零随包 `dependencies`：Node 半场只用到 Cordis 注入的 `ctx`
+ * 与一个 schema 库（`@deepseek-ai/schemastery`，仅用于 {@link Config} 的声明），不 import
+ * 任何 `@deepseek-ai/dsh-client-*` 包（D3 禁的正是那一类——它们由宿主模块表供给、不由插件
+ * 安装），也可离线自检（`scripts/check-profile-probe.mjs` 不连网、不起宿主）。
  *
- * schemastery 是唯一随包分发依赖，先例是宿主自己的 client 包（`dsh-client-locale` 与
- * `dsh-web-search-deepseek` 的 dependencies 都只有它一项；npm 上 ui-theme@0.2.2-rc.1 发售后
- * dependencies 同样只剩它）。它不进浏览器 bundle（`client/` 零 import），因此
- * `scripts/check-require-baseline.mjs` 审计的宿主模块基线不受影响。
+ * 为什么 schemastery 走 `peerDependencies` 而不是 `dependencies`：
+ *   - 宿主的 `dsh-settings` 包对它就用 peerDependencies（DSH 体系惯例：由顶层安装保证唯一
+ *     版本，不由下层包各自锁）。
+ *   - `dsh plugin add` 的安装锚点是 **dsh 自己的 package.json**（`profile-boot` 的
+ *     `INSTALL_ANCHOR`），插件因此落在 dsh 的 `node_modules` 树下，其 import 向上解析即命中
+ *     宿主那一份——单一副本，不存在「两份副本 Symbol 与单例槽不共享」的跨实例读写。
+ *   - 若放 `dependencies`，pnpm 会按本包声明的范围另装一份；宿主实装是 3.18.4，范围
+ *     `~3.18.4` 虽兼容，但宿主一旦升级 schemastery 就分裂成两份。
+ *
+ * 它不进浏览器 bundle（`client/` 零 import），因此 `scripts/check-require-baseline.mjs`
+ * 审计的宿主模块基线不受影响。
  */
 import z from '@deepseek-ai/schemastery'
 
