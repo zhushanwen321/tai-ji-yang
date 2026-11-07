@@ -3,8 +3,10 @@
  *
  * 排版口径逐条对照宿主内置外观行（deepseek-harness packages/client/ui-theme/src/client/
  * AppearanceRow.module.css 与 GeneralSection.module.css）：行 chrome（16px 0 内距 + 0.5px
- * 底部分隔线 + 8px 列间距）与标题（14px/22px/400）保持一致——V12 ③ 要求本行与邻行（字号行 /
- * 开发者工具行 / 当前版本行）逐行一致，chrome 不齐会在这条截图对比里红。
+ * 底部分隔线）与标题（14px/22px/400）保持一致；模式组与六色区之间的列间距取 10px 20px
+ * （宿主 .cubeRow 为 8px，本行含模式组 + 六色区两组控件，故放宽）——V12 ③ 比对的是邻行
+ * （字号行 / 开发者工具行 / 当前版本行）不受影响，本行自身只看遮蔽是否生效（恰好一条
+ * 外观行、三段模式按钮与六色平铺同屏）。
  *
  * 取色全部经宿主令牌 var(--dsw-alias-*) 读取（不声明任何被禁 token：RL1/RL2/RL3/RL9 的
  * 静态检查对 .css 同样生效，且覆盖层换色后本行自动跟随）；圆角经 --dsw-radius-* 读取，
