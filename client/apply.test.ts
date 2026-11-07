@@ -380,11 +380,12 @@ describe('client/apply 装配入口', () => {
       'settings.general.item',
       'conversation.input.left',
       'settings.section',
+      'sidebar.session.row.leading',
     ])
-    expect(harness.log.slotRegistrations).toHaveLength(6)
-    // locale 字典 1 + 主题层 1 + 结构层 1 + 持久订阅 1 + 六个槽位 inject 各把注册包成嵌套 effect 1
+    expect(harness.log.slotRegistrations).toHaveLength(7)
+    // locale 字典 1 + 主题层 1 + 结构层 1 + 持久订阅 1 + 七个槽位 inject 各把注册包成嵌套 effect 1
     // + 持久反注册 1
-    expect(harness.effects).toHaveLength(11)
+    expect(harness.effects).toHaveLength(12)
     expect(harness.effects.every((effect) => typeof effect.dispose === 'function')).toBe(true)
     expect(harness.effects.map((effect) => effect.label)).toEqual([
       'taiji: 内联双语字典（zh/en）',
@@ -397,6 +398,7 @@ describe('client/apply 装配入口', () => {
       'slots.inject("settings.general.item")',
       'slots.inject("conversation.input.left")',
       'slots.inject("settings.section")',
+      'slots.inject("sidebar.session.row.leading")',
       'taiji: 插件 Config 镜像订阅反注册',
     ])
   })
@@ -409,7 +411,7 @@ describe('client/apply 装配入口', () => {
     expect(harness.log.layers.map((layer) => layer.removed)).toEqual([true, true])
     expect(harness.form.listeners.size).toBe(0)
     expect(harness.log.order).toContain('locale.unregister')
-    for (const key of ['conversation.hero.brand.mark', 'sidebar.brand.mark', 'sidebar.brand.name', 'settings.general.item', 'conversation.input.left', 'settings.section']) {
+    for (const key of ['conversation.hero.brand.mark', 'sidebar.brand.mark', 'sidebar.brand.name', 'settings.general.item', 'conversation.input.left', 'settings.section', 'sidebar.session.row.leading']) {
       expect(harness.log.order).toContain(`slots.unregister:${key}`)
     }
   })

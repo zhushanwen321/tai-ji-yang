@@ -30,6 +30,7 @@ import {
   type AppearanceRowHost,
   type ThemeSelectionController,
 } from './settings/appearance-row'
+import { installSessionLeading } from './sidebar/session-leading'
 import { installTaijiSection } from './settings/taiji-section'
 import { applyStructureLayer, applyThemeLayer, type ThemeTokenService } from './theme/apply'
 import { STRUCTURE_TOKENS } from './theme/structure'
@@ -154,6 +155,10 @@ export function apply(ctx: ClientApplyContext): void {
   // ⑦ 设置页「太极」分区（settings.section，list 槽追加）：只读状态页（不设第二换色
   //    写入口），换色仍在通用设置的外观行与 composer chip。
   installTaijiSection(ctx, controller)
+
+  // ⑧ 会话行行首鱼形微标（sidebar.session.row.leading，list 槽追加）：行 idle 且宿主
+  //    定时任务标记不在场时补位（让位规则见组件 CSS），太极色经 brand-primary 跟随六色。
+  installSessionLeading(ctx)
 
   // ⑧ 反注册持久通道的镜像订阅。form 本体归 ConfigForms 服务所有（跨插件共享），
   //    本包只撤自己的监听，不 dispose 它。

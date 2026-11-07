@@ -1,0 +1,29 @@
+/*
+ * client/sidebar/session-leading.css —— 会话行行首鱼形微标的样式。
+ *
+ * 取色只经宿主 token：鱼形经 currentColor 继承本类的 color，值取
+ * `--dsw-alias-brand-primary`（本包主题层换六色时该 token 跟随，鱼即跟随当前配色）。
+ * 宿主行首格子（Rows.module.css 的 .slot）自带 `display:inline-flex; 居中；
+ * color: var(--dsw-alias-label-tertiary)`——本类只覆写颜色为品牌色，布局对齐交给格子。
+ * 尺寸由 TSX 的 SESSION_LEADING_MARK_SIZE（12px width/height 属性）承载，几何量不进 token。
+ */
+.taiji-session-leading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-brand-primary);
+}
+
+/*
+ * 补位让位规则（「无 shipped occupant 时才补位」形态，2026 侦查决策）：
+ * 宿主 ui-schedule 的时钟标（schedule-mark）与本鱼同住行首 16px 格子，共现必挤
+ * （14px 时钟 + 12px 鱼 > 16px）。宿主渲染机给每个槽位包 `[data-slot="<key>"]` 锚
+ * （ui-renderer scoped-slots.tsx 文档明言它是「the addressable seam dynamic styles
+ * target」——动态样式的合法寻址缝），时钟标自带 `data-session-schedule-mark` 稳定标记
+ * （SessionScheduleMark.tsx）。:has() 探到时钟标在场即隐藏鱼：定时任务信息（时钟）
+ * 是该行的有效信号，品牌装饰让位。两条寻址缝都是宿主文档化的稳定 DOM 契约，
+ * 不是私有内部结构的探测。
+ */
+[data-slot='sidebar.session.row.leading']:has([data-session-schedule-mark]) .taiji-session-leading {
+  display: none;
+}

@@ -165,7 +165,7 @@ describe('V5 卸载清洁度', () => {
     module.apply(ctx)
     expect(unregistered).toEqual([])
     for (const dispose of [...effects].reverse()) dispose()
-    // 六个槽位贡献（品牌三槽 + 外观行 + composer 配色 chip + 设置分区）的 disposer
+    // 七个槽位贡献（品牌三槽 + 外观行 + composer 配色 chip + 设置分区 + 会话行装饰）的 disposer
     // 都要随 fiber 卸载执行——新槽位接入装配时必须同步扩这里的期望（卸载清洁度不豁免新贡献）
     expect(unregistered.sort()).toEqual([
       'conversation.hero.brand.mark',
@@ -174,6 +174,7 @@ describe('V5 卸载清洁度', () => {
       'settings.section',
       'sidebar.brand.mark',
       'sidebar.brand.name',
+      'sidebar.session.row.leading',
     ])
   })
 
