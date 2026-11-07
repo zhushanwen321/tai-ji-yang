@@ -4,3 +4,8 @@ node_modules/
 # 注：lib/ 是构建产物，但本包首期以「本地路径 + git」两条通道分发（设计 D5），
 # git 安装要求产物随仓库交付（否则用户 clone 后拿不到 lib/client.js，dsh.client 指向失效）。
 # 因此 lib/ 入库，不忽略。
+
+# 锁文件口径：pnpm 是本包唯一包管理器（AGENTS.md 包管理器纪律），
+# 唯一权威锁文件 = 仓库根的 pnpm-lock.yaml。npm 的 package-lock.json 不被 pnpm 消费，
+# 一旦入库会让「按 README 执行 pnpm install」与锁记录脱节、复现构建失去基准，故忽略防混入。
+package-lock.json

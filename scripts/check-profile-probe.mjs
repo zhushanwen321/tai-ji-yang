@@ -59,7 +59,7 @@ function tick() {
 }
 
 const cordis = await import('@deepseek-ai/cordis').catch((error) => {
-  console.error(`✘ 无法加载 @deepseek-ai/cordis（peer 依赖未安装？先在仓库根执行 npm install）: ${error.message}`)
+  console.error(`✘ 无法加载 @deepseek-ai/cordis（peer 依赖未安装？先在仓库根执行 pnpm install）: ${error.message}`)
   process.exit(1)
 })
 

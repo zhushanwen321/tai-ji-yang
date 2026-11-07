@@ -97,7 +97,7 @@ async function loadEsbuild() {
       '✘ 无法解析打包器 esbuild',
       `   原因: ${error.message}`,
       '   esbuild 是本包的 devDependency（package.json → devDependencies.esbuild = ^0.25.0），只服务构建期',
-      '   补齐方式: 在本仓根执行 `npm install`（或 pnpm install），然后重跑本脚本',
+      '   补齐方式: 在本仓根执行 `pnpm install`，然后重跑本脚本',
     ])
   }
 }

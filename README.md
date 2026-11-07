@@ -28,6 +28,7 @@ node scripts/build-client.mjs     # 产出 lib/index.js（Node 半场）与 lib/
 ```
 
 - 构建只依赖本仓与 npm 上可得的通用打包器，不引用任何 DSH 源码仓库路径。
+- 包管理器统一为 pnpm，唯一权威锁文件 = 仓库根的 `pnpm-lock.yaml`（npm 的 `package-lock.json` 不入库：pnpm 不读它，混入库会让复现构建失去基准）。
 - 产物自带自检：浏览器半场的 `require` 字面量必须落在宿主模块基线内、注入行不得含结束标签、被禁 token 不得出现。
 - 首次 `pnpm install` 可能被 pnpm ≥10 拦下打包器的安装脚本，按「排障 → build scripts approval」处理。
 
@@ -148,9 +149,9 @@ allowBuilds:
 
 然后重新执行 add。请把这项授权理解为「允许该包的代码在安装时于你的机器上执行」，只对源码可信的包授权，并锁定 commit。本包当前不定义 `postinstall`；这一条主要覆盖 git 安装（未来若新增 `prepare`）与依赖自带的安装脚本。
 
-**5. 安装日志里有 `missing peer @deepseek-ai/cordis` 警告**
+**5. 安装日志里有 `missing peer` 警告（cordis / schemastery）**
 
-本包只有一个 peer：`@deepseek-ai/cordis`（运行时由宿主提供，不由插件安装）。git 或 registry 方式安装时 pnpm 会做 peer 检查并打印该警告；宿主侧以模块表供给，不影响装载。要静音警告可保持用本地路径 / tarball 安装。
+本包有两个 peer：`@deepseek-ai/cordis` 与 `@deepseek-ai/schemastery`（运行时都由宿主提供，不由插件安装）。git 或 registry 方式安装时 pnpm 会做 peer 检查并打印对应的 `missing peer` 警告，两类都要排查：`@deepseek-ai/cordis` 缺失 = 宿主 Cordis 运行时那一份没被解析到（Node 半场的 `ctx` 与 `apply(ctx)` 签名都来自它）；`@deepseek-ai/schemastery` 缺失 = 插件 `Config` 声明用的 schema 库没被解析到（`dsh plugin add` 的安装锚点是 dsh 自身 package.json，插件 import 向上解析即命中宿主那一份，单一副本）。宿主侧以模块表供给，不影响装载。要静音警告可保持用本地路径 / tarball 安装。
 
 **6. 版本门禁拒绝安装或启动**
 
@@ -168,9 +169,7 @@ dsh --profile web --dump-config      # 组合后的 entry 列表；本包这一�
 - 不写宿主字族、字号轴与布局几何变量；结构值只覆盖圆角与字重/行高一类独立子 token。
 - 每个贡献点（覆盖层、结构 CSS、槽位、外观行、locale 字典）都挂在 `ctx.effect` 上并返回 disposer，卸载即撤除。
 - 持久状态（配色 id）存宿主管辖的插件 Config，不用浏览器 localStorage：卸载时本包代码已不再执行，Config 随 profile 行一并消失才是可达的清理路径。
-- 浏览器半场的 `require` 只落在宿主模块表基线内；`package.json` 的 `dependencies` 为空，唯一对等依赖 `@deepseek-ai/schemastery` 走 `peerDependencies`（宿主 `dsh-settings` 同款惯例，且 `dsh plugin add` 的安装锚点是 dsh 自身 package.json，插件 import 向上解析即命中宿主那一份，单一副本）。
-
-开发与提交约定见 [AGENTS.md](AGENTS.md)。
+- 浏览器半场的 `require` 只落在宿主模块表基线内；`package.json` 的 `dependencies` 为空，两个对等依赖（`@deepseek-ai/cordis` 与 `@deepseek-ai/schemastery`）都走 `peerDependencies`（宿主 `dsh-settings` 同款惯例，且 `dsh plugin add` 的安装锚点是 dsh 自身 package.json，插件 import 向上解析即命中宿主那一份，单一副本）。
 
 ## 静态自检
 

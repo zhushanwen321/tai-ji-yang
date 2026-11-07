@@ -87,7 +87,7 @@ if (!staticOnly) {
   console.log('── 单测 ─────────────────────────────────')
   const vitestEntry = join(root, 'node_modules', 'vitest', 'vitest.mjs')
   if (!existsSync(vitestEntry)) {
-    console.log('✘ node_modules/vitest/vitest.mjs 缺失——先执行 npm install')
+    console.log('✘ node_modules/vitest/vitest.mjs 缺失——先执行 pnpm install')
     results.push({ label: 'vitest 入口', code: 1 })
   } else {
     report({ label: 'vitest run（全仓）', ...run('test', [vitestEntry, 'run']) })
