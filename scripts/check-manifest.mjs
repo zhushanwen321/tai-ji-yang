@@ -129,7 +129,38 @@ check('exports 各条件指向的路径存在', () => {
   if (dangling.length > 0) throw new Error(`以下导出路径不存在: ${dangling.join('; ')}`)
 })
 
-check('dsh.client.inject 恰为裁决的 4 项', () => {
+check('版本门禁真生效：peerDependencies 含 @deepseek-ai/dsh 且与 engines.dsh 同范围', () => {
+  // 2026-11-07 真机验收发现（D3 / V6）：宿主的版本门禁读的是 **peerDependencies**，
+  // 不是 engines.dsh。实装证据（dsh-app-boot 的 evaluatePluginCompatibility）：
+  //   if (!Object.hasOwn(fields, "peerDependencies")) return void 0
+  //   for (const [name, range] of Object.entries(dependencies)) {
+  //     if (name !== "@deepseek-ai/dsh" && !name.startsWith("@deepseek-ai/dsh-")) continue
+  //     ... if (!semver.satisfies(runtimeVersion, requirement, {includePrerelease:true})) peers[name] = range
+  //   }
+  // 即：只认名为 @deepseek-ai/dsh 或以 @deepseek-ai/dsh- 开头的 peer，且 engines.dsh 整段不被读。
+  // 实测对照：只写 engines.dsh = ">=9.9.9 <10.0.0"（当前实装 0.1.7-rc.2 明显不在范围）时
+  // `dsh plugin add` 照常 exit 0——门禁完全失效；补上 @deepseek-ai/dsh peer 后同一范围被明确拒绝
+  // 并给出 allow-version 豁免命令。
+  //
+  // 这条断言钉住两件事：① peer 必须在（否则门禁不存在）；② 两个字段的范围必须一致
+  // （不一致时用户看到的是 peer 的门禁，而 engines.dsh 变成无人读的装饰，文档与行为脱节）。
+  const enginesRange = manifest.engines?.dsh
+  const peerRange = manifest.peerDependencies?.['@deepseek-ai/dsh']
+  if (typeof enginesRange !== 'string' || enginesRange.trim() === '') {
+    throw new Error('engines.dsh 缺失或为空')
+  }
+  if (typeof peerRange !== 'string' || peerRange.trim() === '') {
+    throw new Error(
+      'peerDependencies 缺少 @deepseek-ai/dsh——宿主版本门禁只读 peerDependencies 里该键（实装 evaluatePluginCompatibility），' +
+      'engines.dsh 不被读取；缺此项等于没有版本门禁（实测范围外版本会照常装上）',
+    )
+  }
+  if (peerRange !== enginesRange) {
+    throw new Error(`@deepseek-ai/dsh peer 范围(${peerRange})与 engines.dsh(${enginesRange})不一致——两者应同源，避免文档与行为脱节`)
+  }
+})
+
+check('dsh.client.inject 恰为裁决的 5 项', () => {
   const inject = manifest.dsh?.client?.inject
   if (!Array.isArray(inject)) throw new Error('dsh.client.inject 不是数组')
   if (inject.length !== CLIENT_INJECT.length || CLIENT_INJECT.some((name) => !inject.includes(name)) || new Set(inject).size !== inject.length) {

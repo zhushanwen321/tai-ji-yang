@@ -92,16 +92,18 @@ dsh plugin --profile web remove tai-ji-yang-shell
 
 ## 版本门禁
 
-本包声明：
+本包在**两个字段**里声明同一范围（两者必须一致，`scripts/check-manifest.mjs` 有机检断言看守）：
 
 ```json
-"engines": { "dsh": ">=0.1.7-rc.2 <0.3.0" }
+"engines": { "dsh": ">=0.1.7-rc.2 <0.3.0" },
+"peerDependencies": { "@deepseek-ai/dsh": ">=0.1.7-rc.2 <0.3.0" }
 ```
 
 - 范围取宽（覆盖当前主版本的全部 rc，直到下一个 minor 之前）：DSH 的 rc 迭代属于常规发版，不该把本包挡在门外；上界 `<0.3.0` 挡住破坏性升级。
-- 门禁语义是「不满足即阻止」：宿主在安装与 profile 启动时拒绝，并给出可行动的提示，而不是装上后运行时崩溃。
-- 本包**不**在 `peerDependencies` 里声明任何 `@deepseek-ai/dsh-*`：一旦声明，宿主会改用 peer 门禁，与宽范围门禁冲突。
-- 版本行为因宿主版本而异：0.1.7 的 `plugin` 命令不检查 `engines.dsh`（写任何值都不影响该版本安装）；0.2.2 起按范围拒绝并给出豁免命令。落在范围外且已确认兼容时，可显式豁免（**承担崩溃与数据丢失风险**，只对该包与该 DSH 版本的组合生效）：
+- **为什么必须写 peerDependencies 而不只写 engines.dsh**：宿主的版本门禁只读 `peerDependencies` 里名为 `@deepseek-ai/dsh`（或以 `@deepseek-ai/dsh-` 开头）的条目，`engines.dsh` 整段不被读取（实装 `dsh-app-boot` 的 `evaluatePluginCompatibility`；`dsh/lib` 下 grep `engines` 命中 0 处）。实测对照：只写 `engines.dsh = ">=9.9.9 <10.0.0"`（当前实装 0.1.7-rc.2 明显不在范围）时 `dsh plugin add` 照常装成功、无任何拒绝——**只写 engines.dsh 等于没有门禁**。
+- 门禁语义是「不满足即阻止」：宿主在安装前拒绝，并给出可行动的提示，而不是装上后运行时崩溃。
+- 这与「零 npm 运行时依赖」不冲突：那条禁的是 `@deepseek-ai/dsh-client-*`（由宿主模块表供给的 client 包），而 `@deepseek-ai/dsh` 是**运行时本身**，正是兼容性评估的设计对象。
+- 落在范围外且已确认兼容时，可显式豁免（**承担崩溃与数据丢失风险**，只对该包与该 DSH 版本的组合生效）：
 
 ```bash
 dsh plugin --profile web allow-version tai-ji-yang-shell@<版本> --dsh-version <当前 DSH 版本> --accept-risk
