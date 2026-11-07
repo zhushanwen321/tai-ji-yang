@@ -51,7 +51,13 @@ function assertRow(row, index) {
   if (lower.includes(SCRIPT_END)) throw new Error(`第 ${index} 行 text 含 script 元素的结束标签`)
 }
 
-/** 用假 ctx 触发一次注入收集，返回推入的行。 */
+/** 用假 ctx 触发一次注入收集，返回推入的行。
+ *
+ * 假 ctx 的职责只在于「让装配入口跑完并把行交出来」，因此除订阅外还给 `effect`（探针反注册器的
+ * 登记口）、`get`（服务探询）与 `logger`（诊断出口）三个最小替身：缺 `effect` 会让 U8 的装载期
+ * 探针在装配时抛「ctx.effect is not a function」，那是替身缺口而非被测代码缺陷。`get` 一律返回
+ * `undefined`（无 webServer / 无 loader）不改变本脚本的断言面：本脚本只核注入行，不核诊断。
+ */
 function collectRows(module, label) {
   const rows = []
   const ctx = {
@@ -59,6 +65,12 @@ function collectRows(module, label) {
       if (name !== 'webserver/index-inject') throw new Error(`${label}: 订阅了非预期的宿主事件 ${String(name)}`)
       listener(rows)
       return () => {}
+    },
+    get() { return undefined },
+    logger: { error() {}, warn() {}, info() {}, debug() {} },
+    effect(execute) {
+      const dispose = execute()
+      return typeof dispose === 'function' ? dispose : () => {}
     },
   }
   module.apply(ctx)
