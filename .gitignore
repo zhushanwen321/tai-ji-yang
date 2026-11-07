@@ -1,0 +1,6 @@
+# 依赖目录不入库
+node_modules/
+
+# 注：lib/ 是构建产物，但本包首期以「本地路径 + git」两条通道分发（设计 D5），
+# git 安装要求产物随仓库交付（否则用户 clone 后拿不到 lib/client.js，dsh.client 指向失效）。
+# 因此 lib/ 入库，不忽略。
