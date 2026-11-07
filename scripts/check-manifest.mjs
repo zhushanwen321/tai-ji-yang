@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 最小 manifest 自检：package.json 契约 + cordis.patch.yml 结构 + 依赖键集边界。
+ * 最小 manifest 自检：package.json 契约（五字段齐备 + exports 各条件路径存在）+ cordis.patch.yml 结构 + 依赖键集边界。
  *
  * 只依赖 node 内置模块（不引 js-yaml，保持本单元的零依赖前提）：
  * cordis.patch.yml 的合法性以「非空且首行为 `- ` 条目」这一最小结构检查替代完整 YAML 解析。
@@ -55,6 +55,31 @@ function patchLines() {
     .filter((line) => line.trim() !== '')
 }
 
+/**
+ * 收集 exports 各条件指向但不存在的路径（u-foundation 验收条款「五字段齐备并指向存在的路径」的
+ * exports 侧履行）：只验「exports 是对象」会让悬空的 types/default 入口静默通过——包看起来
+ * 合规，消费者按条件解析时却找不到文件。一次报全（不逐条抛），避免修一条跑一条。
+ */
+function findDanglingExports(exportsField) {
+  const dangling = []
+  for (const [subpath, conditions] of Object.entries(exportsField)) {
+    if (typeof conditions === 'string') {
+      if (!existsSync(join(ROOT, conditions))) dangling.push(`exports['${subpath}'] → ${conditions}`)
+      continue
+    }
+    if (typeof conditions !== 'object' || conditions === null || Array.isArray(conditions)) {
+      throw new Error(`exports['${subpath}'] 既不是字符串路径也不是条件对象`)
+    }
+    for (const [condition, target] of Object.entries(conditions)) {
+      if (typeof target !== 'string' || target === '') {
+        throw new Error(`exports['${subpath}']['${condition}'] 缺失或非字符串路径`)
+      }
+      if (!existsSync(join(ROOT, target))) dangling.push(`exports['${subpath}']['${condition}'] → ${target}`)
+    }
+  }
+  return dangling
+}
+
 check('package.json 合法 JSON', () => {
   if (manifest.__parseError) throw new Error(manifest.__parseError)
 })
@@ -68,6 +93,16 @@ check('五项字段齐备（name / dsh.bundle.patch / dsh.client.platform / engi
   if (typeof exportsField !== 'object' || exportsField === null || Array.isArray(exportsField)) {
     throw new Error('缺失或非对象字段: exports')
   }
+})
+
+check('exports 各条件指向的路径存在', () => {
+  if (manifest.__parseError) throw new Error(`package.json 不是合法 JSON (${manifest.__parseError})`)
+  const exportsField = manifest.exports
+  if (typeof exportsField !== 'object' || exportsField === null || Array.isArray(exportsField)) {
+    throw new Error('缺失或非对象字段: exports')
+  }
+  const dangling = findDanglingExports(exportsField)
+  if (dangling.length > 0) throw new Error(`以下导出路径不存在: ${dangling.join('; ')}`)
 })
 
 check('dsh.client.inject 恰为裁决的 4 项', () => {
