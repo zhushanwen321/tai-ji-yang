@@ -92,20 +92,24 @@ describe('双模取值（逐条抄自太极 style.css）', () => {
     expect(hao['--dsw-alias-label-primary'].light).toBe('#2b2a28')
   })
 
-  it('黛蓝/暖墨的暗支取各自 preset 块值（阶梯 + 文字档 + accent）', () => {
+  it('黛蓝/暖墨的暗支取各自 preset 块值（阶梯 + 文字档 + state-idle + accent）', () => {
     const dailan = THEME_TOKEN_TABLES.dailan
     expect(dailan['--dsw-alias-bg-base'].dark).toBe('#16171e')
     expect(dailan['--dsw-alias-bg-layer-2'].dark).toBe('#2e2f3a')
     expect(dailan['--dsw-specific-sidebar-fill'].dark).toBe('#262836')
-    expect(dailan['--dsw-alias-brand-primary'].dark).toBe('#8b9cc8')
     expect(dailan['--dsw-alias-label-secondary'].dark).toBe('#8f909b')
+    // state-idle：dailan 块重声明 --neutral-dim（:root 暗值 #6e6e6e 不适用）
+    expect(dailan['--dsw-alias-state-idle-primary'].dark).toBe('#6d6e79')
+    expect(dailan['--dsw-alias-brand-primary'].dark).toBe('#8b9cc8')
 
     const nuanmo = THEME_TOKEN_TABLES.nuanmo
     expect(nuanmo['--dsw-alias-bg-base'].dark).toBe('#171614')
     expect(nuanmo['--dsw-alias-bg-layer-2'].dark).toBe('#302d28')
     expect(nuanmo['--dsw-specific-sidebar-fill'].dark).toBe('#272421')
-    expect(nuanmo['--dsw-alias-brand-primary'].dark).toBe('#cbbc93')
     expect(nuanmo['--dsw-alias-label-secondary'].dark).toBe('#97928a')
+    // state-idle：nuanmo 块重声明 --neutral-dim
+    expect(nuanmo['--dsw-alias-state-idle-primary'].dark).toBe('#716c64')
+    expect(nuanmo['--dsw-alias-brand-primary'].dark).toBe('#cbbc93')
   })
 
   it('青墨/朱印的亮支只改 accent 族（朱印另改 danger）', () => {

@@ -116,8 +116,9 @@ const BASE_TOKENS: Record<ThemeTokenName, TokenModes> = {
 /**
  * 预设色对基值的覆盖：只列 taiji preset 块里**实际改了什么**，逐条对照 style.css。
  *
- * 覆盖面与 taiji 侧一致——暗族预设（黛蓝/暖墨）改背景阶梯、文字档与 accent，不改边框与
- * 状态色（其 preset 块未重声明，继承 `:root` 暗值）；亮族预设（青墨/朱印）只改 accent
+ * 覆盖面与 taiji 侧一致——暗族预设（黛蓝/暖墨）改背景阶梯、文字档、state-idle 与 accent，
+ * 不改边框与 danger/success/warn（其 preset 块只重声明 --neutral-dim 一个状态色，其余
+ * 状态色未重声明，继承 `:root` 暗值）；亮族预设（青墨/朱印）只改 accent
  * 三件套里的 brand-primary（link-c/code-c 不在本包 15 token 集合内），朱印另改 danger
  * （taiji 朱印块唯一独立状态色，玫红防撞色）。
  */
@@ -140,6 +141,7 @@ const PRESET_OVERRIDES: Record<ThemeId, PresetOverrides> = {
       '--dsw-specific-sidebar-fill': '#262836',
       '--dsw-alias-label-primary': '#e9eaef',
       '--dsw-alias-label-secondary': '#8f909b',
+      '--dsw-alias-state-idle-primary': '#6d6e79',
       '--dsw-alias-brand-primary': '#8b9cc8',
     },
   },
@@ -153,6 +155,7 @@ const PRESET_OVERRIDES: Record<ThemeId, PresetOverrides> = {
       '--dsw-specific-sidebar-fill': '#272421',
       '--dsw-alias-label-primary': '#e9e7e2',
       '--dsw-alias-label-secondary': '#97928a',
+      '--dsw-alias-state-idle-primary': '#716c64',
       '--dsw-alias-brand-primary': '#cbbc93',
     },
   },
