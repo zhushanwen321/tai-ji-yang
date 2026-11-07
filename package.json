@@ -43,6 +43,9 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.1.0"
   },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "~3.18.4"
+  },
   "devDependencies": {
     "esbuild": "^0.25.0",
     "vitest": "^3.0.0"

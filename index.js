@@ -1,12 +1,15 @@
 /**
- * tai-ji-yang-shell —— Node 半场的唯一入口（设计 §3.3.6 / D6）。
- *
- * 职责：订阅宿主 `webserver/index-inject`，每次 emit 向注入表 push **一行**
+ * tai-ji-yang-shell —— Node 半场的唯一入口（设计 §3.3.6 / D6 + §3.3.2 / D2 的持久通道宿主侧）。 *
+ * 职责一：订阅宿主 `webserver/index-inject`，每次 emit 向注入表 push **一行**
  * `{ kind: 'style', text }`。宿主把它渲染进 `head`（Web 载体写进 HTML 文本、Desktop 载体经
  * boot IPC 注入表 + `applyIndexInjections`），两条通路都在解析期/首绘前生效，先于应用 mount
  * （AS4）。不 push `script` / `html` / `script-src`：Desktop 侧「应用可能已 mount」的顾虑被
  * boot 门控源码证伪（注入先于 `gate.resolve()`，mount 在 gate 之后），多一条脚本行只会带来
  * 「同一配色两处取值」的同步风险（D6 的 AG-7 收敛）。
+ *
+ * 职责二（U3 接线所必需）：导出本包的插件 `Config`——浏览器半场的持久通道
+ * （`client/persist.ts` 经 `ctx.configForms.get(<profile 行 id>)` 读写 `appearance` 字段）
+ * 只在 Host 侧声明了 Config 时才存在。命名空间 = 本包 profile 行的 id，见 {@link Config}。
  *
  * 取值口径（D6 收敛纪律）：
  *   - **不建六色副本**：六色双模表的唯一权威是浏览器半场（`client/theme/tokens.ts`，U2）。
@@ -63,9 +66,17 @@
  * 此时仍缺失才是真的没有 web 承载；无 Loader 的手工装配树本身就是完整树，该分支同步判定。
  * 详见 {@link diagnoseWebCarrier}。
  *
- * 零 import、零依赖：Node 半场只用到 Cordis 注入的 `ctx`，不 require 任何宿主包，因此不引入
- * 随包安装的运行时依赖（D3），也可离线自检。
+ * 零 import、零依赖：Node 半场只用到 Cordis 注入的 `ctx` 与一个随包安装的 schema 库
+ * （schemastery，见下），不 import 任何 `@deepseek-ai/dsh-client-*` 包（D3 禁的正是那一类——
+ * 它们由宿主模块表供给、不由插件安装），也可离线自检（`scripts/check-profile-probe.mjs`
+ * 不连网、不起宿主）。
+ *
+ * schemastery 是唯一随包分发依赖，先例是宿主自己的 client 包（`dsh-client-locale` 与
+ * `dsh-web-search-deepseek` 的 dependencies 都只有它一项；npm 上 ui-theme@0.2.2-rc.1 发售后
+ * dependencies 同样只剩它）。它不进浏览器 bundle（`client/` 零 import），因此
+ * `scripts/check-require-baseline.mjs` 审计的宿主模块基线不受影响。
  */
+import z from '@deepseek-ai/schemastery'
 
 /**
  * 默认配色（玄）的双模取值表：token 名 → (亮支, 暗支)。
@@ -117,6 +128,34 @@ export const FIRST_FRAME_STYLE = [
 
 /** 注入行的结构（宿主 `IndexInjection` 的 style 分支：只有 `kind` 与 `text`）。 */
 export const FIRST_FRAME_ROW = Object.freeze({ kind: 'style', text: FIRST_FRAME_STYLE })
+
+/**
+ * 本包的插件 Config：持久状态的宿主侧声明（设计 §3.3.2 / D2「存宿主管辖的通道」）。
+ *
+ * 为什么它在 Node 半场而不在 package.json：宿主的设置命名空间来自 **Loader 行的
+ * `entry.fiber.runtime.Config`**（`dsh-settings/src/index.ts` 的 `schema(entry)` 读的就是它），
+ * 而 `runtime.Config` 只从插件模块的导出取（`cordis` 的 `plugin()` 里 `Config: plugin.Config`）。
+ * package.json 没有任何 Config 声明通道——设计文件地图把这条写成 package.json 是笔误，实测
+ * （本机 dsh 0.1.7-rc.2 + 源码 HEAD 0.2.2-rc.1 双向核对）确认唯一落点是这里。
+ *
+ * 命名空间 = 本包 profile 行的 id（`cordis.patch.yml` 的 `- id: tai-ji-yang-shell`）：
+ * `SettingsForms.describe()` 产出 `ns: entry.options.id`，`ConfigForms.get(entryId)` 的入参
+ * 就是它。宿主自己的先例同构——`dsh-mcp-manager` README 原话 "Settings uses the owning entry
+ * id as its namespace"；`dsh-client-locale` 的 `locale`、`dsh-web-search-deepseek` 的
+ * `web-search-deepseek` 都是行 id 而不是包名。
+ *
+ * `volatile()` 不可省：`volatileForm(schema)` 只投影 volatile 字段，一个 volatile 字段都没有的
+ * Config 整个命名空间都不会出现在 describe 里（客户端快照恒 `unavailable`、写入恒被拒）。
+ * 不设 default：默认色（玄）是**包内默认**而不是持久值，用户没点选过时这一字段应当缺席
+ * （D2「默认值……且它不写持久键，首次写入只发生在用户主动点选时」）。
+ *
+ * 卸载即清除由此成立：Config 存在 profile patch 的本包行上，`dsh plugin remove` 移除该行 →
+ * 配置随行消失，无需本包代码参与清理（AX3 / V5 第三处痕迹）。
+ */
+export const Config = z.object({
+  /** 上次用户点选的配色 id（六色之一）；缺席 = 从未点选，回落包默认色玄。 */
+  appearance: z.string().volatile(),
+})
 
 /** Cordis 插件显示名（与 `package.json` 的 name、`cordis.patch.yml` 的行 id 同一字面值）；
  * 同时是诊断日志的归属名——宿主日志按 fiber 的 runtime name 打前缀，装错 profile 时用户看到的是
