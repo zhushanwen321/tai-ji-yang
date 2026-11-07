@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { collectElements, createTsxLoader, elementsWithClass, type FakeElement } from '../testing/load-tsx'
 
 /**
- * 双鱼标单测（设计 §3.3.8 / D8；验收 V1 品牌位 + RL1 静态检查的行为面）。
+ * 双鱼标单测（设计 §3.3.8 / D8；验收 V1 品牌位 + RL1 静态检查的行为范围）。
  *
  * 两条测试线：
  *   ① 装配线（假宿主 slots）——注册进哪两个槽、什么优先级、避让规则是否真的避让；

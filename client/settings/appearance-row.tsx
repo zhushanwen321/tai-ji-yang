@@ -20,7 +20,7 @@
  * 玄相同——这是事实的诚实呈现（点了确实就是这样），配名字标签可区分；比「色块显示本色、
  * 点了却不变」的误导形态好。
  *
- * 宿主交互全部经服务面，无第三方主题注册（RL1：不调 `theme.register`，不注册第三方主题
+ * 宿主交互全部经服务，无第三方主题注册（RL1：不调 `theme.register`，不注册第三方主题
  * id——否则 `html[data-ds-theme-source]` 被固定，跟随系统永久失效）。
  */
 import { useSyncExternalStore } from 'react'
@@ -70,7 +70,7 @@ const MODES: readonly { id: ThemePreference; labelKey: LocaleKey }[] = [
 const cx = (...names: (string | false | undefined)[]): string => names.filter(Boolean).join(' ')
 
 /**
- * 宿主注入面（本包用到的宿主服务，最小结构类型；不 import 任何 dsh-client 包，D3）。
+ * 宿主注入范围（本包用到的宿主服务，最小结构类型；不 import 任何 dsh-client 包，D3）。
  *
  * `theme` 由 `dsh.client.inject` 的 `@deepseek-ai/dsh-client-ui-theme` 提供（同一注入还
  * 供给 U2 覆盖层用的 `overrideTokens`）；`slots` 由 `@deepseek-ai/dsh-client-ui-slots` 经
@@ -121,7 +121,7 @@ export interface ThemeSelectionController {
   subscribeThemeId: (listener: () => void) => () => void
 }
 
-/** 注册时经 `inject` 面注入组件的业务能力（宿主渲染机合成进组件 props）。 */
+/** 注册时经 `inject` 注入组件的业务能力（宿主渲染机合成进组件 props）。 */
 export interface AppearanceRowInjected {
   /** 写宿主偏好（模式按钮专用；本包绝不因选色而调它——跨族不改写宿主偏好，D2 方案 A）。 */
   setPreference: (preference: ThemePreference) => void
@@ -139,7 +139,7 @@ export interface AppearanceRowInjected {
   subscribeThemeId: (listener: () => void) => () => void
 }
 
-/** 行组件的完整 props：locale `t` 座位 + 注入面（owner props 为空，无其它面）。 */
+/** 行组件的完整 props：locale `t` 座位 + 注入范围（owner props 为空，无其它内容）。 */
 export type AppearanceRowComponentProps = {
   /** 本包命名空间的翻译函数（注册声明 `locale:` 后由宿主渲染机注入）。 */
   t: (key: LocaleKey, params?: Record<string, unknown>) => string
@@ -152,7 +152,7 @@ export type AppearanceRowComponentProps = {
  * 读）——订阅式读取而非轮询/时间窗：主题变化有 `theme/change` 事件、配色变化有 controller
  * 的订阅通道，都是确定性事实源（ADR-0122 ⑤：状态判定来源严格递减，禁时间推测）。
  *
- * @param props - `t` 座位 + 注入面。
+ * @param props - `t` 座位 + 注入范围。
  * @returns 行元素树（自带 chrome 与分隔线，样式见同目录 appearance-row.css）。
  */
 export function AppearanceRow({ t, ...injected }: AppearanceRowComponentProps) {
@@ -214,7 +214,7 @@ export function AppearanceRow({ t, ...injected }: AppearanceRowComponentProps) {
  * U3 的 `client/apply.ts` 在装配期调用本函数，传入宿主 ctx 与它组装的 controller。locale
  * 字典必须先于本行首次渲染注册（U3 装配序：locale → 主题层 → 品牌槽 → 外观行）。
  *
- * @param host - 宿主面（slots / theme / on）。
+ * @param host - 宿主侧（slots / theme / on）。
  * @param controller - 配色选择控制器（U3 提供：换层 + 持久 + 初值）。
  */
 export function installAppearanceRow(host: AppearanceRowHost, controller: ThemeSelectionController): void {

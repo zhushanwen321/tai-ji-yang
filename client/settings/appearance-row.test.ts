@@ -20,7 +20,7 @@ import type { ThemePreference } from './appearance-row'
 
 const ROW_PATH = fileURLToPath(new URL('./appearance-row.tsx', import.meta.url))
 
-/** 假宿主：slots + theme + on（最小面，对齐 AppearanceRowHost）。 */
+/** 假宿主：slots + theme + on（最小结构，对齐 AppearanceRowHost）。 */
 function fakeRowHost(initial: { preference: ThemePreference; scheme: 'light' | 'dark' } = { preference: 'system', scheme: 'dark' }) {
   const state = { preference: initial.preference, colorScheme: initial.scheme }
   const setThemeCalls: ThemePreference[] = []
@@ -115,7 +115,7 @@ const loader = createTsxLoader()
 const rowModule = loader.load(ROW_PATH) as unknown as RowModule
 const { APPEARANCE_ROW_ID, APPEARANCE_ROW_ORDER, APPEARANCE_ROW_PRIORITY, SWATCH_TOKENS } = rowModule
 
-/** 装配并取回注入面（宿主渲染机合成 props 的那一层）。 */
+/** 装配并取回注入范围（宿主渲染机合成 props 的那一层）。 */
 function assemble(host: ReturnType<typeof fakeRowHost>, controller: ReturnType<typeof fakeController>) {
   rowModule.installAppearanceRow(host.host, controller.controller)
   host.declare('settings.general.item')
@@ -148,7 +148,7 @@ describe('installAppearanceRow 遮蔽契约（D8）', () => {
     expect(registration.component).toBe(rowModule.AppearanceRow)
   })
 
-  it('注入面：模式按钮写宿主偏好入口，读偏好/解析族经 theme 服务，订阅 theme/change', () => {
+  it('注入范围：模式按钮写宿主偏好入口，读偏好/解析族经 theme 服务，订阅 theme/change', () => {
     const host = fakeRowHost({ preference: 'dark', scheme: 'light' })
     const controller = fakeController('qingmo')
     const { face } = assemble(host, controller)
@@ -168,7 +168,7 @@ describe('installAppearanceRow 遮蔽契约（D8）', () => {
     expect(notified).toBe(1)
   })
 
-  it('注入面透传 controller（配色读/写/订阅都走 U3 装配层，本文件不碰持久）', () => {
+  it('注入范围透传 controller（配色读/写/订阅都走 U3 装配层，本文件不碰持久）', () => {
     const host = fakeRowHost()
     const controller = fakeController('nuanmo')
     const { face } = assemble(host, controller)

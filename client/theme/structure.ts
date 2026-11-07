@@ -30,7 +30,7 @@
  * token 30 个、行高子 token 30 个；本表覆盖 19 + 29，未收录的 11 个字重档（h1/h2/h3 宿主
  * 700、h4/base-strong/base-strong-italic/small-strong/small-strong-italic/xl-24 宿主 600、
  * l-20/m-18 宿主 500）与 1 个行高档（l-20 宿主 28px/20px = 1.4）均为「宿主默认值已等于
- * 太极目标值」，覆盖它们只会多写一层同值声明。该期望集由 structure.test.ts 的完整性用例钉死。
+ * 太极目标值」，覆盖它们只会多写一层同值声明。该期望集由 structure.test.ts 的完整性用例固定。
  */
 import type { TokenModes, TokenTable } from './tokens'
 

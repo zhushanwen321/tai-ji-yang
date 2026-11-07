@@ -116,7 +116,7 @@ const BASE_TOKENS: Record<ThemeTokenName, TokenModes> = {
 /**
  * 预设色对基值的覆盖：只列 taiji preset 块里**实际改了什么**，逐条对照 style.css。
  *
- * 覆盖面与 taiji 侧一致——暗族预设（黛蓝/暖墨）改背景阶梯、文字档、state-idle 与 accent，
+ * 覆盖范围与 taiji 侧一致——暗族预设（黛蓝/暖墨）改背景阶梯、文字档、state-idle 与 accent，
  * 不改边框与 danger/success/warn（其 preset 块只重声明 --neutral-dim 一个状态色，其余
  * 状态色未重声明，继承 `:root` 暗值）；亮族预设（青墨/朱印）只改 accent
  * 三件套里的 brand-primary（link-c/code-c 不在本包 15 token 集合内），朱印另改 danger

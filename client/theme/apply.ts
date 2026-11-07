@@ -31,7 +31,7 @@ export const STRUCTURE_LAYER_SOURCE = 'tai-ji-yang-shell:structure'
 export const THEME_LAYER_LABEL = 'taiji: 主题 token 覆盖层（overrideTokens disposer 经 ctx.effect 托管）'
 export const STRUCTURE_LAYER_LABEL = 'taiji: 结构 token 覆盖层（overrideTokens disposer 经 ctx.effect 托管）'
 
-/** 本包用到的宿主 theme 服务面（最小结构类型：不 import 任何 dsh-client 包，D3）。 */
+/** 本包用到的宿主 theme 服务（最小结构类型：不 import 任何 dsh-client 包，D3）。 */
 export interface ThemeTokenService {
   /**
    * 叠加一层 token 覆盖层；同 source 重调即整层替换。返回值是移除**这一层**的 disposer

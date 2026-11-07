@@ -22,7 +22,7 @@ import type { ThemeId } from './theme/tokens'
  *   · 持久命名空间 = 本包 profile 行 id；
  *   · 首装表 = 持久值（镜像未答时是包默认色玄）+ 结构层独立 source；
  *   · 持久值首达 → 换层（且只换一次）；
- *   · 用户点选 → 换层 + 写 Config（经外观行注入面，端到端）；
+ *   · 用户点选 → 换层 + 写 Config（经外观行注入范围，端到端）；
  *   · 写入失败（拒绝 / 传输异常 / 命名空间未被服务）→ 显式上报、会话内不回退；
  *   · 全部贡献经 ctx.effect 托管，卸载后层、字典、槽位与订阅都不残留。
  */
@@ -218,7 +218,7 @@ function createHarness(options: { persisted?: Record<string, unknown>; writeResu
     unload() {
       for (const effect of [...effects].reverse()) effect.dispose?.()
     },
-    /** 外观行注册时经 `inject` 面拿到的注入面（点选/模式按钮的真实去向）。 */
+    /** 外观行注册时经 `inject` 面拿到的注入范围（点选/模式按钮的真实去向）。 */
     appearanceRowInjected() {
       const row = log.slotRegistrations.find((entry) => entry.key === 'settings.general.item')
       const inject = row?.options.inject as (() => Record<string, unknown>) | undefined
@@ -290,7 +290,7 @@ describe('client/apply 装配入口', () => {
     expect(harness.log.layers).toHaveLength(3)
   })
 
-  it('用户点选（经外观行注入面）→ 换层 + 写插件 Config 的 appearance 字段', async () => {
+  it('用户点选（经外观行注入范围）→ 换层 + 写插件 Config 的 appearance 字段', async () => {
     const harness = createHarness()
     mountApply(harness)
     const injected = harness.appearanceRowInjected()

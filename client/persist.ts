@@ -15,7 +15,7 @@
  *     "Forms keyed by unique profile entry ids"。先例同构：`dsh-client-locale` 的命名空间
  *     `locale` = web-app patch 里的行 id（不是包名 `@deepseek-ai/dsh-client-locale`）；
  *     `dsh-web-search-deepseek` 的 `WEB_SEARCH_DEEPSEEK_SETTINGS_NAMESPACE` 同样是行 id。
- *   · 字段 = `appearance`（Host 半场 `Config` 里 `.volatile()` 的那一个；`volatileForm` 只投影
+ *   · 字段 = `appearance`（Host 半场 `Config` 里 `.volatile()` 的那一个；`volatileForm` 只保留
  *     volatile 字段，非 volatile 字段整个命名空间都不会出现在 describe 里）。
  *   · 读 = `form.getSnapshot()`（镜像视图，`status: loading → ready | unavailable`）；
  *     写 = `form.set(field, value)`（`ctx.remote.settings.mutate`，带 revision 栅栏）。
@@ -39,13 +39,13 @@ export const PLUGIN_ENTRY_ID = 'tai-ji-yang-shell'
 /** 持久字段名（Host 半场 `Config` 的 `appearance` 字段，volatile）。 */
 export const APPEARANCE_FIELD = 'appearance'
 
-/** 插件 Config 里本包那一段的解码形态（`SettingsDescriptor.value` 投影后的 section）。 */
+/** 插件 Config 里本包那一段的解码形态（`SettingsDescriptor.value` 保留后的 section）。 */
 export interface AppearanceSection {
   /** 上次用户点选的配色 id；缺省 = 从未点选过（回落包默认色玄）。 */
   appearance?: string
 }
 
-/** 宿主 `ConfigFormSnapshot` 的同构最小面（只取本包用到的四个字段）。 */
+/** 宿主 `ConfigFormSnapshot` 的同构最小结构（只取本包用到的四个字段）。 */
 export interface ConfigFormSnapshotLike {
   /** `loading` = 镜像未答；`ready` = 命名空间已被服务且段已解码；`unavailable` = 未被服务。 */
   status: 'loading' | 'ready' | 'unavailable'
@@ -57,7 +57,7 @@ export interface ConfigFormSnapshotLike {
   writable: boolean
 }
 
-/** 宿主 `ConfigForm` 的同构最小面（只取本包用到的三个方法）。 */
+/** 宿主 `ConfigForm` 的同构最小结构（只取本包用到的三个方法）。 */
 export interface ConfigFormLike {
   getSnapshot(): ConfigFormSnapshotLike
   subscribe(listener: () => void): () => void
@@ -65,7 +65,7 @@ export interface ConfigFormLike {
   set(field: string, value: unknown): Promise<boolean>
 }
 
-/** 宿主 `ConfigForms` 服务面的同构最小声明。 */
+/** 宿主 `ConfigForms` 服务的同构最小声明。 */
 export interface ConfigFormsLike {
   get(entryId: string): ConfigFormLike
 }

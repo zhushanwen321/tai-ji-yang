@@ -4,7 +4,7 @@ import { collectElements, createTsxLoader, textOf, type FakeElement } from '../t
 import { TAIJI_LOCALE_NS, zh } from '../locale'
 
 /**
- * 产品名字标单测（设计 §3.3.8 / D8；V1「产品名在侧栏 brand.name」的行为面）。
+ * 产品名字标单测（设计 §3.3.8 / D8；V1「产品名在侧栏 brand.name」的行为范围）。
  *
  * hero 槽没有名字位（owner props 只有 size/className），产品名只能经 sidebar.brand.name——
  * 本文件锁死这条通路：注册目标槽、locale 声明、文案取值。

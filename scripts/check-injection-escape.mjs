@@ -4,7 +4,7 @@
  *
  * 为什么需要这条断言（设计 AS5 / D6）：宿主的注入行 `style` 分支把 text 原样嵌进一个 style
  * 元素（`packages/host/webserver/src/injections.ts` 的 `renderRow`），
- * 因此 text 里一旦出现该元素的结束标签，页面解析会在该处提前闭合元素，后续 CSS
+ * 因此 text 里一旦出现该元素的结束标签，页面解析会在该处提前封住元素，后续 CSS
  * 变成页面文本、页面结构被破坏。`IndexInjection` 的类型注释对 style / script 两种行都有
  * 同一条约束。
  *
@@ -47,7 +47,7 @@ function assertRow(row, index) {
     throw new Error(`第 ${index} 行应只含 kind/text，实为 ${keys.join(', ')}`)
   }
   const lower = row.text.toLowerCase()
-  if (lower.includes(STYLE_END)) throw new Error(`第 ${index} 行 text 含 style 元素的结束标签，会提前闭合 head 里的 <style>`)
+  if (lower.includes(STYLE_END)) throw new Error(`第 ${index} 行 text 含 style 元素的结束标签，会提前封住 head 里的 <style>`)
   if (lower.includes(SCRIPT_END)) throw new Error(`第 ${index} 行 text 含 script 元素的结束标签`)
 }
 
@@ -56,7 +56,7 @@ function assertRow(row, index) {
  * 假 ctx 的职责只在于「让装配入口跑完并把行交出来」，因此除订阅外还给 `effect`（探针反注册器的
  * 登记口）、`get`（服务探询）与 `logger`（诊断出口）三个最小替身：缺 `effect` 会让 U8 的装载期
  * 探针在装配时抛「ctx.effect is not a function」，那是替身缺口而非被测代码缺陷。`get` 一律返回
- * `undefined`（无 webServer / 无 loader）不改变本脚本的断言面：本脚本只核注入行，不核诊断。
+ * `undefined`（无 webServer / 无 loader）不改变本脚本的断言范围：本脚本只核注入行，不核诊断。
  */
 function collectRows(module, label) {
   const rows = []

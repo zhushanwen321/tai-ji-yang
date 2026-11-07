@@ -18,7 +18,7 @@
  *   · theme/apply.ts = 覆盖层装配与换层（U2）；
  *   · theme/structure.ts = 结构值表（U6）；
  *   · persist.ts = 插件 Config 持久通道（本单元）；
- *   · 本文件 = 装配序、ctx 面的组合、以及「持久值 → 换层」「点选 → 换层 + 写 Config」两段接线。
+ *   · 本文件 = 装配序、ctx 各项的组合、以及「持久值 → 换层」「点选 → 换层 + 写 Config」两段接线。
  */
 import { installBrandMarkSlots, type BrandSlotHost } from './brand/mark'
 import { installBrandNameSlot } from './brand/name'
@@ -32,14 +32,14 @@ import {
 import { applyStructureLayer, applyThemeLayer, type ThemeTokenService } from './theme/apply'
 import { STRUCTURE_TOKENS } from './theme/structure'
 
-/** 宿主 theme 服务面：覆盖层（U2 的 `overrideTokens`）+ 偏好读写（外观行模式按钮）。 */
+/** 宿主 theme 服务：覆盖层（U2 的 `overrideTokens`）+ 偏好读写（外观行模式按钮）。 */
 export interface ClientThemeService extends ThemeTokenService {
   getTheme(): { preference: 'light' | 'dark' | 'system'; active: { colorScheme: 'light' | 'dark' } }
   setTheme(id: 'light' | 'dark' | 'system'): void
 }
 
 /**
- * 宿主 slots 面：品牌槽（mark/name）与外观行（list 槽）两个 register 签名取交集。
+ * 宿主 slots：品牌槽（mark/name）与外观行（list 槽）两个 register 签名取交集。
  *
  * 用类型交集而非接口继承：两个 `register` 的选项形状不同（品牌槽 `{name, priority?, locale?}`，
  * 外观行 `{name, id, order, priority, locale, inject?}`），交集让同一个 `slots` 对象对两种调用
@@ -47,7 +47,7 @@ export interface ClientThemeService extends ThemeTokenService {
  */
 export type ClientSlots = BrandSlotHost['slots'] & AppearanceRowHost['slots']
 
-/** 本包浏览器半场用到的宿主 context 面（最小结构类型；不 import 任何 dsh-client 包，D3）。 */
+/** 本包浏览器半场用到的宿主 context（最小结构类型；不 import 任何 dsh-client 包，D3）。 */
 export interface ClientApplyContext {
   /** 登记启动副作用并拿到 fiber 生命周期托管（卸载时反序执行 disposer）。 */
   effect(callback: () => (() => void) | void, label?: string): void
@@ -100,7 +100,7 @@ export const inject = ['slots', 'locale', 'theme', 'configForms', 'remote'] as c
  *   · 品牌槽优先级区间被占满 → 对应槽不注册并 `logger.warn`，回落宿主原生 occupant（U7）；
  *   · 主题层换层 = 同 source 整层替换，无撤销重建、无闪烁（U2）。
  *
- * @param ctx - 宿主 context（Cordis context 的超集；只用到上表声明的最小面）。
+ * @param ctx - 宿主 context（Cordis context 的超集；只用到上表声明的那几项）。
  */
 export function apply(ctx: ClientApplyContext): void {
   // ① 内联双语字典：必须先于任何槽位的首次渲染（合成 t 座位）

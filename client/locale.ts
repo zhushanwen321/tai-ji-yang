@@ -2,7 +2,7 @@
  * client/locale.ts —— 本包的内联双语字典（设计 §3.3.8 / D8，U7）。
  *
  * 形态裁决（设计原文）：「`{zh, en}` 内联字典，经 `ctx.locale.register(ns, ...)` 注册
- * （**不建 locale/*.json**）」。理由：本包的文案面只有品牌名与外观行几枚 key，拆成
+ * （**不建 locale/*.json**）」。理由：本包的文案只有品牌名与外观行几枚 key，拆成
  * 8 语言 JSON 文件族（宿主内置包的形态）是为零收益的目录开销；内联字典随 bundle 一起
  * 打包，注册与撤除都走宿主 locale 服务的既有机制。
  *
@@ -16,7 +16,7 @@
  * （profile 行移除 / disable / HMR 重载）时字典随之撤除——本包的槽位贡献撤销与字典
  * 撤销同生命周期，不留残留。
  *
- * 装配面是最小结构类型（不 import 任何 dsh-client 包，D3）：本文件只用到宿主的
+ * 装配是最小结构类型（不 import 任何 dsh-client 包，D3）：本文件只用到宿主的
  * `effect` 与 `locale.register` 两个方法。
  */
 

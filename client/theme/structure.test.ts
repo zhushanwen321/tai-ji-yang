@@ -70,7 +70,7 @@ describe('字重/行高只走独立子 token（D7 红线 / RL9）', () => {
     expect(leadings.length).toBeGreaterThanOrEqual(29)
   })
 
-  it('覆盖集完整性（U6 钉死）：宿主 30 个字重 + 30 个行高子 token 中，凡宿主默认值 ≠ 太极目标值的档位全部在表内', () => {
+  it('覆盖集完整性（U6 固定）：宿主 30 个字重 + 30 个行高子 token 中，凡宿主默认值 ≠ 太极目标值的档位全部在表内', () => {
     // 期望集 = 对宿主 gradient-shadow-text.css 全量子 token 逐档比对（宿主默认值 → 太极目标）后的结果。
     // 未收录的 11 个字重档与 1 个行高档均为「宿主默认值已等于太极目标」，无需覆盖：
     //   · 字重 —— h1/h2/h3 宿主 700 = --fw-bold；h4 / base-strong / base-strong-italic /
