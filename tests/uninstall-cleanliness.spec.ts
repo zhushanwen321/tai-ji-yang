@@ -70,7 +70,7 @@ describe('V5 卸载清洁度', () => {
         if (typeof result === 'function') effects.push(result)
       },
       on() { return () => {} },
-      locale: { register: () => () => {} },
+      locale: { register: () => () => {}, bind: (ns: string) => (key: string) => key },
       slots: {
         inject(_key: string, callback: () => (() => void) | void) {
           // 宿主语义（ui-renderer/src/client/registry.ts 的 inject）：callback 的返回值
@@ -128,7 +128,7 @@ describe('V5 卸载清洁度', () => {
         if (typeof result === 'function') effects.push(result)
       },
       on() { return () => {} },
-      locale: { register: () => () => {} },
+      locale: { register: () => () => {}, bind: (ns: string) => (key: string) => key },
       slots: {
         inject(_key: string, callback: () => (() => void) | void) {
           // 宿主语义（ui-renderer/src/client/registry.ts 的 inject）：callback 的返回值
@@ -165,9 +165,13 @@ describe('V5 卸载清洁度', () => {
     module.apply(ctx)
     expect(unregistered).toEqual([])
     for (const dispose of [...effects].reverse()) dispose()
+    // 六个槽位贡献（品牌三槽 + 外观行 + composer 配色 chip + 设置分区）的 disposer
+    // 都要随 fiber 卸载执行——新槽位接入装配时必须同步扩这里的期望（卸载清洁度不豁免新贡献）
     expect(unregistered.sort()).toEqual([
       'conversation.hero.brand.mark',
+      'conversation.input.left',
       'settings.general.item',
+      'settings.section',
       'sidebar.brand.mark',
       'sidebar.brand.name',
     ])
@@ -195,7 +199,7 @@ describe('V5 卸载清洁度', () => {
     expect(Config.dict.appearance.meta.volatile).toBe(true)
 
     // 行在、用户没点选过 → 段里没有 appearance（默认色是包内默认，不写持久键）。
-    // 这里的投影复刻宿主 describe 的两步：plainConfig 拆 volatile 包装 + projectForm 丢 undefined 键。
+    // 这里的派生视图复刻宿主 describe 的两步：plainConfig 拆 volatile 包装 + projectForm 丢 undefined 键。
     const validate = (Config as unknown as { '~standard': { validate: (input: unknown) => { value: Record<string, unknown> } } })['~standard'].validate
     const WRITE = Symbol.for('cosmokit.volatile.write')
     const unwrap = (value: unknown): unknown => {
@@ -268,7 +272,7 @@ function createUninstallHarness(options: { persisted?: Record<string, unknown>; 
       if (typeof result === 'function') effects.push(result)
     },
     on() { return () => {} },
-    locale: { register: () => () => {} },
+    locale: { register: () => () => {}, bind: (ns: string) => (key: string) => key },
     slots: {
       inject(_key: string, callback: () => (() => void) | void) {
         const result = callback()
@@ -313,7 +317,7 @@ function createUninstallHarness(options: { persisted?: Record<string, unknown>; 
 
   const loader = createTsxLoader()
   const module = loader.load(APPLY_PATH) as unknown as { apply: (ctx: unknown) => void }
-  /** 外观行注册时经 `inject` 面拿到的注入面（与 UI 同一入口）。 */
+  /** 外观行注册时经 `inject` 回调拿到的注入对象（与 UI 同一入口）。 */
   const appearanceInjected = () => {
     const row = registrations.find((entry) => entry.key === 'settings.general.item')
     const inject = row?.options.inject as (() => {
@@ -329,7 +333,7 @@ function createUninstallHarness(options: { persisted?: Record<string, unknown>; 
       module.apply(ctx)
       return this
     },
-    /** 当前生效配色（经外观行注入面读，与 UI 同源）。 */
+    /** 当前生效配色（经外观行注入对象读，与 UI 同源）。 */
     themeId(): string {
       return appearanceInjected().getThemeId()
     },

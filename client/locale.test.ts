@@ -28,10 +28,13 @@ describe('内联双语字典', () => {
     expect(LOCALE_DICTS.en).toBe(en)
   })
 
-  it('文案覆盖品牌名与外观行（hero 无名字位，产品名只能走 sidebar.brand.name）', () => {
+  it('文案覆盖品牌名 / hero 欢迎语与外观行（产品名两处同文：hero 品牌区 + 侧栏 brand.name）', () => {
     // 产品名抄录太极侧 i18n app.ts：zh 太极 / en TaiJi
     expect(zh['brand.name']).toBe('太极')
     expect(en['brand.name']).toBe('TaiJi')
+    // hero 品牌区欢迎语抄录太极侧 app.ts 的 greetingPrompt（Landing 问候语后半句）
+    expect(zh['hero.greeting']).toBe('有什么想让我帮忙的吗')
+    expect(en['hero.greeting']).toBe('What can I help you with?')
     // 行标题与宿主内置行同文（settings.theme 命名空间），遮蔽后用户无感知差异（V12 ②）
     expect(zh['appearance.title']).toBe('外观')
     expect(en['appearance.title']).toBe('Appearance')

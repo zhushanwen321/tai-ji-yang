@@ -6,8 +6,10 @@
  *   ① 宿主字族 / 字号轴：`--font-*` 槽位、`--dsw-font-family*`，以及 `textFontFamily` /
  *      `codeFontFamily` / `terminalFontFamily` 三个配置字段的写入 → 用户选的字体与 ⌘+/⌘- 字号
  *      会被本包吃掉（RL2）。
- *   ② `--dsw-font-*` 复合简写覆盖：宿主该族简写内含字号与字族（`--dsw-font-base-16` 内含
- *      `-font-size` / `-font-family` 子 token），整段覆盖会让字号轴一起失效（RL9）。
+ *   ② `--dsw-font-*` 复合简写覆盖：**只放行安全重写形态**——size/family 段保留宿主 var()
+ *      引用、行高 unitless、weight 三位数字（外观深化层 3 的契约，宿主源逐段一致由
+ *      client/theme/host-font-sheet.spec.ts 对账看守）；整串写死（字面 family / 缺行高分隔）
+ *      仍越界（RL9）。
  *   ③ 以 `-font-size` / `-font-family` 结尾的子 token 覆盖：同上。只允许 `*-font-weight` /
  *      `*-line-height` 两类独立子 token（RL9，D7 明示放行且仅放行这两类）。
  *   ④ 宿主私有几何变量 `--dsh-frame-top-clearance` / `--dsh-windows-titlebar-height`：写它们等于
@@ -67,15 +69,10 @@ const TOKEN_RULES = [
   {
     id: 'RL9:font-shorthand',
     describe:
-      '覆盖 --dsw-font-* 复合简写会连带冻结字号与字族轴（仅 *-font-weight / *-line-height 两类独立子 token 除外——D7 明示放行；其余 --dsw-font-* 变体均越界）',
-    // 排除项语义：复合简写 = `--dsw-font-<名>`（值形如 `<weight> <size>/<line-height> <family>`，
-    // 整段覆盖会连字号与字族一起冻结）。以 `-font-weight` / `-line-height` 结尾的是同名独立子
-    // token，值域只有单一性质（权重 / 倍率），覆盖它们不碰用户字号与字族——宿主真实子 token
-    // 全在 --dsw-font- 命名空间下（如 `--dsw-font-markdown-base-font-weight`），不排除就会把
-    // D7 允许的覆盖全误判为简写（U2 落盘 structure.ts 时被误报 48 处，修法经 U2 runlog 移交
-    // 本单元）。放行集严格等于 D7 / RL9 声明的两类：`-letter-spacing`（D7 明示「不做字间距」）
-    // 与 `-font-style`（D7 未放行）都不在排除集内，写它们同样判越界；工程上确需放行时先在
-    // 设计 D7 与 RL9 登记放行集合，再改这里的正则。
+      '覆盖 --dsw-font-* 复合简写必须保留宿主 size/family 的 var() 引用（安全重写形态：weight 三位数字 + size 段任意 + /unitless 行高 + family 只能 var(--dsw-font-family) 或 var(--ds-font-family-code)）；整串写死仍越界——那会冻结字号与字族轴',
+    // 命中本规则（token 名是复合简写主体）后由 safeShorthandOnLine 做值形态校验：安全形态
+    // 放行（层 3 的重写载体），其余（字面 family、缺行高分隔、非数字 weight、未知插值）拦。
+    // 以 `-font-weight` / `-line-height` 结尾的独立子 token 不进本规则（D7 放行的两类）。
     test: (token) =>
       token.startsWith('--dsw-font-') &&
       !/-(?:font-weight|line-height)$/.test(token),
@@ -121,6 +118,55 @@ function classifyToken(token) {
   return TOKEN_RULES.find((rule) => rule.test(token)) ?? null
 }
 
+/**
+ * 安全重写形态的值校验（RL9:font-shorthand 的放行通道）。
+ *
+ * structure.ts 的重写值是模板串插值形态（`both(\`${WEIGHT_TEXT} ${SIZE_CONTENT}/${LEADING_BODY} ${FAMILY_UI}\`)`），
+ * 静态扫描无法求值——用本包仅有的常量插值替换表近似求值；**未知插值（不在表内）一律不放行**
+ * （保守：宁可误拦也不放过写死形态）。纯字面安全形态同样放行。
+ */
+const SHORTHAND_TEMPLATE_SUBSTS = {
+  '${WEIGHT_TEXT}': '500',
+  '${WEIGHT_MID}': '600',
+  '${WEIGHT_BOLD}': '700',
+  '${LEADING_TIGHT}': '1.32',
+  '${LEADING_BODY}': '1.62',
+  '${LEADING_UI}': '1.4',
+  '${FAMILY_UI}': 'var(--dsw-font-family)',
+  '${FAMILY_CODE}': 'var(--ds-font-family-code)',
+  '${SIZE_CONTENT}': 'var(--dsh-content-font-size, 14px)',
+  '${SIZE_CONTENT_SECONDARY}': 'var(--dsh-content-font-size-secondary, 13px)',
+}
+
+/** 安全重写形态：`[italic ]<weight> <size 任意含 var 引用>/<unitless 行高> <family var 引用>`。 */
+const SAFE_SHORTHAND_VALUE_RE =
+  /^(?:italic )?\d{3} .+\/[\d.]+ var\((?:--dsw-font-family|--ds-font-family-code)\)$/
+
+/** 判定某行对某复合简写的写入是否安全重写形态（提取不到值时按违规处理——宁可误拦）。 */
+function safeShorthandOnLine(line, token) {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const decl = line.match(new RegExp(`${escaped}\\s*['\"]?\\s*:\\s*(.+)$`))
+  if (!decl) return false
+  let value = decl[1].trim()
+  // 按包装类型剥壳，两条路径互斥：对象值取 light 支字符串后不再剥（其结尾 `var(…)` 的
+  // `)` 会被包装剥尾正则误剥）；both(…) 包装则剥 both( 头与 ) 尾后再剥引号。
+  const objMatch = value.match(/^\{\s*light:\s*['"`]([^'"`]+)['"`]/)
+  if (objMatch) {
+    value = objMatch[1]
+  } else {
+    value = value
+      .replace(/^both\(/, '')
+      .replace(/\)\s*\}*\s*[,;]?\s*$/, '')
+      .replace(/^['"`]/, '')
+      .replace(/['"`]\s*\}*\s*[,;]?\s*$/, '')
+  }
+  for (const [placeholder, literal] of Object.entries(SHORTHAND_TEMPLATE_SUBSTS)) {
+    value = value.split(placeholder).join(literal)
+  }
+  value = value.replace(/\s*\/\s*/, '/').replace(/\s+/g, ' ').trim()
+  return SAFE_SHORTHAND_VALUE_RE.test(value)
+}
+
 /** 扫描一段文本，返回违规清单（含行号与命中规则，便于逐条定位）。 */
 export function auditSource(text, label = '<memory>') {
   const violations = []
@@ -134,7 +180,10 @@ export function auditSource(text, label = '<memory>') {
     }
     for (const [token, hit] of tokenHits) {
       const rule = classifyToken(token)
-      if (rule) violations.push({ label, line, hit, rule })
+      if (!rule) continue
+      // RL9:font-shorthand 的放行通道：安全重写形态（size/family 保留宿主 var() 引用）不算越界
+      if (rule.id === 'RL9:font-shorthand' && safeShorthandOnLine(rawLine, token)) continue
+      violations.push({ label, line, hit, rule })
     }
     for (const match of rawLine.matchAll(FONT_FAMILY_FIELD_RE)) {
       violations.push({ label, line, hit: match[0].trim(), rule: FONT_FAMILY_FIELD_RULE })
@@ -176,6 +225,11 @@ const NEGATIVE_SAMPLES = [
     ruleId: 'RL9:font-shorthand',
   },
   {
+    id: 'RL9 复合简写（family 写死，其余形态正确——证明值校验真的在看值）',
+    text: 'const overrides = { "--dsw-font-base-16": { light: "500 16px/1.4 Arial, sans-serif", dark: "500 16px/1.4 Arial, sans-serif" } }',
+    ruleId: 'RL9:font-shorthand',
+  },
+  {
     id: 'RL9 字号子 token（对象键）',
     text: 'tokens["--dsw-alias-label-font-size"] = { light: "13px", dark: "13px" }',
     ruleId: 'RL9:font-size-or-family-subtoken',
@@ -197,7 +251,7 @@ const NEGATIVE_SAMPLES = [
   },
 ]
 
-/** 正样本：只写白名单 alias 与独立子 token，必须零命中。 */
+/** 正样本：只写白名单 alias、独立子 token 与**安全重写形态**的复合简写，必须零命中。 */
 const POSITIVE_SAMPLE = [
   'const overrides = {',
   '  "--dsw-alias-bg-base": { light: "#f7f6f3", dark: "#18181b" },',
@@ -208,7 +262,11 @@ const POSITIVE_SAMPLE = [
   // D7 允许的 *-font-weight / *-line-height 覆盖，而不是只对合成名有效。
   '  "--dsw-font-markdown-base-font-weight": { light: "500", dark: "500" },',
   '  "--dsw-font-markdown-h1-line-height": { light: "1.32", dark: "1.32" },',
+  // 安全重写形态的复合简写（层 3 载体）：family 是宿主 var() 引用、行高 unitless、weight
+  // 三位数字——纯字面形态与 structure.ts 的模板串插值形态都必须放行。
+  '  "--dsw-font-markdown-base": { light: "500 var(--dsh-content-font-size, 14px)/1.62 var(--dsw-font-family)", dark: "500 var(--dsh-content-font-size, 14px)/1.62 var(--dsw-font-family)" },',
   '}',
+  "const structure = { '--dsw-font-s-14': both(`${WEIGHT_TEXT} 14px/${LEADING_UI} ${FAMILY_UI}`) }",
   'ctx.theme.overrideTokens("tai-ji-yang-shell", overrides)',
 ].join('\n')
 
@@ -265,6 +323,9 @@ function collectFiles(targets) {
       return
     }
     if (!stat.isFile()) return
+    // 测试与 spec 不进构建产物（build-client 只装配 client/apply.ts 的运行时图），
+    // 其中的期望集对象键长得像写入形态但不是——扫描口径是「真实会被装载的源码」。
+    if (/\.(test|spec)\.[cm]?[jt]sx?$/.test(absPath)) return
     const ext = absPath.slice(absPath.lastIndexOf('.'))
     if (!SCANNED_EXTENSIONS.includes(ext)) return
     files.push(absPath)

@@ -2,10 +2,9 @@
  * client/brand/name.tsx —— 产品名字标（设计 §3.3.8 / D8，U7）。
  *
  * 职责：产品名注册进 `sidebar.brand.name`（single/root；owner props 为空——
- * 宿主 SidebarRoot 传 `{}`，回落是「Local Build + 版本号」文案）。**hero 槽没有名字位**
- * （其 owner props 只有 size/className，属纯图形槽），所以产品名只能走这里——这是设计的
- * 既定事实（U7 checkpoint 第 3 条：需确认「hero 同屏产品名」可放弃，结论是可放弃，
- * V1 判据措辞已按「产品名在侧栏 brand.name」表述）。
+ * 宿主 SidebarRoot 传 `{}`，回落是「Local Build + 版本号」文案）。hero 首屏的产品名
+ * 不走本槽——由 hero 品牌区组件 TaijiHeroArea（hero-area.tsx）在 hero 槽内自渲染
+ * （同一枚 `brand.name` 字典 key，两处同文）；本槽只拥有侧栏品牌行的名字位。
  *
  * 文案走宿主 locale 的 `t` 标准座位（注册时声明 `locale: TAIJI_LOCALE_NS`），中英文分别
  * 取「太极」/「TaiJi」——取值抄录太极侧 `i18n/locales/{zh-CN,en-US}/app.ts` 的 `title`。

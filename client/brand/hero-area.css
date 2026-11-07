@@ -1,0 +1,55 @@
+/* hero 品牌区样式（与 client/brand/hero-area.tsx 同目录，经构建脚本的 client/ 目录扫描
+ * 注入——普通 CSS 文本 + taiji- 前缀类名隔离，不用 CSS Modules，见 scripts/build-client.mjs
+ * 的 collectCssFiles）。
+ *
+ * 排版取值逐条对照 taiji 本体（源文件相对太极仓 main；「自定」= taiji 无对应场景，按
+ * 相邻规格推导并在此如实标注）：
+ *   · 竖排间距 16px —— Landing.vue 根容器 gap-4（首屏内容列的级联间距）；
+ *   · 产品名 22px / 字重 700 —— Landing.vue 问候语 h1 `text-[22px] font-bold`（首屏主文字
+ *     规格；taiji demo 字重 650 无独立档、归展示级 bold 档，Landing.vue 注释原话）；
+ *   · 产品名行高 1.55 —— Landing.vue h1 无显式行高、继承 taiji base 1.55；Brand.vue 产品名
+ *     span 显式 `leading-[1.55]`（同为产品名展示，双重佐证）；
+ *   · 产品名字距 0.02em —— Brand.vue 产品名 `tracking-[0.02em]`（产品名专属字距，Landing
+ *     h1 无字距声明，取产品名侧的实装值）；
+ *   · 欢迎语 14px / 400 / 22px —— 自定次级行规格：taiji Landing 首屏问候语是唯一主文字
+ *     （22px），本品牌区以产品名为标题、欢迎语降为次行，字号取宿主正文 14/22 口径
+ *     （与本包 appearance-row.css 标题同款规格，宿主外观行标题同为 14/22/400）；
+ *   · 产品名 → 欢迎语 4px —— 自定：紧排的层级对间距（taiji Brand.vue 产品名 → 版本行
+ *     mt-1px 是侧栏紧凑场景，首屏取更松一档）；
+ *   · mark 边长 56px —— 自定展示值（取值理由见 hero-area.tsx 的 HERO_MARK_SIZE 注释）。
+ *
+ * 取色全部经宿主令牌 var(--dsw-alias-*)（禁硬编码色值：RL1 的静态检查对 .css 生效；
+ * 本包 token 覆盖层把宿主 token 染成太极色后此处自动跟随）；产品名用主标签色（taiji
+ * text-neutral-fg 主文字色对应宿主主标签令牌），欢迎语用次标签色（次级行降一档对比）。 */
+
+.taiji-hero-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.taiji-hero-area-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  /* 宿主 .headline 给文字定了 26px/500 的继承基线；品牌区两级文字各自显式覆盖。 */
+  min-width: 0;
+}
+
+.taiji-hero-area-name {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.55;
+  letter-spacing: 0.02em;
+  color: var(--dsw-alias-label-primary);
+}
+
+.taiji-hero-area-greeting {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  color: var(--dsw-alias-label-secondary);
+}

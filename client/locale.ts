@@ -37,29 +37,41 @@ export type LocaleDict = Record<string, string>
  *     同为「外观 / 浅色 / 深色 / 跟随系统」，遮蔽后用户看到的标题一字不差（V12 ②）。
  */
 export const zh = {
-  /** 产品名（sidebar.brand.name 槽；hero 槽只渲染 mark，无名字位）。 */
+  /** 产品名（sidebar.brand.name 槽 + hero 品牌区标题，两处同文）。 */
   'brand.name': '太极',
+  /** hero 品牌区欢迎语（抄录太极侧 Landing 问候语的后半句 greetingPrompt，逐字不臆造）。 */
+  'hero.greeting': '有什么想让我帮忙的吗',
   /** 外观行标题（与宿主内置行同文，遮蔽后无感知差异）。 */
   'appearance.title': '外观',
   /** 三段模式按钮（D8：同屏呈现，消解「点了异族色为何没变亮」的困惑）。 */
   'appearance.mode.light': '浅色',
   'appearance.mode.dark': '深色',
   'appearance.mode.system': '跟随系统',
+  /** 「太极」设置分区的一句说明：本插件是什么（六套配色 / 圆角与字重 / 双鱼标三项识别度承担者）。 */
+  'section.desc': '本插件把 DSH 界面染成太极工作台：六套配色、圆角与字重、双鱼标。',
+  /** 当前配色行的行名（值 = 色点 + 当前色中文名，由组件侧拼装）。 */
+  'section.current': '当前配色',
+  /** 指引行：配色与明暗模式的切换入口在通用设置的外观行（与宿主 nav 标签「通用设置」「外观」同字面）。 */
+  'section.guide': '配色与明暗模式在 通用设置 → 外观 行切换',
 } satisfies LocaleDict
 
 /**
  * 英文词典（与 zh 同 key 集）。
  *
  * 产品名抄录太极侧 `i18n/locales/en-US/app.ts` 的 `title`（TaiJi，大小写按对岸原样）；
- * 外观行文案抄录 `packages/ui/src/locale/en-US/settings.ts`（Appearance / Light /
- * Dark / Follow system）。
+ * 欢迎语抄录同文件 `greetingPrompt`（问号原样保留）；外观行文案抄录
+ * `packages/ui/src/locale/en-US/settings.ts`（Appearance / Light / Dark / Follow system）。
  */
 export const en = {
   'brand.name': 'TaiJi',
+  'hero.greeting': 'What can I help you with?',
   'appearance.title': 'Appearance',
   'appearance.mode.light': 'Light',
   'appearance.mode.dark': 'Dark',
   'appearance.mode.system': 'Follow system',
+  'section.desc': 'This plugin re-themes the DSH interface as the TaiJi workbench: six palettes, corner radii and font weights, and the twin-fish mark.',
+  'section.current': 'Current palette',
+  'section.guide': 'Switch palettes and light/dark mode in General → Appearance.',
 } satisfies LocaleDict
 
 /** 本包文案 key 域（组件侧 `t` 的参数类型；zh/en 必须同时覆盖）。 */

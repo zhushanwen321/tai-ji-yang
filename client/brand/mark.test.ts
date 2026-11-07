@@ -12,6 +12,7 @@ import { collectElements, createTsxLoader, elementsWithClass, type FakeElement }
  */
 
 const MARK_PATH = fileURLToPath(new URL('./mark.tsx', import.meta.url))
+const HERO_AREA_PATH = fileURLToPath(new URL('./hero-area.tsx', import.meta.url))
 
 /** 一条 occupant 登记（假宿主账本）。 */
 interface Registration {
@@ -69,8 +70,24 @@ interface MarkModule {
   MARK_VIEWBOX: string
 }
 
+/** hero 品牌区组件的最小结构（装配断言只认身份）。 */
+interface HeroAreaModule {
+  TaijiHeroArea: (props: { size: number; className?: string; t: (key: string) => string }) => FakeElement
+}
+
 function loadMark(): MarkModule {
   return createTsxLoader().load(MARK_PATH) as unknown as MarkModule
+}
+
+/**
+ * 同一 loader 装载 mark.tsx + hero-area.tsx：模块循环（mark ⇄ hero-area）下装配注册的
+ * component 身份断言（toBe）需要两边拿到同一实例引用。
+ */
+function loadBrandKit(): { mark: MarkModule; heroArea: HeroAreaModule } {
+  const loader = createTsxLoader()
+  const mark = loader.load(MARK_PATH) as unknown as MarkModule
+  const heroArea = loader.load(HERO_AREA_PATH) as unknown as HeroAreaModule
+  return { mark, heroArea }
 }
 
 describe('resolveBrandPriority 避让规则', () => {
@@ -103,8 +120,8 @@ describe('resolveBrandPriority 避让规则', () => {
 })
 
 describe('installBrandMarkSlots 装配', () => {
-  it('注册进 hero 与 sidebar 两个品牌标记槽，priority = -5', () => {
-    const mark = loadMark()
+  it('hero 槽注册品牌区 TaijiHeroArea（声明 locale），sidebar 槽注册裸 mark，priority 均 -5', () => {
+    const { mark, heroArea } = loadBrandKit()
     const fake = fakeSlotsHost()
     mark.installBrandMarkSlots(fake.host)
     // 注册是「等槽位声明」的：声明前只有 inject 待决，没有实际注册
@@ -119,8 +136,15 @@ describe('installBrandMarkSlots 装配', () => {
     ])
     for (const registration of fake.registrations) {
       expect(registration.options.priority).toBe(-5)
-      expect(registration.component).toBe(mark.TaijiBrandMark)
     }
+    // 分工：hero 槽 = 品牌区组件（放大 mark + 产品名 + 欢迎语，t 座位经 locale 声明注入）；
+    // sidebar 槽 = 纯 mark（侧栏保持小标，文字面在 sidebar.brand.name）
+    const hero = fake.registrations.find((registration) => registration.key === 'conversation.hero.brand.mark')
+    const sidebar = fake.registrations.find((registration) => registration.key === 'sidebar.brand.mark')
+    expect(hero?.component).toBe(heroArea.TaijiHeroArea)
+    expect(hero?.options.locale).toBe('taiji.shell')
+    expect(sidebar?.component).toBe(mark.TaijiBrandMark)
+    expect(sidebar?.options.locale).toBeUndefined()
     expect(fake.warnings).toHaveLength(0)
   })
 

@@ -6,8 +6,9 @@ import { TAIJI_LOCALE_NS, zh } from '../locale'
 /**
  * 产品名字标单测（设计 §3.3.8 / D8；V1「产品名在侧栏 brand.name」的行为范围）。
  *
- * hero 槽没有名字位（owner props 只有 size/className），产品名只能经 sidebar.brand.name——
- * 本文件锁死这条通路：注册目标槽、locale 声明、文案取值。
+ * 本槽只拥有侧栏品牌行的名字位；hero 首屏的产品名由 hero 品牌区组件（hero-area.tsx）
+ * 在 hero 槽内自渲染（同一枚 brand.name 字典 key）——本文件锁死侧栏通路：注册目标槽、
+ * locale 声明、文案取值。
  */
 
 const NAME_PATH = fileURLToPath(new URL('./name.tsx', import.meta.url))
@@ -75,7 +76,7 @@ describe('installBrandNameSlot 装配', () => {
     expect(fake.registrations[0].component).toBe(name.TaijiBrandName)
   })
 
-  it('不注册进 hero 槽（hero 无名字位——产品名只能走侧栏）', () => {
+  it('不注册进 hero 槽（hero 首屏产品名由 hero-area.tsx 的品牌区组件自渲染，不走 brand.name 槽）', () => {
     const name = loadName()
     const fake = fakeSlotsHost()
     name.installBrandNameSlot(fake.host)

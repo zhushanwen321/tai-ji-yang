@@ -23,6 +23,7 @@ import {
   type ThemeMeta,
   type TokenTable,
 } from './tokens'
+import { paletteTokensFor } from './palette'
 
 /** 判定任意值（典型来源 = 插件 Config 的 appearance 字段）是否是合法配色 id。 */
 export function isThemeId(value: unknown): value is ThemeId {
@@ -52,8 +53,28 @@ export function resolveTheme(id: ThemeId): ThemeMeta {
  * 自己选（AS2），resolve 不需要也不知道。跨族支的回落规则见 tokens.ts buildTable 注释
  * （taiji resolveTaijiTheme 语义：preset 只在所属族内生效）。
  *
+ * 表 = alias 职能分色层（tokens.ts 的 20 token，含跨族回落）+ 静态调色板层
+ * （palette.ts 的 32 token：neutral-bluish 22 档去蓝 + deepseek 10 档灰绿化，其中强调档
+ * 400/450/500 按本色 accent 派生）。两层同一覆盖层一次叠入：换色 = 整层替换，alias 与
+ * static 调色板永远同色相，不存在「alias 绿了、static 还是蓝」的中间态。
+ *
  * @param id - 合法配色 id（持久值先过 coerceThemeId）
  */
+// 为什么在模块装载时一次合成而不是每次调用现合并：本函数对调用方的承诺是「同一 id
+// 永远返回同一引用」（上方注释），apply 侧「重复选同一色是空操作」的短路判据
+// （`next === current`）就建立在这上面——每次现展开新对象会让短路失效，同一色重复
+// 点选也会整层重调 overrideTokens。表是纯数据，装载时合成与首次调用时合成语义相同。
+const RESOLVED_TOKEN_TABLES: Readonly<Record<ThemeId, TokenTable>> = Object.freeze(
+  Object.fromEntries(
+    THEME_IDS.map((id) => {
+      const table: TokenTable = { ...paletteTokensFor(id), ...THEME_TOKEN_TABLES[id] }
+      // 逐项 freeze 与 tokens.ts 的 buildTable 同构：本包自己误改单个 token 值在开发期就炸
+      for (const name of Object.keys(table)) Object.freeze(table[name])
+      return [id, Object.freeze(table)]
+    }),
+  ) as Record<ThemeId, TokenTable>,
+)
+
 export function resolveThemeTokens(id: ThemeId): TokenTable {
-  return THEME_TOKEN_TABLES[id]
+  return RESOLVED_TOKEN_TABLES[id]
 }

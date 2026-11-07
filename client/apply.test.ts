@@ -98,6 +98,10 @@ function createHarness(options: { persisted?: Record<string, unknown>; writeResu
         log.localeRegistrations.push({ ns, languages: Object.keys(dictionaries) })
         return () => { log.order.push('locale.unregister') }
       },
+      // 设置分区的导航标签经 bind 合成翻译函数；identity stub 够用（该测试不断言译文）
+      bind(ns: string) {
+        return (key: string) => key
+      },
     },
     slots: {
       inject(key: string, callback: () => (() => void) | void) {
@@ -374,11 +378,13 @@ describe('client/apply 装配入口', () => {
       'sidebar.brand.mark',
       'sidebar.brand.name',
       'settings.general.item',
+      'conversation.input.left',
+      'settings.section',
     ])
-    expect(harness.log.slotRegistrations).toHaveLength(4)
-    // locale 字典 1 + 主题层 1 + 结构层 1 + 持久订阅 1 + 四个槽位 inject 各把注册包成嵌套 effect 1
+    expect(harness.log.slotRegistrations).toHaveLength(6)
+    // locale 字典 1 + 主题层 1 + 结构层 1 + 持久订阅 1 + 六个槽位 inject 各把注册包成嵌套 effect 1
     // + 持久反注册 1
-    expect(harness.effects).toHaveLength(9)
+    expect(harness.effects).toHaveLength(11)
     expect(harness.effects.every((effect) => typeof effect.dispose === 'function')).toBe(true)
     expect(harness.effects.map((effect) => effect.label)).toEqual([
       'taiji: 内联双语字典（zh/en）',
@@ -389,6 +395,8 @@ describe('client/apply 装配入口', () => {
       'slots.inject("sidebar.brand.mark")',
       'slots.inject("sidebar.brand.name")',
       'slots.inject("settings.general.item")',
+      'slots.inject("conversation.input.left")',
+      'slots.inject("settings.section")',
       'taiji: 插件 Config 镜像订阅反注册',
     ])
   })
@@ -401,7 +409,7 @@ describe('client/apply 装配入口', () => {
     expect(harness.log.layers.map((layer) => layer.removed)).toEqual([true, true])
     expect(harness.form.listeners.size).toBe(0)
     expect(harness.log.order).toContain('locale.unregister')
-    for (const key of ['conversation.hero.brand.mark', 'sidebar.brand.mark', 'sidebar.brand.name', 'settings.general.item']) {
+    for (const key of ['conversation.hero.brand.mark', 'sidebar.brand.mark', 'sidebar.brand.name', 'settings.general.item', 'conversation.input.left', 'settings.section']) {
       expect(harness.log.order).toContain(`slots.unregister:${key}`)
     }
   })

@@ -22,6 +22,7 @@
  */
 import { installBrandMarkSlots, type BrandSlotHost } from './brand/mark'
 import { installBrandNameSlot } from './brand/name'
+import { installAppearanceChip } from './input/appearance-chip'
 import { installLocale, type LocaleInstallHost } from './locale'
 import { AppearancePersistence, PLUGIN_ENTRY_ID, type ConfigFormsHost } from './persist'
 import {
@@ -29,6 +30,7 @@ import {
   type AppearanceRowHost,
   type ThemeSelectionController,
 } from './settings/appearance-row'
+import { installTaijiSection } from './settings/taiji-section'
 import { applyStructureLayer, applyThemeLayer, type ThemeTokenService } from './theme/apply'
 import { STRUCTURE_TOKENS } from './theme/structure'
 
@@ -53,7 +55,10 @@ export interface ClientApplyContext {
   effect(callback: () => (() => void) | void, label?: string): void
   /** 订阅宿主事件（外观行只用 `theme/change`）。 */
   on(event: string, listener: () => void): () => void
-  locale: LocaleInstallHost['locale']
+  /** locale 服务：installLocale 用 register；设置分区用 bind 把命名空间绑成翻译函数。 */
+  locale: LocaleInstallHost['locale'] & {
+    bind(ns: string): (key: string) => string
+  }
   slots: ClientSlots
   theme: ClientThemeService
   configForms: ConfigFormsHost['configForms']
@@ -142,7 +147,15 @@ export function apply(ctx: ClientApplyContext): void {
   }
   installAppearanceRow(ctx, controller)
 
-  // ⑥ 反注册持久通道的镜像订阅。form 本体归 ConfigForms 服务所有（跨插件共享），
+  // ⑥ composer 工具行的快速配色 chip（conversation.input.left，list 槽追加非遮蔽）：
+  //    与外观行共用同一 controller 实例——两处入口指向同一持久通道与换层，无双写。
+  installAppearanceChip(ctx, controller)
+
+  // ⑦ 设置页「太极」分区（settings.section，list 槽追加）：只读状态页（不设第二换色
+  //    写入口），换色仍在通用设置的外观行与 composer chip。
+  installTaijiSection(ctx, controller)
+
+  // ⑧ 反注册持久通道的镜像订阅。form 本体归 ConfigForms 服务所有（跨插件共享），
   //    本包只撤自己的监听，不 dispose 它。
   ctx.effect(() => () => { persistence.dispose() }, PERSIST_DISPOSE_LABEL)
 }

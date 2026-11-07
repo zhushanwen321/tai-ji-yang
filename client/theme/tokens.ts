@@ -16,10 +16,14 @@
  * （TAIJI_THEMES：玄/黛蓝/暖墨 属暗、皓/青墨/朱印 属亮；玄/皓 的 preset 为 ''）。
  *
  * token 集合 = 设计 §3.3.2 的 13 个白名单 alias + `--dsw-specific-sidebar-fill`（第 14 个
- * inspect token）+ 名单外语义色 `--dsw-alias-state-done-primary`，共 15 个。与 index.js 的
- * `FIRST_FRAME_TOKENS` 逐条同源同值（首帧样式与覆盖层不允许有差异，V1 第 ④ 步），由
- * `tokens.spec.ts` 的漂移断言看守。第三类「不覆盖且不跟随」的硬编码字面色板（shiki /
- * json-tree / file-type）见设计 §2，本包不碰。
+ * inspect token）+ 名单外语义色 `--dsw-alias-state-done-primary`，共 15 个；外观深化层 2
+ * 增职能分色 5 个（link / bubble / bubble-highlight / label-deep-diving×2，见下），共 20 个。
+ * 与 index.js 的 `FIRST_FRAME_TOKENS` 的关系：首帧表只承载原 15 个核心 token（层 2 的 5 个
+ * 消费点都在 mount 后的组件里，boot 区间没有渲染内容，不进首帧），由 `tokens.spec.ts` 的漂移断言
+ * 看守（对首帧子集逐 token 同源同值）。第三类「不覆盖且不跟随」的硬编码字面色板
+ * （shiki / json-tree / file-type 的 *色板字面值*）见设计 §2；注意层 1（palette.ts）重定义
+ * static 调色板后，file-type 经 `--dsw-static-deepseek-*` 引用的默认色会自动跟随灰绿——
+ * 该登记从「不覆盖」升级为「经 static 层跟随」。
  *
  * 每个 alias 在太极侧的对应令牌（抄录映射，非臆造）：
  *   bg-base          ← `--surface`（内容层：对话流/抽屉阅读区）
@@ -46,7 +50,17 @@ export interface TokenModes {
 /** 覆盖层 token 表：token 名 → 双模值（与宿主 `ThemeTokenOverrides` 同构）。 */
 export type TokenTable = Record<string, TokenModes>
 
-/** 15 个受覆盖 token 的规范名（顺序即本表声明序，测试按它对账）。 */
+/**
+ * 20 个受覆盖 token 的规范名（顺序即本表声明序，测试按它对账）。
+ *
+ * 前 15 个 = P1 核心表（背景/文字/边框/状态色主档）；后 5 个 = 外观深化层 2 职能分色——
+ * 它们默认引用 `--dsw-static-deepseek-*`（层 1 染色后自动变绿），但 taiji 的职能分色裁决
+ * （style.css「主行动 = 青玉 A9；链接正蓝见 --link-c；accent 不再兼职链接」）要求：
+ *   · link 保持正蓝（taiji --link-c 六色各有值，非品牌色）；
+ *   · bubble 是中性 elevated 色不是 accent 色（taiji --bubble-bg：暗族 = bg-elevated 派生、
+ *     亮族独立档 #fefefe）；
+ *   · label-deep-diving（宿主深度思考标签）对齐 taiji --reasoning 思考紫。
+ */
 export const THEME_TOKEN_NAMES = [
   '--dsw-alias-bg-base',
   '--dsw-alias-bg-layer-1',
@@ -63,6 +77,12 @@ export const THEME_TOKEN_NAMES = [
   '--dsw-alias-state-warn-primary',
   '--dsw-alias-state-idle-primary',
   '--dsw-alias-state-done-primary',
+  // ── 层 2 职能分色 ───────────────────────────────────────────
+  '--dsw-alias-link',
+  '--dsw-specific-bubble',
+  '--dsw-specific-bubble-highlight',
+  '--dsw-alias-label-deep-diving',
+  '--dsw-alias-label-deep-diving-shimmer',
 ] as const
 
 export type ThemeTokenName = (typeof THEME_TOKEN_NAMES)[number]
@@ -111,6 +131,18 @@ const BASE_TOKENS: Record<ThemeTokenName, TokenModes> = {
   '--dsw-alias-state-warn-primary': { light: '#977629', dark: '#b79c54' },
   '--dsw-alias-state-idle-primary': { light: '#9d9b96', dark: '#6e6e6e' },
   '--dsw-alias-state-done-primary': { light: '#71659c', dark: '#8e85ab' },
+  // ── 层 2 职能分色（基值 = 玄的暗支 / 皓的亮支；preset 差异见 PRESET_OVERRIDES）──
+  // link ← taiji --link-c：玄 #4d8dff（:root L75）/ 皓 #2e6ae0（亮族压暗档，L307）
+  '--dsw-alias-link': { light: '#2e6ae0', dark: '#4d8dff' },
+  // bubble ← taiji --bubble-bg：暗族 = bg-elevated 派生（玄 #323236）/ 亮族独立档 #fefefe（L285）
+  '--dsw-specific-bubble': { light: '#fefefe', dark: '#323236' },
+  // bubble-highlight：taiji 无独立档，构造值 = bubble 邻近档（暗族取 --surface-hover #2d2d31 邻域、
+  // 亮族纸白压一档；黛蓝/暖墨的 preset 差异逐色给值）
+  '--dsw-specific-bubble-highlight': { light: '#f0efec', dark: '#2d2d31' },
+  // label-deep-diving ← taiji --reasoning 思考紫（与 state-done 同源值：暗 #8e85ab / 亮 #71659c）
+  '--dsw-alias-label-deep-diving': { light: '#71659c', dark: '#8e85ab' },
+  // shimmer 动画端点色：主色提亮一档（构造值）
+  '--dsw-alias-label-deep-diving-shimmer': { light: '#8a80b3', dark: '#a39bbd' },
 }
 
 /**
@@ -143,6 +175,10 @@ const PRESET_OVERRIDES: Record<ThemeId, PresetOverrides> = {
       '--dsw-alias-label-secondary': '#8f909b',
       '--dsw-alias-state-idle-primary': '#6d6e79',
       '--dsw-alias-brand-primary': '#8b9cc8',
+      // 层 2 preset 差异：link L387 / bubble（demo 注释：黛蓝 --elevated #31333e 同值）
+      '--dsw-alias-link': '#6196f0',
+      '--dsw-specific-bubble': '#31333e',
+      '--dsw-specific-bubble-highlight': '#2c2f3b',
     },
   },
   // 暖墨（暗 · 宣纸暖相）：style.css :root[data-theme-preset="nuanmo"]
@@ -157,6 +193,10 @@ const PRESET_OVERRIDES: Record<ThemeId, PresetOverrides> = {
       '--dsw-alias-label-secondary': '#97928a',
       '--dsw-alias-state-idle-primary': '#716c64',
       '--dsw-alias-brand-primary': '#cbbc93',
+      // 层 2 preset 差异：link L434 / bubble（demo 注释：暖墨 --elevated #35322c 同值）
+      '--dsw-alias-link': '#5b8fdd',
+      '--dsw-specific-bubble': '#35322c',
+      '--dsw-specific-bubble-highlight': '#302d28',
     },
   },
   // 皓 = 亮族默认，两列皆基值
@@ -165,6 +205,8 @@ const PRESET_OVERRIDES: Record<ThemeId, PresetOverrides> = {
   qingmo: {
     light: {
       '--dsw-alias-brand-primary': '#356b7a',
+      // 层 2 preset 差异：link L463（亮族 preset 的链接压深档）
+      '--dsw-alias-link': '#2d6cd4',
     },
   },
   // 朱印（亮 · 宣纸朱砂）：style.css [data-theme="light"][data-theme-preset="zhuyin"]
@@ -172,6 +214,8 @@ const PRESET_OVERRIDES: Record<ThemeId, PresetOverrides> = {
     light: {
       '--dsw-alias-brand-primary': '#9c4335',
       '--dsw-alias-state-error-primary': '#b23855',
+      // 层 2 preset 差异：link L495
+      '--dsw-alias-link': '#3163c8',
     },
   },
 }

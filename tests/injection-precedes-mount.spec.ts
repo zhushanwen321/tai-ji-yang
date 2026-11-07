@@ -69,7 +69,7 @@ interface BootResult {
  *
  * 假 ctx 只提供被测装配入口用到的面（与 tests/uninstall-cleanliness.spec.ts、
  * scripts/check-injection-escape.mjs 同款替身手法）：`on` 收订阅；`get` 让 webServer 在位
- * （U8 的装载期探针同步返回、不产生诊断日志，不改变本文件断言面）；`effect` 执行并回传
+ * （U8 的装载期探针同步返回、不产生诊断日志，不改变本文件的断言范围）；`effect` 执行并回传
  * disposer；`logger` 静音。
  */
 function runBoot(applyPlugin: (ctx: unknown) => void, sequence: BootSequence = 'correct'): BootResult {

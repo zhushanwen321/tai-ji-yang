@@ -1,0 +1,87 @@
+/* 「太极」设置分区样式（与 client/settings/taiji-section.tsx 同目录，经构建脚本的
+ * 目录扫描注入——普通 CSS 文本 + taiji- 前缀类名隔离，不用 CSS Modules）。
+ *
+ * 排版口径：行 chrome（16px 0 内距 + 0.5px 底部分隔线）与标题（14px/22px/400）对照
+ * 同目录 appearance-row.css 的既有约定；分区页基础字号（13px/22px）与列布局对照宿主
+ * 分区页的通行形态（ui-settings-account 的 AccountSection.module.css：flex 列 +
+ * padding 8px 0）。宿主 shell 的内容列（.options）已给 0 24px 24px 的横向内距，本页
+ * 不再自加横向内距，与内置分区同宽。
+ *
+ * 取色全部经宿主令牌 var(--dsw-alias-*) / var(--dsw-radius-*)：覆盖层换色后本页自动
+ * 跟随，不引入第二套取色；色点本身用活变量 var(--dsw-alias-brand-primary)（组件侧
+ * inline style），呈现当前实际生效的强调色。 */
+
+.taiji-section {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+  font-size: 13px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 简介块（标题 + 一句说明）：行 chrome 同外观行——16px 0 内距 + 0.5px 底部分隔线。 */
+.taiji-section-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+/* 分区标题（14px/22px/400，与外观行标题同口径）。 */
+.taiji-section-title {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.taiji-section-desc {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 状态行：行 chrome 同外观行；末行不画分隔线（列底收尾，对照宿主 GeneralSection
+   「列尾去掉分隔线」的约定）。 */
+.taiji-section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.taiji-section-row:last-child {
+  border-bottom: none;
+}
+
+.taiji-section-row-label {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 当前配色值：色点 + 色名，右对齐呈现（值不抢行名的视觉主位）。 */
+.taiji-section-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 色点描边不可省（对照外观行色点约定）：品牌色点在中性背景上需要一道 hairline 才立得住。 */
+.taiji-section-dot {
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 50%;
+}
+
+.taiji-section-current-name {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 指引行：单条次级文案（指路信息，不与状态行抢层级）。 */
+.taiji-section-guide {
+  color: var(--dsw-alias-label-secondary);
+}

@@ -1,16 +1,15 @@
 /**
  * client/brand/mark.tsx —— 双鱼标（设计 §3.3.8 / D8，U7）。
  *
- * 职责：太极双鱼 SVG 标 + 注册进两个宿主品牌标记槽：
+ * 职责：太极双鱼 SVG 标 + 品牌槽装配（两个品牌标记槽各注册一个 occupant）：
  *   · `conversation.hero.brand.mark`（空会话 hero，single/root；owner props =
  *     `{ size, className? }`——宿主 EmptyHero 传 `{ size: 34, className: <几何类> }`，
- *     回落是声明包自己的动画鱼 HeroFish）；
+ *     回落是声明包自己的动画鱼 HeroFish）——注册 **hero 品牌区组件** TaijiHeroArea
+ *     （hero-area.tsx：放大双鱼标 + 产品名「太极」+ 欢迎语，竖排居中；声明 locale
+ *     后宿主注入 `t` 座位）。宿主槽容器不裁剪该组件（侦查证据见 hero-area.tsx 头注释）；
  *   · `sidebar.brand.mark`（侧栏品牌行与折叠轨，single/root；owner props = `{ size }`，
- *     宿主 SidebarRoot 传 `{ size: 24 }`，回落是宿主鱼标 FishLogo）。
- *
- * hero 槽只渲染 mark（**无名字位**，宿主该槽的 owner props 里没有文字面）——产品名只能经
- * `sidebar.brand.name`（见 name.tsx）。这是设计的既定事实（U7 checkpoint 第 3 条），
- * 不是遗漏：V1 判据据此表述为「双鱼标在 hero 槽、产品名在侧栏 brand.name」。
+ *     宿主 SidebarRoot 传 `{ size: 24 }`，回落是宿主鱼标 FishLogo）——注册纯 mark
+ *     TaijiBrandMark（侧栏保持小标，文字面在 sidebar.brand.name，见 name.tsx）。
  *
  * 几何（禁止手改）：逐 path 抄录太极侧 `packages/renderer/src/components/icons/TaijiLogo.vue`
  * （该文件头自称「千问图 potrace 矢量复刻，几何禁止手改 d 属性」）。viewBox 0 0 1200 1200
@@ -21,6 +20,8 @@
  * 识别度承担者是配色/圆角/字重/品牌形状四项；宿主自身品牌标（FishLogo / 官方标）全是静态
  * 形态，无先例可循。补一个 8s 旋转属「设计没要求的视觉扩展」，且要与 prefers-reduced-motion
  * 配套处理才不破坏 V4（日常使用照常）。此决策已记 dev-flow runlog（U7），可被后续裁决翻转。
+ * hero 的宿主动画例外：宿主几何类（css.fish）自带的 hover 游动 `.fishHitbox:hover .fish`
+ * 经 className 透传自然生效，不属本包自造动画。
  *
  * 槽位竞争与优先级避让（任务书约束 + 设计残留风险表第 3 行）：
  *   · 宿主官方标 OfficialBrandMark 只在 `DSH_CLIENT_BUILD_PROFILE === 'official'` 的构建里
@@ -33,6 +34,8 @@
  *   最近空闲值（永不越 -10 下界与 0 上界），区间占满则不注册并告警（回落宿主原生
  *   occupant——失败可见，不静默错位、不抛错炸掉整个插件装配）。
  */
+import { TAIJI_LOCALE_NS } from '../locale'
+import { TaijiHeroArea } from './hero-area'
 
 /**
  * 双鱼标几何：6 条 path 的 d 属性（viewBox 0 0 1200 1200 的用户单位）。
@@ -162,34 +165,53 @@ export function resolveBrandPriority(entries: readonly { options: { priority?: n
 }
 
 /**
- * 把一个品牌标记 occupant 注册进指定槽（带优先级避让）。
+ * 把一个品牌 occupant 注册进指定槽（带优先级避让）。
  *
  * @param host - 宿主 slots 面。
  * @param slotName - 目标槽（`conversation.hero.brand.mark` / `sidebar.brand.mark`）。
+ * @param occupant - 注册的组件（hero 槽 = TaijiHeroArea；sidebar 槽 = TaijiBrandMark）。
+ *   类型取 unknown 对齐宿主 `register` 的第二参数签名（两个组件的 props 形状不同，
+ *   宿主接口本身不约束组件类型）。
+ * @param registerOptions - 追加的注册选项：hero 槽声明 `locale`（宿主渲染机据此合成 `t`
+ *   座位注入组件）；sidebar 槽无文字面，不声明。
  */
-function registerBrandMark(host: BrandSlotHost, slotName: string): void {
+function registerBrandMark(
+  host: BrandSlotHost,
+  slotName: string,
+  occupant: unknown,
+  registerOptions: { locale?: string } = {},
+): void {
   host.slots.inject(slotName, () => {
     const priority = resolveBrandPriority(host.slots.entries(slotName))
     if (priority === undefined) {
       host.logger?.warn(
         `品牌槽 ${slotName} 的 (${VIEWER_BRAND_PRIORITY}, ${OFFICIAL_BRAND_PRIORITY}) 优先级区间已被占满，`
-        + '本包双鱼标本次不注册（回落宿主原生 occupant）',
+        + '本包品牌 occupant 本次不注册（回落宿主原生 occupant）',
       )
       // 返回 no-op disposer（而非裸 return）：宿主 inject 契约的 effect 形态是
       // 「disposer 或 disposer 可迭代」，空 disposer 即「本次不贡献、无可撤」。
       return () => {}
     }
-    return host.slots.register({ name: slotName, priority }, TaijiBrandMark)
+    return host.slots.register({ name: slotName, priority, ...registerOptions }, occupant)
   })
 }
 
 /**
- * 装配双鱼标：hero 槽 + 侧栏 mark 槽各注册一次。
+ * 装配品牌标记槽：hero 槽注册品牌区组件 TaijiHeroArea、sidebar 槽注册纯 mark
+ * TaijiBrandMark。
+ *
+ * hero 槽声明 `locale: TAIJI_LOCALE_NS`——宿主渲染机按（命名空间, revision）合成 `t` 座位
+ * 注入 TaijiHeroArea（与 name.tsx 同机制），故字典必须先于该槽首次渲染注册（apply.ts 的
+ * 装配序「locale → …」已保证）。
  *
  * U3 的 `client/apply.ts` 在装配期调用本函数（每个贡献点都经 ctx.effect 托管；register
  * 自身已挂调用者 fiber 的 effect，卸载即撤除）。
+ *
+ * 注：本函数引用 hero-area.tsx 的 TaijiHeroArea，而 hero-area.tsx 引用本文件的
+ * TaijiBrandMark——模块循环，两侧取值都在函数体内（惰性），esbuild bundle 与逐文件
+ * 转译两条路径均已核实安全（证据见 hero-area.tsx 头注释）。
  */
 export function installBrandMarkSlots(host: BrandSlotHost): void {
-  registerBrandMark(host, 'conversation.hero.brand.mark')
-  registerBrandMark(host, 'sidebar.brand.mark')
+  registerBrandMark(host, 'conversation.hero.brand.mark', TaijiHeroArea, { locale: TAIJI_LOCALE_NS })
+  registerBrandMark(host, 'sidebar.brand.mark', TaijiBrandMark)
 }

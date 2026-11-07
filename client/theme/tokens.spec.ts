@@ -34,11 +34,14 @@ describe('tokens 表结构', () => {
     }
   })
 
-  it('15 个 token 名与设计 §3.3.2 集合一致（13 白名单 alias + sidebar-fill + state-done）', () => {
-    expect(THEME_TOKEN_NAMES).toHaveLength(15)
-    expect(new Set(THEME_TOKEN_NAMES).size).toBe(15)
+  it('20 个 token 名 = P1 核心 15 个 + 层 2 职能分色 5 个（13 白名单 alias + sidebar-fill + state-done + link/bubble/deep-diving 族）', () => {
+    expect(THEME_TOKEN_NAMES).toHaveLength(20)
+    expect(new Set(THEME_TOKEN_NAMES).size).toBe(20)
     expect(THEME_TOKEN_NAMES).toContain('--dsw-alias-state-done-primary')
     expect(THEME_TOKEN_NAMES).toContain('--dsw-specific-sidebar-fill')
+    expect(THEME_TOKEN_NAMES).toContain('--dsw-alias-link')
+    expect(THEME_TOKEN_NAMES).toContain('--dsw-specific-bubble')
+    expect(THEME_TOKEN_NAMES).toContain('--dsw-alias-label-deep-diving')
   })
 
   it('元数据的族归属与 taiji useTaijiThemes 一致（玄/黛蓝/暖墨暗，皓/青墨/朱印亮）', () => {
@@ -60,9 +63,12 @@ describe('tokens 表结构', () => {
 })
 
 describe('与 index.js 首帧样式的一致性（V1 第 ④ 步：mount 前后不跳色）', () => {
+  // 首帧表 = P1 核心 15 个（层 2 职能分色的消费点都在 mount 后的组件里，boot 区间没有渲染内容）
+  const FIRST_FRAME_NAMES = THEME_TOKEN_NAMES.slice(0, 15)
+
   it('玄的双模表与首帧样式逐 token 同值同格式', () => {
     // index.js 以 `${token}: light-dark(${light}, ${dark});` 拼行，逐 token 做子串断言
-    for (const name of THEME_TOKEN_NAMES) {
+    for (const name of FIRST_FRAME_NAMES) {
       const modes = THEME_TOKEN_TABLES.xuan[name]
       expect(FIRST_FRAME_STYLE, `首帧样式缺少或改动了 ${name}`).toContain(
         `${name}: light-dark(${modes.light}, ${modes.dark})`,
@@ -70,9 +76,9 @@ describe('与 index.js 首帧样式的一致性（V1 第 ④ 步：mount 前后�
     }
   })
 
-  it('首帧样式声明的 token 数 = 15（首帧不藏第六个 token，覆盖层也不扩）', () => {
+  it(`首帧样式声明的 token 数 = ${FIRST_FRAME_NAMES.length}（首帧不藏第六个 token，层 2 的 5 个不进首帧）`, () => {
     const declarations = FIRST_FRAME_STYLE.match(FIRST_FRAME_DECLARATION_RE) ?? []
-    expect(declarations).toHaveLength(THEME_TOKEN_NAMES.length)
+    expect(declarations).toHaveLength(FIRST_FRAME_NAMES.length)
   })
 })
 
@@ -112,9 +118,10 @@ describe('双模取值（逐条抄自太极 style.css）', () => {
     expect(nuanmo['--dsw-alias-brand-primary'].dark).toBe('#cbbc93')
   })
 
-  it('青墨/朱印的亮支只改 accent 族（朱印另改 danger）', () => {
+  it('青墨/朱印的亮支只改 accent 族（朱印另改 danger，两者各改 link 压深档）', () => {
     const qingmo = THEME_TOKEN_TABLES.qingmo
     expect(qingmo['--dsw-alias-brand-primary'].light).toBe('#356b7a')
+    expect(qingmo['--dsw-alias-link'].light).toBe('#2d6cd4')
     // 青墨不碰阶梯与文字档：与皓同值
     expect(qingmo['--dsw-alias-bg-base'].light).toBe(THEME_TOKEN_TABLES.hao['--dsw-alias-bg-base'].light)
     expect(qingmo['--dsw-alias-state-error-primary'].light).toBe(
@@ -124,6 +131,30 @@ describe('双模取值（逐条抄自太极 style.css）', () => {
     const zhuyin = THEME_TOKEN_TABLES.zhuyin
     expect(zhuyin['--dsw-alias-brand-primary'].light).toBe('#9c4335')
     expect(zhuyin['--dsw-alias-state-error-primary'].light).toBe('#b23855')
+    expect(zhuyin['--dsw-alias-link'].light).toBe('#3163c8')
+  })
+})
+
+describe('层 2 职能分色（taiji 职能分色裁决：主行动青玉 / 链接正蓝 / 气泡中性 / 思考紫）', () => {
+  it('link 保持正蓝：玄暗支 #4d8dff（:root L75）/ 皓亮支 #2e6ae0（L307），黛蓝/暖墨暗支取各自 preset 块 link-c', () => {
+    expect(THEME_TOKEN_TABLES.xuan['--dsw-alias-link'].dark).toBe('#4d8dff')
+    expect(THEME_TOKEN_TABLES.hao['--dsw-alias-link'].light).toBe('#2e6ae0')
+    expect(THEME_TOKEN_TABLES.dailan['--dsw-alias-link'].dark).toBe('#6196f0')
+    expect(THEME_TOKEN_TABLES.nuanmo['--dsw-alias-link'].dark).toBe('#5b8fdd')
+  })
+
+  it('bubble 是中性 elevated 色不是 accent 色：暗族 = bg-elevated 派生 / 亮族独立档 #fefefe（L285）', () => {
+    expect(THEME_TOKEN_TABLES.xuan['--dsw-specific-bubble']).toEqual({ light: '#fefefe', dark: '#323236' })
+    // demo 注释：黛蓝/暖墨的 --bubble 逐块等于同块 --elevated（#31333e / #35322c）
+    expect(THEME_TOKEN_TABLES.dailan['--dsw-specific-bubble'].dark).toBe('#31333e')
+    expect(THEME_TOKEN_TABLES.nuanmo['--dsw-specific-bubble'].dark).toBe('#35322c')
+  })
+
+  it('label-deep-diving 对齐 taiji --reasoning 思考紫（与 state-done 同源值）', () => {
+    const xuan = THEME_TOKEN_TABLES.xuan
+    expect(xuan['--dsw-alias-label-deep-diving']).toEqual(xuan['--dsw-alias-state-done-primary'])
+    expect(xuan['--dsw-alias-label-deep-diving-shimmer'].light).toBe('#8a80b3')
+    expect(xuan['--dsw-alias-label-deep-diving-shimmer'].dark).toBe('#a39bbd')
   })
 })
 

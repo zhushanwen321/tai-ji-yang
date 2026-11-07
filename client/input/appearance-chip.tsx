@@ -5,7 +5,7 @@
  * 要点（cordis-client-runner 的 slot-catalog）：
  *   · 注册选项 = `{ name, id, order, label }`——id 是本包私有格子（新格追加在宿主已有条目
  *     旁，不遮蔽任何内置条目，与外观行「同 id 遮蔽」是两种不同的占位策略）；label 支持
- *     string 或 thunk（每次投影重读，可跟随语言切换），本 chip 文案只有一个中文常量，
+ *     string 或 thunk（每次读取时重新求值，可跟随语言切换），本 chip 文案只有一个中文常量，
  *     用字符串即够；
  *   · 组件会被喂宿主 standardProps（useChat / useInput 等钩子座位）——本 chip 一项都不
  *     消费，注册的壳组件全忽略不接；

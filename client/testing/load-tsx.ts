@@ -137,9 +137,29 @@ export function createTsxLoader(): TsxLoader {
     }
 
     const module = { exports: {} as Record<string, unknown> }
+    // 缓存登记先于模块体执行（对齐 Node CJS require 语义）：模块间允许循环引用——
+    // 循环方拿到「部分 exports 对象引用」，esbuild 转换产物以惰性属性访问回源
+    // （__export 的 getter + 函数体内的 (0, import_x.Y)()），顶层不取值即安全。
+    // 若登记放执行后，a → b → a 的第二次 load 会无限递归爆栈。
+    const initialExports = module.exports
+    cache.set(absPath, initialExports)
     const factory = new Function('require', 'module', 'exports', transformed.code)
-    factory(stubRequire, module, module.exports)
-    cache.set(absPath, module.exports)
+    factory(stubRequire, module, initialExports)
+    // esbuild 的 ESM→CJS 产物会整体替换 module.exports（`module.exports = __toCommonJS(...)`），
+    // 缓存与循环方仍持有旧引用——把新 exports 的各属性以惰性 getter 桥接回旧对象
+    // （getter 回源新对象，新对象自身的 __export getter 也是惰性的，两层转发安全）。
+    // 桥接在 factory 完成后进行：装载中途的循环方只在函数体内取值（运行时已就位）。
+    if (module.exports !== initialExports) {
+      const finalExports = module.exports
+      for (const key of Object.keys(finalExports)) {
+        if (!(key in initialExports)) {
+          Object.defineProperty(initialExports, key, {
+            get: () => finalExports[key],
+            enumerable: true,
+          })
+        }
+      }
+    }
     return module.exports
   }
 

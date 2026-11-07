@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { coerceThemeId, isThemeId, resolveTheme, resolveThemeTokens } from './resolve'
-import { DEFAULT_THEME_ID, THEMES, THEME_IDS, THEME_TOKEN_TABLES } from './tokens'
+import { paletteTokensFor } from './palette'
+import { DEFAULT_THEME_ID, THEMES, THEME_IDS, THEME_TOKEN_NAMES, THEME_TOKEN_TABLES } from './tokens'
 
 /**
  * 读 resolve.ts 源码（剥掉块注释与行注释）做静态断言。
@@ -14,9 +15,20 @@ const RESOLVE_SOURCE = readFileSync(new URL('./resolve.ts', import.meta.url), 'u
 const RESOLVE_CODE = RESOLVE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '')
 
 describe('resolve 纯求值语义', () => {
-  it('每个配色 id 解析到自己的双模表', () => {
+  it('每个配色 id 解析到自己的双模表（alias 层 + 静态调色板层一次合并）', () => {
     for (const id of THEME_IDS) {
-      expect(resolveThemeTokens(id)).toBe(THEME_TOKEN_TABLES[id])
+      const resolved = resolveThemeTokens(id)
+      // alias 职能分色层：20 个 token 逐个与 THEME_TOKEN_TABLES[id] 同引用同值
+      for (const name of THEME_TOKEN_NAMES) {
+        expect(resolved[name]).toBe(THEME_TOKEN_TABLES[id][name])
+      }
+      // 静态调色板层：32 个 static token（中性 22 档 + deepseek 10 档）全部随色叠入
+      const palette = paletteTokensFor(id)
+      for (const name of Object.keys(palette)) {
+        expect(resolved[name]).toEqual(palette[name])
+      }
+      // 两层并集即全表：无缺、无多、无键碰撞
+      expect(Object.keys(resolved)).toHaveLength(THEME_TOKEN_NAMES.length + Object.keys(palette).length)
     }
   })
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyStructureLayer, applyThemeLayer, applyTokenLayer, STRUCTURE_LAYER_SOURCE, THEME_LAYER_SOURCE } from './apply'
 import { resolveThemeTokens } from './resolve'
+import { paletteTokensFor } from './palette'
 import { THEME_TOKEN_NAMES, type TokenTable } from './tokens'
 import { STRUCTURE_TOKENS } from './structure'
 
@@ -39,7 +40,10 @@ describe('applyThemeLayer 装配', () => {
     expect(host.layers).toHaveLength(1)
     expect(host.layers[0].source).toBe(THEME_LAYER_SOURCE)
     expect(host.layers[0].tokens).toBe(resolveThemeTokens('xuan'))
-    expect(Object.keys(host.layers[0].tokens)).toHaveLength(THEME_TOKEN_NAMES.length)
+    // 整层表 = alias 双模表（20）+ 静态调色板（32，paletteTokensFor 与 resolve 同源）
+    expect(Object.keys(host.layers[0].tokens)).toHaveLength(
+      THEME_TOKEN_NAMES.length + Object.keys(paletteTokensFor('xuan')).length,
+    )
   })
 
   it('换色 = 同 source 整层替换（不撤销重建，不堆积 effect）', () => {
