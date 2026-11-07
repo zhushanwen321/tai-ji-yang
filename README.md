@@ -30,7 +30,7 @@ node scripts/build-client.mjs     # 产出 lib/index.js（Node 半场）与 lib/
 - 构建只依赖本仓与 npm 上可得的通用打包器，不引用任何 DSH 源码仓库路径。
 - 包管理器统一为 pnpm，唯一权威锁文件 = 仓库根的 `pnpm-lock.yaml`（npm 的 `package-lock.json` 不入库：pnpm 不读它，混入库会让复现构建失去基准）。
 - 产物自带自检：浏览器半场的 `require` 字面量必须落在宿主模块基线内、注入行不得含结束标签、被禁 token 不得出现。
-- 首次 `pnpm install` 可能被 pnpm ≥10 拦下打包器的安装脚本，按「排障 → build scripts approval」处理。
+- 安装脚本放行已在仓内声明：`pnpm-workspace.yaml` 的 `allowBuilds` 预批 esbuild，因此 `pnpm install` 干净通过。若用 pnpm < 11（设置仍在 package.json 的 `pnpm` 字段）且仍被拦，执行 `pnpm approve-builds` 勾选 esbuild 即可。
 
 ## 安装
 

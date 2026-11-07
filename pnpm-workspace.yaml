@@ -1,0 +1,7 @@
+# pnpm 11 起，包级设置的家从 package.json 的 "pnpm" 字段迁到本文件。
+# esbuild 的平台二进制由 optionalDependencies 直接提供（postinstall 只是冗余校验），
+# 但 pnpm ≥10 默认拦下安装脚本并让 `pnpm install` 以非零退出——克隆本仓按 README
+# 走「pnpm install → node scripts/build-client.mjs」的用户会每次都撞一次。
+# 预声明放行使该流程干净通过；esbuild 无副作用安装脚本，放行不扩大信任面。
+allowBuilds:
+  esbuild: true
