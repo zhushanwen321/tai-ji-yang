@@ -9,7 +9,7 @@
  *   ② `--dsw-font-*` 复合简写覆盖：宿主该族简写内含字号与字族（`--dsw-font-base-16` 内含
  *      `-font-size` / `-font-family` 子 token），整段覆盖会让字号轴一起失效（RL9）。
  *   ③ 以 `-font-size` / `-font-family` 结尾的子 token 覆盖：同上。只允许 `*-font-weight` /
- *      `*-line-height` / `*-letter-spacing` 这类不含字号与字族的独立子 token（RL9）。
+ *      `*-line-height` 两类独立子 token（RL9，D7 明示放行且仅放行这两类）。
  *   ④ 宿主私有几何变量 `--dsh-frame-top-clearance` / `--dsh-windows-titlebar-height`：写它们等于
  *      改写窗口顶条几何，而布局几何归宿主（RL3）。
  *   ⑤ `theme.register(` 调用：注册第三方主题 id 会让宿主把 `html[data-ds-theme-source]` 固定成该 id
@@ -67,16 +67,18 @@ const TOKEN_RULES = [
   {
     id: 'RL9:font-shorthand',
     describe:
-      '覆盖 --dsw-font-* 复合简写会连带冻结字号与字族轴（*-font-weight / *-line-height 等不含字号与字族的独立子 token 除外——D7 明示放行）',
+      '覆盖 --dsw-font-* 复合简写会连带冻结字号与字族轴（仅 *-font-weight / *-line-height 两类独立子 token 除外——D7 明示放行；其余 --dsw-font-* 变体均越界）',
     // 排除项语义：复合简写 = `--dsw-font-<名>`（值形如 `<weight> <size>/<line-height> <family>`，
-    // 整段覆盖会连字号与字族一起冻结）。以 `-font-weight` / `-line-height` / `-letter-spacing` /
-    // `-font-style` 结尾的是同名独立子 token，值域只有单一性质（权重 / 倍率 / 间距 / 斜体），
-    // 覆盖它们不碰用户字号与字族——宿主真实子 token 全在 --dsw-font- 命名空间下（如
-    // `--dsw-font-markdown-base-font-weight`），不排除就会把 D7 允许的覆盖全误判为简写
-    // （U2 落盘 structure.ts 时被误报 48 处，修法经 U2 runlog 移交本单元）。
+    // 整段覆盖会连字号与字族一起冻结）。以 `-font-weight` / `-line-height` 结尾的是同名独立子
+    // token，值域只有单一性质（权重 / 倍率），覆盖它们不碰用户字号与字族——宿主真实子 token
+    // 全在 --dsw-font- 命名空间下（如 `--dsw-font-markdown-base-font-weight`），不排除就会把
+    // D7 允许的覆盖全误判为简写（U2 落盘 structure.ts 时被误报 48 处，修法经 U2 runlog 移交
+    // 本单元）。放行集严格等于 D7 / RL9 声明的两类：`-letter-spacing`（D7 明示「不做字间距」）
+    // 与 `-font-style`（D7 未放行）都不在排除集内，写它们同样判越界；工程上确需放行时先在
+    // 设计 D7 与 RL9 登记放行集合，再改这里的正则。
     test: (token) =>
       token.startsWith('--dsw-font-') &&
-      !/-(?:font-weight|line-height|letter-spacing|font-style)$/.test(token),
+      !/-(?:font-weight|line-height)$/.test(token),
   },
   {
     id: 'RL3:host-geometry-var',
