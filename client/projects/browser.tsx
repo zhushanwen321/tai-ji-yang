@@ -754,12 +754,12 @@ export function ArchiveSubview({ t, rows, filter, onBack, onFilterChange, onUnar
         </button>
         <span className="taiji-pb-a-title">{t('projects.archivedCount', { n: rows.length })}</span>
       </div>
-      <div className="taiji-pb-chips">
+      <div className="taiji-pb-buckets">
         {ARCHIVE_FILTERS.map((key) => (
           <button
             key={key}
             type="button"
-            className={cx('taiji-pb-chip', filter === key && 'taiji-pb-chip-on')}
+            className={cx('taiji-pb-bucket', filter === key && 'taiji-pb-bucket-on')}
             data-filter={key}
             aria-pressed={filter === key}
             onClick={() => { onFilterChange(key) }}

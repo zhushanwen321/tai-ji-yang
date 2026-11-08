@@ -16,6 +16,8 @@ const NAME_PATH = fileURLToPath(new URL('./name.tsx', import.meta.url))
 interface NameModule {
   TaijiBrandName: (props: { t: (key: string) => string }) => FakeElement
   installBrandNameSlot: (host: unknown) => void
+  readShellInfo: (globalScope?: typeof globalThis) => { version: string; dshVersion?: string } | null
+  formatVersionLine: (info: { version: string; dshVersion?: string } | null) => string | null
 }
 
 /** 假宿主 slots（与 mark.test.ts 同构：inject 等 declare 才跑）。 */
@@ -96,16 +98,78 @@ describe('installBrandNameSlot 装配', () => {
 
 describe('TaijiBrandName 组件输出', () => {
   const name = loadName()
+  const GLOBAL_KEY = '__TAIJI_SHELL_INFO__'
 
-  it('渲染文字 span，内容 = 当前语言的产品名（太极 / TaiJi）', () => {
-    const root = name.TaijiBrandName({ t: (key: string) => zh[key as keyof typeof zh] })
-    expect(root.type).toBe('span')
-    expect(textOf(root)).toBe('太极')
-    expect(collectElements(root)).toHaveLength(1) // 不套多余结构：宿主 .brandName 容器已管排版
+  /** 组件直读 globalThis——测试里注入再还原（本文件内串行，无并发污染）。 */
+  function withShellInfo(value: unknown, run: () => void) {
+    const saved = (globalThis as Record<string, unknown>)[GLOBAL_KEY]
+    ;(globalThis as Record<string, unknown>)[GLOBAL_KEY] = value
+    try {
+      run()
+    } finally {
+      if (saved === undefined) delete (globalThis as Record<string, unknown>)[GLOBAL_KEY]
+      else (globalThis as Record<string, unknown>)[GLOBAL_KEY] = saved
+    }
+  }
+
+  it('渲染品牌栈：产品名 span；壳信息缺席时无版本行（降级形态）', () => {
+    withShellInfo(undefined, () => {
+      const root = name.TaijiBrandName({ t: (key: string) => zh[key as keyof typeof zh] })
+      expect(root.type).toBe('span')
+      expect(root.props['className']).toBe('taiji-brand-stack')
+      const elements = collectElements(root) // 含根递归：[0]=栈 [1]=产品名
+      expect(elements).toHaveLength(2)
+      expect(elements[1].props['className']).toBe('taiji-brand-name')
+      expect(textOf(root)).toBe('太极')
+    })
+  })
+
+  it('壳信息带 dsh 版本时渲染版本行（v{壳} · dsh v{宿主}，taiji versionLabel 同构）', () => {
+    withShellInfo({ version: '0.1.0', dshVersion: '0.2.2-rc.1' }, () => {
+      const root = name.TaijiBrandName({ t: (key: string) => zh[key as keyof typeof zh] })
+      const elements = collectElements(root) // [0]=栈 [1]=产品名 [2]=版本行
+      expect(elements).toHaveLength(3)
+      expect(elements[2].props['className']).toBe('taiji-brand-version')
+      expect(textOf(elements[2])).toBe('v0.1.0 · dsh v0.2.2-rc.1')
+      expect(textOf(root)).toBe('太极v0.1.0 · dsh v0.2.2-rc.1')
+    })
+  })
+
+  it('壳信息只有壳版本时版本行只显 v{壳}（内核版本缺席的降级）', () => {
+    withShellInfo({ version: '0.1.0' }, () => {
+      const root = name.TaijiBrandName({ t: () => 'TaiJi' })
+      const elements = collectElements(root)
+      expect(elements).toHaveLength(3)
+      expect(textOf(elements[2])).toBe('v0.1.0')
+    })
   })
 
   it('英文环境渲染 TaiJi（大小写按太极侧 en-US/app.ts 原样）', () => {
     const root = name.TaijiBrandName({ t: () => 'TaiJi' })
     expect(textOf(root)).toBe('TaiJi')
+  })
+})
+
+describe('readShellInfo / formatVersionLine', () => {
+  const name = loadName()
+
+  it('readShellInfo：合法对象原样收窄；dshVersion 数字串化', () => {
+    expect(name.readShellInfo({ __TAIJI_SHELL_INFO__: { version: '0.1.0' } } as typeof globalThis))
+      .toEqual({ version: '0.1.0' })
+    expect(name.readShellInfo({ __TAIJI_SHELL_INFO__: { version: '0.1.0', dshVersion: 1 } } as typeof globalThis))
+      .toEqual({ version: '0.1.0', dshVersion: '1' })
+  })
+
+  it('readShellInfo：缺席 / 非对象 / version 非法 → null（版本行消失，产品名不受影响）', () => {
+    expect(name.readShellInfo({} as typeof globalThis)).toBeNull()
+    expect(name.readShellInfo({ __TAIJI_SHELL_INFO__: 'junk' } as typeof globalThis)).toBeNull()
+    expect(name.readShellInfo({ __TAIJI_SHELL_INFO__: { dshVersion: '0.2.0' } } as typeof globalThis)).toBeNull()
+    expect(name.readShellInfo({ __TAIJI_SHELL_INFO__: { version: '' } } as typeof globalThis)).toBeNull()
+  })
+
+  it('formatVersionLine：null → null；单版本 → v{壳}；双版本 → v{壳} · dsh v{宿主}', () => {
+    expect(name.formatVersionLine(null)).toBeNull()
+    expect(name.formatVersionLine({ version: '0.1.0' })).toBe('v0.1.0')
+    expect(name.formatVersionLine({ version: '0.1.0', dshVersion: '0.1.7-rc.2' })).toBe('v0.1.0 · dsh v0.1.7-rc.2')
   })
 })

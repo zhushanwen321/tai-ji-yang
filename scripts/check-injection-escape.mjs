@@ -51,6 +51,26 @@ function assertRow(row, index) {
   if (lower.includes(SCRIPT_END)) throw new Error(`第 ${index} 行 text 含 script 元素的结束标签`)
 }
 
+/** 断言一行注入满足 global 行的全部约束（结构 + JSON 可序列化）。
+ *
+ * 结束标签防护在宿主侧（`renderRow` 的 global 分支对 `<` 做 `\u003c` 转义），插件侧只需
+ * 保证行的形状与值可序列化——宿主对其做 JSON.stringify 嵌进 `globalThis["…"] = <json>`。
+ */
+function assertGlobalRow(row, index) {
+  if (row === null || typeof row !== 'object') throw new Error(`第 ${index} 行不是对象`)
+  if (row.kind !== 'global') throw new Error(`第 ${index} 行 kind 应为 global，实为 ${String(row.kind)}`)
+  if (typeof row.name !== 'string' || row.name === '') throw new Error(`第 ${index} 行 name 缺失或非字符串`)
+  const keys = Object.keys(row).sort()
+  if (keys.length !== 3 || keys[0] !== 'kind' || keys[1] !== 'name' || keys[2] !== 'value') {
+    throw new Error(`第 ${index} 行应只含 kind/name/value，实为 ${keys.join(', ')}`)
+  }
+  try {
+    if (JSON.stringify(row.value) === undefined) throw new Error('value 不可 JSON 序列化')
+  } catch (error) {
+    throw new Error(`第 ${index} 行 value 不可 JSON 序列化：${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
 /** 用假 ctx 触发一次注入收集，返回推入的行。
  *
  * 假 ctx 的职责只在于「让装配入口跑完并把行交出来」，因此除订阅外还给 `effect`（探针反注册器的
@@ -96,17 +116,22 @@ check('Node 半场导出了 apply 与插件名', () => {
   if (entry.name !== packageJson.name) throw new Error(`插件名 ${String(entry.name)} 与 package.json name ${packageJson.name} 不一致`)
 })
 
-check('apply 订阅 webserver/index-inject 并向表推恰好一行 style', () => {
+check('apply 订阅 webserver/index-inject 并向表推 style + global 各一行', () => {
   const rows = collectRows(entry, '首次 emit')
-  if (rows.length !== 1) throw new Error(`一次 emit 应推 1 行，实为 ${rows.length} 行`)
+  if (rows.length !== 2) throw new Error(`一次 emit 应推 2 行（style + global），实为 ${rows.length} 行`)
   assertRow(rows[0], 0)
+  assertGlobalRow(rows[1], 1)
+  if (rows[1].name !== entry.SHELL_INFO_GLOBAL) throw new Error(`global 行 name 应为 SHELL_INFO_GLOBAL（${String(entry.SHELL_INFO_GLOBAL)}），实为 ${String(rows[1].name)}`)
 })
 
-check('两次 emit 各自推一行（不是「首帧快照」语义）', () => {
+check('两次 emit 各自推当前两行（不是「首帧快照」语义）', () => {
   const first = collectRows(entry, '第 1 次 emit')
   const second = collectRows(entry, '第 2 次 emit')
-  if (first.length !== 1 || second.length !== 1) throw new Error(`两次 emit 各应为 1 行，实为 ${first.length} / ${second.length}`)
+  if (first.length !== 2 || second.length !== 2) throw new Error(`两次 emit 各应为 2 行，实为 ${first.length} / ${second.length}`)
   if (first[0].text !== second[0].text) throw new Error('两次 emit 推出的行文本不一致，注入表语义要求「推当前行」')
+  if (JSON.stringify(first[1].value) !== JSON.stringify(second[1].value)) {
+    throw new Error('两次 emit 推出的 global 行值不一致，注入表语义要求「推当前行」')
+  }
 })
 
 check('推入的行与导出的 FIRST_FRAME_ROW 同一取值', () => {
@@ -125,6 +150,23 @@ check('负样本：含结束标签的行会被本断言拒绝（证明断言非�
     rejected = true
   }
   if (!rejected) throw new Error('合成坏行未被拒绝，说明结束标签断言失效')
+})
+
+check('负样本：global 行缺 name / value 不可序列化会被本断言拒绝', () => {
+  let rejectedName = false
+  try {
+    assertGlobalRow({ kind: 'global', value: { version: '0.1.0' } }, 0)
+  } catch {
+    rejectedName = true
+  }
+  if (!rejectedName) throw new Error('缺 name 的 global 行未被拒绝，说明结构断言失效')
+  let rejectedValue = false
+  try {
+    assertGlobalRow({ kind: 'global', name: 'x', value: { bad: BigInt(1) } }, 0)
+  } catch {
+    rejectedValue = true
+  }
+  if (!rejectedValue) throw new Error('value 含 BigInt 的 global 行未被拒绝，说明可序列化断言失效')
 })
 
 if (results.includes(false)) {

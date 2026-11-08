@@ -194,8 +194,9 @@ await checkAsync('F. 缺承载时 apply 不抛，注入订阅照旧（缺承载�
   const { ctx, dispose } = await mount()
   const rows = []
   ctx.emit('webserver/index-inject', rows, {})
-  if (rows.length !== 1) throw new Error(`缺承载时注入订阅应仍在（推 1 行），实推 ${rows.length} 行`)
-  if (rows[0]?.kind !== 'style') throw new Error(`注入行 kind 应为 style，实为 ${String(rows[0]?.kind)}`)
+  if (rows.length !== 2) throw new Error(`缺承载时注入订阅应仍在（推 style + global 2 行），实推 ${rows.length} 行`)
+  if (rows[0]?.kind !== 'style') throw new Error(`首行 kind 应为 style，实为 ${String(rows[0]?.kind)}`)
+  if (rows[1]?.kind !== 'global') throw new Error(`次行 kind 应为 global，实为 ${String(rows[1]?.kind)}`)
   await dispose()
 })
 

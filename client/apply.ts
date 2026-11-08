@@ -22,6 +22,7 @@
  */
 import { installBrandMarkSlots, type BrandSlotHost } from './brand/mark'
 import { installBrandNameSlot } from './brand/name'
+import { installSessionStatusIcon } from './head/session-header'
 import { installAppearanceChip } from './input/appearance-chip'
 import { installLocale, type LocaleInstallHost } from './locale'
 import { AppearancePersistence, PLUGIN_ENTRY_ID, type ConfigFormsHost } from './persist'
@@ -176,6 +177,12 @@ export function apply(ctx: ClientApplyContext): void {
   //    列表——项目是本包逻辑分组实体，与宿主工作区/目录无关。会话行行首不放品牌图标
   //    （用户裁决：状态点之外留空）。
   installProjectsBrowser(ctx, { store: projectStore })
+
+  // ⑧′ 会话头 taiji 化（client/head/）：actions 槽增补 13px 状态图标（list 追加，不遮蔽）；
+  //    40px 单行容器与「对话|Trace」分段控件的视觉重塑由 head 的全局 CSS 承担（宿主 DOM
+  //    保留——整槽替换会孤儿化 utilities 里的「打开方式」按钮，见 head/session-header.tsx
+  //    头注释的架构裁决）。
+  installSessionStatusIcon(ctx)
 
   // ⑨ 反注册持久通道的镜像订阅。form 本体归 ConfigForms 服务所有（跨插件共享），
   //    本包只撤自己的监听，不 dispose 它。

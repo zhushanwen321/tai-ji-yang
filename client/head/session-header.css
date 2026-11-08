@@ -1,0 +1,181 @@
+/* client/head/session-header.css —— 会话头 taiji 化重塑（全局覆盖宿主 ui-conversation 头）。
+ *
+ * 架构：不整槽替换 conversation.session.header（占用者拿不到子槽 renderSlot——它只注入给
+ * 自带 children 声明的注册项，而子槽声明权唯一、在宿主手里；强替换会让 utilities 里的
+ * 「打开方式」按钮与 corner 的右侧栏开关再也渲染不出来），改为「宿主 DOM 保留 + 本表
+ * 重塑 + actions 槽注册 13px 状态图标（session-header.tsx）」。
+ *
+ * 选择器纪律：宿主样式是 CSS Modules（类名带构建期 hash 前缀，如 wSkVaW_titleRow），hash
+ * 随宿主构建漂移，故宿主元素一律锚**结构属性或 local 名子串**（[class*="titleRow"] 等——
+ * local 名在 hash 前缀后原样保留，实测 wSkVaW_header / wSkVaW_titleRow / wSkVaW_tabs）。
+ * 整表作用域收在 header:has([data-conversation-header-leading])（宿主 ConversationHeader
+ * 的常驻结构属性，全页唯一）之下，不外溢。取色全部经宿主令牌 var(--dsw-alias-*)。
+ *
+ * 视觉权威 = taiji PanelHeader.vue:19-20 + TraceViewToggle.vue（逐值）：
+ *   · 行高 40px、px 14px、gap 8px（h-[40px] px-3.5 gap-2）；
+ *   · 底边框 1px hairline（border-b border-hairline → --dsw-alias-border-l1）；
+ *   · 会话名 14px 次要色 truncate（text-[length:var(--text-base)] text-neutral-mid）；
+ *   · 「对话 | Trace」分段控件：容器 30px 高、底 --bg-input（→ bg-layer-1）、padding 2px、
+ *     圆角 6px；按钮 26px 高、px 10px、13px 字；激活 = --sel-bg（accent 7% 混底）+ 字
+ *     --neutral-fg + inset 1px --sel-edge（accent 40%）；未激活 hover 仅提字色。
+ */
+
+/* ── 1. 容器：grid 双行 → 40px 单行 flex ────────────────────────────────────────
+ * 宿主原形态：grid[auto 1fr] + 第二行视图标签页（min-height 76px；无标签页时回落约 50px）。
+ * 改法：容器转 flex；titleRow 与 tabs 的无类包装 div 用 display:contents 提升为容器直接
+ * 子项，titleRow 占满剩余宽（min-width:0 保标题 truncate 链），tabs 作为行尾项（在 corner
+ * 之后，与 taiji「分段控件在 drawer 钮之前」次序相反——flex 提升无法跨父重排，接受此偏差）。
+ * 空会话态（headerBlank）：宿主隐藏标题簇只留 corner，同样 40px 单行、边框保留（taiji 卡头
+ * 常驻带边框）。
+ */
+header:has([data-conversation-header-leading]) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+header:has([data-conversation-header-leading]) > div:last-child {
+  display: contents;
+}
+
+header:has([data-conversation-header-leading]) [class*="titleRow"] {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 40px;
+  gap: 8px;
+}
+
+/* ── 2. 标题：14px 次要色、单行省略 ────────────────────────────────────────────
+ * 宿主面包屑保留导航能力（子代理谱系可点回父级；taiji 无此概念，DSH 保留），只做排版收敛：
+ * 当前标题 14px/常规/次要色 truncate；祖先节点与分隔符同色降不透明度。
+ */
+header:has([data-conversation-header-leading]) [class*="titleCluster"] {
+  flex: 1;
+  min-width: 0;
+  gap: 8px;
+}
+
+header:has([data-conversation-header-leading]) [class*="crumbs"] {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+header:has([data-conversation-header-leading]) [class*="crumbCurrent"] {
+  color: var(--dsw-alias-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+header:has([data-conversation-header-leading]) [class*="crumb"]:not([class*="crumbCurrent"]),
+header:has([data-conversation-header-leading]) [class*="crumbSep"] {
+  color: var(--dsw-alias-label-secondary);
+  opacity: 0.66;
+}
+
+/* ── 3. actions 簇：状态图标排到标题前；预设标签隐藏 ──────────────────────────────
+ * taiji 行首 = [状态图标][会话名]（PanelHeader.vue:75-91）。actions 簇（本包状态图标 +
+ * 宿主 AgentPresetLabel）经 order:-1 排到面包屑之前；AgentPresetLabel 是只读 span（会话
+ * 组成开聊后固定，预设切换在新建屏——宿主组件头注释自述），按 taiji「卡头只留会话级控件」
+ * 隐藏，作用域钉死在 headerActions 内的 _label 子串，不波及 utilities 里同名类。
+ */
+header:has([data-conversation-header-leading]) [class*="headerActions"] {
+  order: -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+header:has([data-conversation-header-leading]) [class*="headerActions"] [class*="_label"] {
+  display: none;
+}
+
+/* 状态图标（session-header.tsx 渲染）：13px 语义色；run 态旋转（速度与 browser.css 的
+ * 状态点同款 0.9s），reduced-motion 归零。 */
+.taiji-sh-status {
+  flex: none;
+}
+
+.taiji-sh-status-accent {
+  color: var(--dsw-alias-brand-primary);
+}
+
+.taiji-sh-status-warn {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.taiji-sh-status-spin {
+  animation: taiji-sh-spin 0.9s linear infinite;
+}
+
+@keyframes taiji-sh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .taiji-sh-status-spin {
+    animation: none;
+  }
+}
+
+/* ── 4. More ⋯ 隐藏 ────────────────────────────────────────────────────────────
+ * taiji 的三点菜单整项 DEFERRED 不渲染（PanelHeader.vue:145）。DSH More 菜单的独有项
+ * （重命名 / 归档 / 打开方式子菜单）在侧栏会话行与 utilities 的「打开方式」按钮里都有
+ * 等价入口，隐藏不丢功能。
+ */
+header:has([data-conversation-header-leading]) [class*="headerMenuButton"] {
+  display: none;
+}
+
+/* ── 5. 第二行标签页 → taiji 分段控件（行尾） ────────────────────────────────────
+ * 实测（隔离环境探针）：tablist 的 role 属性就挂在宿主 .tabs 轨道本体上（无独立内层容器），
+ * 故分段容器样式直接锚 [role=tablist]（结构属性，不随 CSS Modules hash 漂移）；按钮为
+ * 其直接子按钮（宿主 .tab / 激活 .tabActive，激活态改锚 aria-selected——宿主按钮上有）。
+ */
+header:has([data-conversation-header-leading]) [role="tablist"] {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+header:has([data-conversation-header-leading]) [role="tablist"] > button {
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  header:has([data-conversation-header-leading]) [role="tablist"] > button:not([aria-selected="true"]):hover {
+    color: var(--dsw-alias-label-primary);
+    background: transparent;
+  }
+}
+
+/* 激活态：主文字色 + 品牌色 7% 混底 + 40% 品牌色 1px 内描边（taiji --sel-bg/--sel-edge）。 */
+header:has([data-conversation-header-leading]) [role="tablist"] > button[aria-selected="true"] {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 7%, var(--dsw-alias-bg-overlay));
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-brand-primary) 40%, transparent);
+}

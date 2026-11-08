@@ -1246,7 +1246,7 @@ describe('ArchiveSubview（归档子视图）', () => {
   it('渲染：返回钮 + 标题计数 + chips 全档计数（选中 all）+ 归档行（标题/时间/恢复钮）', () => {
     const { els } = view()
     expect(textOf(elementsWithClass(els, 'taiji-pb-a-title')[0]!)).toBe('已归档 (4)')
-    const chips = elementsWithClass(els, 'taiji-pb-chip')
+    const chips = elementsWithClass(els, 'taiji-pb-bucket')
     expect(chips.map((chip) => textOf(chip))).toEqual(['全部 4', '1天内 1', '2-3天 1', '4-7天 1', '7天+ 1'])
     expect(chips[0]!.props['aria-pressed']).toBe(true)
     expect(chips.slice(1).every((chip) => chip.props['aria-pressed'] === false)).toBe(true)
@@ -1258,7 +1258,7 @@ describe('ArchiveSubview（归档子视图）', () => {
   it('filter 过滤行（d3 档只显 2 天前那行）；点 chip → onFilterChange(档)', () => {
     const { els, events } = view({ filter: 'd3' })
     expect(elementsWithClass(els, 'taiji-pb-a-row').map((row) => row.props['data-session-id'])).toEqual(['a2'])
-    const chips = elementsWithClass(els, 'taiji-pb-chip')
+    const chips = elementsWithClass(els, 'taiji-pb-bucket')
     expect(chips[2]!.props['aria-pressed']).toBe(true)
     ;(chips[4]!.props.onClick as () => void)()
     expect(events).toEqual([{ kind: 'filter', value: 'older' }])

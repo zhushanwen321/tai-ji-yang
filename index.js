@@ -82,6 +82,10 @@
  * 它不进浏览器 bundle（`client/` 零 import），因此 `scripts/check-require-baseline.mjs`
  * 审计的宿主模块基线不受影响。
  */
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import z from '@deepseek-ai/schemastery'
 
 /**
@@ -134,6 +138,109 @@ export const FIRST_FRAME_STYLE = [
 
 /** 注入行的结构（宿主 `IndexInjection` 的 style 分支：只有 `kind` 与 `text`）。 */
 export const FIRST_FRAME_ROW = Object.freeze({ kind: 'style', text: FIRST_FRAME_STYLE })
+
+// ── 壳信息（版本行）：Node 半场解析、`global` 注入行递给浏览器半场 ───────────────────
+
+/**
+ * 注入到页面 `globalThis` 的壳信息属性名。宿主把 `global` 行渲染成 head 里先于一切脚本的
+ * `globalThis["…"] = <json>` 赋值（`webserver/injections.ts` 的 renderRow，`<` 已转义），
+ * 浏览器半场 `client/brand/name.tsx` 读取它渲染品牌区版本行。幂等重读：读不到 = 版本行降级
+ * 只显本包版本（taiji 的 versionLabel 同款降级：piVersion 没到就只显 `v{app}`）。
+ */
+export const SHELL_INFO_GLOBAL = '__TAIJI_SHELL_INFO__'
+
+/**
+ * 读一份 package.json 的 version 字段。
+ *
+ * @param {string} file - 绝对路径（桌面形态下可能是 asar 内路径——Electron 的 fs 补丁按字符串
+ *   路径拦截，readFileSync 直读即透进 asar）。
+ * @returns {string | undefined} version；任何读失败都归 undefined（降级，不抛）。
+ */
+function readJsonVersion(file) {
+  try {
+    const version = JSON.parse(readFileSync(file, 'utf8')).version
+    return typeof version === 'string' && version !== '' ? version : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * 桌面宿主形态下解析运行中的 DSH 版本。
+ *
+ * 桌面进程的 argv 直接点名 asar 里的 DSH 运行时根（实测：`DeepSeek Harness --expose-internals
+ * …/app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js …/app.asar/dsh
+ * <profile> …`）。这是唯一可靠来源——桌面 profile 用 `link:` 直链本仓库，插件位置的向上
+ * 模块解析命中不了 asar 里的宿主副本。版本读 app-boot 包（宿主自己的 getDshRuntimeVersion
+ * 同源：DSH 运行时版本 = app-boot 的 package.json version）。
+ *
+ * @param {readonly string[]} argv - 进程参数（注入参数仅为可测性，缺省用真实 process.argv）。
+ * @returns {string | undefined} 命中 asar dsh 根且其 app-boot 可读时给版本，否则 undefined。
+ */
+export function desktopRuntimeVersion(argv = process.argv) {
+  const root = argv.find((arg) => arg.includes('app.asar') && /[\\/]dsh$/.test(arg))
+  if (root === undefined) return undefined
+  return readJsonVersion(join(root, 'node_modules', '@deepseek-ai', 'dsh-app-boot', 'package.json'))
+}
+
+/**
+ * CLI 宿主形态（`dsh web`）下解析运行中的 DSH 版本。
+ *
+ * `dsh plugin add` 的安装锚点是 dsh 自己的 package.json（profile-boot 的 INSTALL_ANCHOR），
+ * 插件落在 dsh 的 node_modules 树下，从插件位置向上解析 `@deepseek-ai/dsh` 即命中**正在
+ * 运行的**那一份。桌面形态这条路会解析到机器上另一份 dsh 安装（版本错报），所以它只在
+ * 桌面形态未命中时作为第二优先级。
+ *
+ * @returns {string | undefined} 解析命中且可读时给版本，否则 undefined。
+ */
+export function cliRuntimeVersion() {
+  try {
+    // createRequire 而非 import.meta.resolve：后者在部分运行时（Electron 内置 Node）仍带实验旗。
+    // resolve 返回的是路径字符串（不是 URL），直接读。
+    const manifest = createRequire(import.meta.url).resolve('@deepseek-ai/dsh/package.json')
+    return readJsonVersion(manifest)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * 本包自己的版本。入口在源码（`index.js`）与产物（`lib/index.js`）两个位置装载，manifest
+ * 分别在同目录与上一层——按 manifest 名匹配向上找（最多四层），两种位置都命中；找不到给
+ * '0.0.0'（版本行降级显示，不抛）。
+ *
+ * 惰性求值 + 记忆化：模块装载期 `name` 导出尚在 TDZ，首次调用（buildShellInfo）时模块已
+ * 完整求值。
+ */
+let ownVersionMemo
+function ownVersion() {
+  if (ownVersionMemo !== undefined) return ownVersionMemo
+  let dir = fileURLToPath(new URL('.', import.meta.url))
+  for (let depth = 0; depth < 4; depth += 1) {
+    try {
+      const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
+      if (manifest.name === 'tai-ji-yang-shell') {
+        ownVersionMemo = typeof manifest.version === 'string' && manifest.version !== '' ? manifest.version : '0.0.0'
+        return ownVersionMemo
+      }
+    } catch { /* 逐层试，读不到就继续向上 */ }
+    const parent = join(dir, '..')
+    if (parent === dir) break
+    dir = parent
+  }
+  ownVersionMemo = '0.0.0'
+  return ownVersionMemo
+}
+
+/** 壳信息的形状：`dshVersion` 只在解析到时携带（缺席即降级）。 */
+export function buildShellInfo(argv = process.argv) {
+  const dshVersion = desktopRuntimeVersion(argv) ?? cliRuntimeVersion()
+  return { version: ownVersion(), ...(dshVersion === undefined ? {} : { dshVersion }) }
+}
+
+/** 壳信息 `global` 注入行（宿主 IndexInjection 的 global 分支：kind/name/value）。 */
+export const SHELL_INFO_ROW_FACTORY = (argv = process.argv) =>
+  Object.freeze({ kind: 'global', name: SHELL_INFO_GLOBAL, value: buildShellInfo(argv) })
 
 /**
  * 本包的插件 Config：持久状态的宿主侧声明（设计 §3.3.2 / D2「存宿主管辖的通道」）。
@@ -270,6 +377,8 @@ export function apply(ctx) {
   ctx.on('webserver/index-inject', (table) => {
     // 事件语义是「收集当前注入表」（每次 index 渲染都 emit），故每次 emit 都推当前行。
     table.push({ kind: 'style', text: FIRST_FRAME_STYLE })
+    // 壳信息 global 行：宿主渲染成 head 里先于一切脚本的 globalThis 赋值（版本解析见上节）。
+    table.push({ kind: 'global', name: SHELL_INFO_GLOBAL, value: buildShellInfo() })
   })
   // 装载期诊断（§3.3.9 / V8）：与上面的订阅完全独立——判定缺 web 承载也不改装配，
   // 反注册器随本 fiber 卸载撤销待决判定。

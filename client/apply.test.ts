@@ -392,11 +392,12 @@ describe('client/apply 装配入口', () => {
       'conversation.input.left',
       'settings.section',
       'sidebar.workspaces',
+      'conversation.session.header.actions',
     ])
-    expect(harness.log.slotRegistrations).toHaveLength(7)
+    expect(harness.log.slotRegistrations).toHaveLength(8)
     // locale 字典 1 + 主题层 1 + 结构层 1 + 持久订阅 1 + ProjectStore 反注册 1
-    // + 七个槽位 inject 各把注册包成嵌套 effect 1 + 持久反注册 1
-    expect(harness.effects).toHaveLength(13)
+    // + 八个槽位 inject 各把注册包成嵌套 effect 1 + 持久反注册 1
+    expect(harness.effects).toHaveLength(14)
     expect(harness.effects.every((effect) => typeof effect.dispose === 'function')).toBe(true)
     expect(harness.effects.map((effect) => effect.label)).toEqual([
       'taiji: 内联双语字典（zh/en）',
@@ -411,6 +412,7 @@ describe('client/apply 装配入口', () => {
       'slots.inject("conversation.input.left")',
       'slots.inject("settings.section")',
       'slots.inject("sidebar.workspaces")',
+      'slots.inject("conversation.session.header.actions")',
       'taiji: 插件 Config 镜像订阅反注册',
     ])
   })

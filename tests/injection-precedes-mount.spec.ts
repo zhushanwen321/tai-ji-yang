@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FIRST_FRAME_ROW, FIRST_FRAME_STYLE, apply } from '../index.js'
+import { FIRST_FRAME_ROW, FIRST_FRAME_STYLE, SHELL_INFO_GLOBAL, apply, buildShellInfo } from '../index.js'
 
 /**
  * RL8 的机器化通道（设计 §4.2 断言-红灯映射表 RL8 行 + §5.2 文件改动地图 +
@@ -33,19 +33,17 @@ import { FIRST_FRAME_ROW, FIRST_FRAME_STYLE, apply } from '../index.js'
 /** mock 载体记录的一次 boot 事件（按发生序；名字对齐宿主词汇）。 */
 type BootEvent = 'collect-injections' | 'apply-injections' | 'resolve-gate' | 'mount-app'
 
-/** 注入表行的最小形状（宿主 `IndexInjection` 的 style 分支：kind + text）。 */
-interface InjectionRow {
-  kind: string
-  text: string
-}
+/** 注入表行的最小形状（宿主 `IndexInjection` 的 style 与 global 两个分支）。 */
+type InjectionRow = { kind: 'style'; text: string } | { kind: 'global'; name: string; value: unknown }
 
-/** 假 document：只记 head 里进了哪些样式文本（解析期生效 = 进了 head 即在文档里）。 */
+/** 假 document：只记 head 里进了哪些样式文本（解析期生效 = 进了 head 即在文档里；
+ * global 行在宿主侧渲染成 script 赋值而非样式，不计入样式文本）。 */
 function createDocument() {
   const styles: string[] = []
   return {
     head: {
       append(row: InjectionRow) {
-        styles.push(row.text)
+        if (row.kind === 'style') styles.push(row.text)
       },
     },
     /** 进入过 document 的样式文本（按进入序）。 */
@@ -161,9 +159,11 @@ describe('RL8 注入先于 mount（mock 载体事件顺序）', () => {
     // 顺序不变量：谓词零违规 + 事件序精确等于两载体共享的 boot 序列
     expect(firstFrameViolations(result)).toEqual([])
     expect(result.events).toEqual(['collect-injections', 'apply-injections', 'resolve-gate', 'mount-app'])
-    // 行来自真实 apply：恰好一行 kind=style，与导出的首帧行同一取值
-    expect(result.rows).toEqual([FIRST_FRAME_ROW])
+    // 行来自真实 apply：style 行与导出的首帧行同一取值；global 行（壳信息）名与值一致
+    expect(result.rows[0]).toEqual(FIRST_FRAME_ROW)
     expect(FIRST_FRAME_ROW.kind).toBe('style')
+    expect(result.rows[1]).toMatchObject({ kind: 'global', name: SHELL_INFO_GLOBAL })
+    expect((result.rows[1] as { value: unknown }).value).toEqual(buildShellInfo())
     // gate 那一刻 document 里已有的就是那一行（不是空表、不是别的 kind）
     expect(result.stylesAtGate).toEqual([FIRST_FRAME_STYLE])
     // 「生效」的实质：行文本是非空的首帧 token CSS（15 条声明的计数由 tokens.spec.ts 锁）

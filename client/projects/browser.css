@@ -197,9 +197,12 @@
   }
 }
 
-/* 「当前」chip（仅当前选中会话所在组）：accent 软底 + 描边。 */
+/* 「当前」chip（仅当前选中会话所在组）：accent 软底 + 描边。类名专属组头，归档时间
+   筛选 chip 用 .taiji-pb-bucket 系——两套同粒度规则不得共用类名（会互相覆盖）。 */
 .taiji-pb-chip {
+  display: inline-flex;
   flex: none;
+  align-items: center;
   border-radius: 999px;
   padding: 2px 6px;
   font-size: 10px;
@@ -711,15 +714,15 @@
   color: var(--dsw-alias-label-primary);
 }
 
-.taiji-pb-chips {
+.taiji-pb-buckets {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   padding: 0 2px 8px;
 }
 
-/* 时间筛选 chip：胶囊形 mono 小字（demo .chip 逐值）；选中 = accent 软底。 */
-.taiji-pb-chip {
+/* 归档时间筛选 chip：胶囊形 mono 小字（demo .chip 逐值）；选中 = accent 软底。 */
+.taiji-pb-bucket {
   height: 22px;
   padding: 0 10px;
   border: none;
@@ -731,12 +734,12 @@
 }
 
 @media (hover: hover) {
-  .taiji-pb-chip:hover {
+  .taiji-pb-bucket:hover {
     color: var(--dsw-alias-label-primary);
   }
 }
 
-.taiji-pb-chip-on {
+.taiji-pb-bucket-on {
   background: color-mix(in srgb, var(--dsw-alias-brand-primary) 17%, transparent);
   color: var(--dsw-alias-label-primary);
 }
