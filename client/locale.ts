@@ -53,6 +53,65 @@ export const zh = {
   'section.current': '当前配色',
   /** 指引行：配色与明暗模式的切换入口在通用设置的外观行（与宿主 nav 标签「通用设置」「外观」同字面）。 */
   'section.guide': '配色与明暗模式在 通用设置 → 外观 行切换',
+
+  /* ── 项目分组侧栏（M2，client/projects/browser.tsx 消费；插值 {n}/{date} 与宿主 t 同格式）── */
+
+  /** 侧栏区头标题。 */
+  'projects.title': '项目',
+  'projects.close': '关闭',
+  'projects.moveUp': '上移',
+  'projects.moveDown': '下移',
+  /** 默认项目（未映射会话的兜底聚合）的显示名——demo 同字面「未分组」。 */
+  'projects.default': '未分组',
+  /** 新建项目草稿输入行的占位与可访问名。 */
+  'projects.newProject': '新建项目',
+  /** 组头「当前」chip（当前选中会话所在组）。 */
+  'projects.currentChip': '当前',
+  /** 组头 / 默认头「+」的可访问名（在此项目下新建会话）。 */
+  'projects.newSessionIn': '在此项目新建会话',
+  /** 组头重命名钮的可访问名。 */
+  'projects.renameProject': '重命名项目',
+  /** 组头删除钮的可访问名（两段确认的第一击）。 */
+  'projects.deleteProject': '删除项目',
+  /** 删除两段确认的武装态文案（N 从 store 的 assignments 数出；zh 措辞与设置页 deleteConfirmText 同字面）。 */
+  'projects.deleteConfirm': '再点确认删除，{n} 个会话将归回未归类',
+  /** blank 会话行的标题（刚创建、还没有首条消息）。 */
+  'projects.rowNewSession': '新会话',
+  /** 会话行重命名钮的可访问名。 */
+  'projects.renameSession': '重命名会话',
+  /** 会话行「移动到项目」钮的可访问名（弹层列出全部项目）。 */
+  'projects.moveToProject': '移动到项目',
+  /** 移动弹层的区块标题。 */
+  'projects.moveToProjectTitle': '移动到项目',
+  /** 会话行归档钮的可访问名。 */
+  'projects.archiveSession': '归档会话',
+  /** 置顶图钉（已置顶会话行）的可访问名。 */
+  'projects.unpinSession': '取消置顶',
+  /** 未置顶会话行的置顶动作（图钉点按，M2 可选入口）。 */
+  'projects.pinSession': '置顶',
+  /** 空态：全部组里没有一个可见会话。 */
+  'projects.empty': '暂无会话',
+  /** 加载态：会话列表快照未答（phase pending）。 */
+  'projects.loading': '读取中',
+  /** 数据服务缺席占位（useSessions 等钩子座位未被宿主注入）。 */
+  'projects.dataUnavailable': '数据服务未就绪',
+  /** 待交互行替换时间的紧凑文案（三 kind 白名单命中时）。 */
+  'projects.waiting': '等待确认',
+  /** 子会话计数 chip 的悬停提示（N = 运行中的直接子会话数）。 */
+  'projects.subagents': '{n} 个子会话',
+
+  /** 相对时间：刚刚（<1 分钟，含未来时间戳兜底）。 */
+  'projects.time.justNow': '刚刚',
+  /** 相对时间：N 分钟前。 */
+  'projects.time.minutesAgo': '{n} 分钟前',
+  /** 相对时间：N 小时前（同一天内）。 */
+  'projects.time.hoursAgo': '{n} 小时前',
+  /** 相对时间：昨天（本地日历日差 = 1）。 */
+  'projects.time.yesterday': '昨天',
+  /** 相对时间：N 天前（日差 2-6）。 */
+  'projects.time.daysAgo': '{n} 天前',
+  /** 相对时间：更早（YYYY-MM-DD 日期档，date 为本地时区日期串）。 */
+  'projects.time.older': '{date}',
 } satisfies LocaleDict
 
 /**
@@ -72,6 +131,39 @@ export const en = {
   'section.desc': 'This plugin re-themes the DSH interface as the TaiJi workbench: six palettes, corner radii and font weights, and the twin-fish mark.',
   'section.current': 'Current palette',
   'section.guide': 'Switch palettes and light/dark mode in General → Appearance.',
+
+  /* ── Project-grouped sidebar (M2; params {n}/{date} match the host t format) ──── */
+
+  'projects.title': 'Projects',
+  'projects.close': 'Close',
+  'projects.moveUp': 'Move up',
+  'projects.moveDown': 'Move down',
+  'projects.default': 'Ungrouped',
+  'projects.newProject': 'New project',
+  'projects.currentChip': 'Current',
+  'projects.newSessionIn': 'New session in this project',
+  'projects.renameProject': 'Rename project',
+  'projects.deleteProject': 'Delete project',
+  'projects.deleteConfirm': 'Click again to delete — {n} sessions will return to Ungrouped',
+  'projects.rowNewSession': 'New session',
+  'projects.renameSession': 'Rename session',
+  'projects.moveToProject': 'Move to project',
+  'projects.moveToProjectTitle': 'Move to project',
+  'projects.archiveSession': 'Archive session',
+  'projects.unpinSession': 'Unpin',
+  'projects.pinSession': 'Pin',
+  'projects.empty': 'No sessions',
+  'projects.loading': 'Loading',
+  'projects.dataUnavailable': 'Data services unavailable',
+  'projects.waiting': 'Awaiting approval',
+  'projects.subagents': '{n} subagents',
+
+  'projects.time.justNow': 'Just now',
+  'projects.time.minutesAgo': '{n} min ago',
+  'projects.time.hoursAgo': '{n} h ago',
+  'projects.time.yesterday': 'Yesterday',
+  'projects.time.daysAgo': '{n} d ago',
+  'projects.time.older': '{date}',
 } satisfies LocaleDict
 
 /** 本包文案 key 域（组件侧 `t` 的参数类型；zh/en 必须同时覆盖）。 */

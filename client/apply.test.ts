@@ -184,6 +184,15 @@ function createHarness(options: { persisted?: Record<string, unknown>; writeResu
       error(message: string) { log.errors.push(message) },
       warn(message: string) { log.warnings.push(message) },
     },
+    // 项目分组浏览器经闭包捕获的两个宿主动作服务（本文件不断言其调用，stub 即可）
+    uiWorkspace: {
+      openSession() {},
+      startSession() {},
+      archiveSession: async () => {},
+      pinSession: async () => {},
+      unpinSession: async () => {},
+    },
+    sessions: { using: async () => ({ ok: true }) },
   }
 
   return {
@@ -263,7 +272,9 @@ describe('client/apply 装配入口', () => {
   it('持久命名空间 = 本包 profile 行 id（AS22：Config 随 bundle 行落盘）', () => {
     const harness = createHarness()
     mountApply(harness)
-    expect(harness.log.entryIds).toEqual([PLUGIN_ENTRY_ID])
+    // 两次 get 是预期：配色持久通道与 ProjectStore 各自拿同一命名空间的 form
+    // （ConfigForm 本体跨插件共享，两处只撤各自的订阅）
+    expect(harness.log.entryIds).toEqual([PLUGIN_ENTRY_ID, PLUGIN_ENTRY_ID])
     expect(PLUGIN_ENTRY_ID).toBe('tai-ji-yang-shell')
   })
 
@@ -370,7 +381,7 @@ describe('client/apply 装配入口', () => {
     expect(harness.log.preferenceWrites).toEqual(['light'])
   })
 
-  it('品牌三槽 + 外观行都注册，且每个贡献都经 ctx.effect 托管（九处 disposer）', () => {
+  it('品牌三槽 + 外观行都注册，且每个贡献都经 ctx.effect 托管（十三处 disposer）', () => {
     const harness = createHarness()
     mountApply(harness)
     expect(harness.log.slotInjects).toEqual([
@@ -380,25 +391,26 @@ describe('client/apply 装配入口', () => {
       'settings.general.item',
       'conversation.input.left',
       'settings.section',
-      'sidebar.session.row.leading',
+      'sidebar.workspaces',
     ])
     expect(harness.log.slotRegistrations).toHaveLength(7)
-    // locale 字典 1 + 主题层 1 + 结构层 1 + 持久订阅 1 + 七个槽位 inject 各把注册包成嵌套 effect 1
-    // + 持久反注册 1
-    expect(harness.effects).toHaveLength(12)
+    // locale 字典 1 + 主题层 1 + 结构层 1 + 持久订阅 1 + ProjectStore 反注册 1
+    // + 七个槽位 inject 各把注册包成嵌套 effect 1 + 持久反注册 1
+    expect(harness.effects).toHaveLength(13)
     expect(harness.effects.every((effect) => typeof effect.dispose === 'function')).toBe(true)
     expect(harness.effects.map((effect) => effect.label)).toEqual([
       'taiji: 内联双语字典（zh/en）',
       'taiji: 主题 token 覆盖层（overrideTokens disposer 经 ctx.effect 托管）',
       'taiji: 结构 token 覆盖层（overrideTokens disposer 经 ctx.effect 托管）',
       'taiji: 持久配色 → 主题层换层（插件 Config 镜像订阅）',
+      'taiji: ProjectStore（projects/assignments 持久通道）反注册',
       'slots.inject("conversation.hero.brand.mark")',
       'slots.inject("sidebar.brand.mark")',
       'slots.inject("sidebar.brand.name")',
       'slots.inject("settings.general.item")',
       'slots.inject("conversation.input.left")',
       'slots.inject("settings.section")',
-      'slots.inject("sidebar.session.row.leading")',
+      'slots.inject("sidebar.workspaces")',
       'taiji: 插件 Config 镜像订阅反注册',
     ])
   })
@@ -406,12 +418,12 @@ describe('client/apply 装配入口', () => {
   it('卸载后覆盖层、字典、四个槽位与持久订阅都不残留（AX3：fiber 卸载即撤销）', () => {
     const harness = createHarness({ persisted: { appearance: 'nuanmo' } })
     mountApply(harness)
-    expect(harness.form.listeners.size).toBe(1)
+    expect(harness.form.listeners.size).toBe(2)
     harness.unload()
     expect(harness.log.layers.map((layer) => layer.removed)).toEqual([true, true])
     expect(harness.form.listeners.size).toBe(0)
     expect(harness.log.order).toContain('locale.unregister')
-    for (const key of ['conversation.hero.brand.mark', 'sidebar.brand.mark', 'sidebar.brand.name', 'settings.general.item', 'conversation.input.left', 'settings.section', 'sidebar.session.row.leading']) {
+    for (const key of ['conversation.hero.brand.mark', 'sidebar.brand.mark', 'sidebar.brand.name', 'settings.general.item', 'conversation.input.left', 'settings.section', 'sidebar.workspaces']) {
       expect(harness.log.order).toContain(`slots.unregister:${key}`)
     }
   })

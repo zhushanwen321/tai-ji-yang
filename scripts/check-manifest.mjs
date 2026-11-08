@@ -30,6 +30,12 @@ const CLIENT_INJECT = [
   '@deepseek-ai/dsh-client-ui-settings',
   '@deepseek-ai/dsh-client-ui-theme',
   '@deepseek-ai/dsh-api-remotes',
+  // 项目分组浏览器（sidebar.workspaces 整槽替换）的三个前置包：sessions 数据服务、
+  // useSessions/useSessionStatus 数据钩子（ui-session provideRoot）、uiWorkspace 动作
+  // 服务与 useWorkspaces 钩子（ui-workspace）
+  '@deepseek-ai/dsh-api-session-controller',
+  '@deepseek-ai/dsh-client-ui-session',
+  '@deepseek-ai/dsh-client-ui-workspace',
 ]
 /**
  * 浏览器半场必须导出的宿主服务名（`client/apply.ts` 的 `export const inject`）。
@@ -160,7 +166,7 @@ check('版本门禁真生效：peerDependencies 含 @deepseek-ai/dsh 且与 engi
   }
 })
 
-check('dsh.client.inject 恰为裁决的 5 项', () => {
+check('dsh.client.inject 恰为裁决的 8 项', () => {
   const inject = manifest.dsh?.client?.inject
   if (!Array.isArray(inject)) throw new Error('dsh.client.inject 不是数组')
   if (inject.length !== CLIENT_INJECT.length || CLIENT_INJECT.some((name) => !inject.includes(name)) || new Set(inject).size !== inject.length) {

@@ -26,11 +26,15 @@ import { installAppearanceChip } from './input/appearance-chip'
 import { installLocale, type LocaleInstallHost } from './locale'
 import { AppearancePersistence, PLUGIN_ENTRY_ID, type ConfigFormsHost } from './persist'
 import {
+  installProjectsBrowser,
+  type ProjectsBrowserHost,
+} from './projects/browser'
+import { ProjectStore } from './projects/store'
+import {
   installAppearanceRow,
   type AppearanceRowHost,
   type ThemeSelectionController,
 } from './settings/appearance-row'
-import { installSessionLeading } from './sidebar/session-leading'
 import { installTaijiSection } from './settings/taiji-section'
 import { applyStructureLayer, applyThemeLayer, type ThemeTokenService } from './theme/apply'
 import { STRUCTURE_TOKENS } from './theme/structure'
@@ -63,12 +67,17 @@ export interface ClientApplyContext {
   slots: ClientSlots
   theme: ClientThemeService
   configForms: ConfigFormsHost['configForms']
+  /** 宿主动作服务（打开/新建/归档/置顶）——项目分组浏览器经闭包捕获（fiber inject 声明保证在场）。 */
+  uiWorkspace: ProjectsBrowserHost['uiWorkspace']
+  /** 宿主会话服务（重命名公开合同）——同上经闭包捕获。 */
+  sessions: ProjectsBrowserHost['sessions']
   logger?: { warn(message: string): void; error(message: string): void }
 }
 
 /** effect 标签（宿主诊断树按标签展示，卸载排查时能认出是哪一段）。 */
 const PERSIST_SUBSCRIBE_LABEL = 'taiji: 持久配色 → 主题层换层（插件 Config 镜像订阅）'
 const PERSIST_DISPOSE_LABEL = 'taiji: 插件 Config 镜像订阅反注册'
+const PROJECT_STORE_DISPOSE_LABEL = 'taiji: ProjectStore（projects/assignments 持久通道）反注册'
 
 /**
  * 本包消费的宿主服务名（浏览器半场的 `inject` 声明）。
@@ -95,7 +104,7 @@ const PERSIST_DISPOSE_LABEL = 'taiji: 插件 Config 镜像订阅反注册'
  *     「`remote` carries the forwarded settings invalidation that
  *     `ctx.configForms.get(entryId)` subscribes to on this context」。
  */
-export const inject = ['slots', 'locale', 'theme', 'configForms', 'remote'] as const
+export const inject = ['slots', 'locale', 'theme', 'configForms', 'remote', 'sessions', 'uiWorkspace'] as const
 
 /**
  * 装配入口。
@@ -135,6 +144,13 @@ export function apply(ctx: ClientApplyContext): void {
     PERSIST_SUBSCRIBE_LABEL,
   )
 
+  // ③′ 项目分组的数据通道（projects/assignments 两个 volatile 字段的整写整读 + 镜像
+  //    订阅）：设置页项目管理与侧栏项目分组浏览器共用同一实例，写入即互见。
+  const projectStore = new ProjectStore(ctx, {
+    report: (message) => { ctx.logger?.error(`${PLUGIN_ENTRY_ID}: ${message}`) },
+  })
+  ctx.effect(() => () => { projectStore.dispose() }, PROJECT_STORE_DISPOSE_LABEL)
+
   // ④ 品牌三槽：hero.brand.mark + sidebar.brand.mark + sidebar.brand.name
   installBrandMarkSlots(ctx)
   installBrandNameSlot(ctx)
@@ -154,13 +170,14 @@ export function apply(ctx: ClientApplyContext): void {
 
   // ⑦ 设置页「太极」分区（settings.section，list 槽追加）：只读状态页（不设第二换色
   //    写入口），换色仍在通用设置的外观行与 composer chip。
-  installTaijiSection(ctx, controller)
+  installTaijiSection(ctx, controller, projectStore)
 
-  // ⑧ 会话行行首鱼形微标（sidebar.session.row.leading，list 槽追加）：行 idle 且宿主
-  //    定时任务标记不在场时补位（让位规则见组件 CSS），太极色经 brand-primary 跟随六色。
-  installSessionLeading(ctx)
+  // ⑧ 侧栏会话区的项目分组浏览器（sidebar.workspaces 整槽替换）：taiji 式「项目」分组
+  //    列表——项目是本包逻辑分组实体，与宿主工作区/目录无关。会话行行首不放品牌图标
+  //    （用户裁决：状态点之外留空）。
+  installProjectsBrowser(ctx, { store: projectStore })
 
-  // ⑧ 反注册持久通道的镜像订阅。form 本体归 ConfigForms 服务所有（跨插件共享），
+  // ⑨ 反注册持久通道的镜像订阅。form 本体归 ConfigForms 服务所有（跨插件共享），
   //    本包只撤自己的监听，不 dispose 它。
   ctx.effect(() => () => { persistence.dispose() }, PERSIST_DISPOSE_LABEL)
 }

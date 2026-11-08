@@ -165,7 +165,7 @@ describe('V5 卸载清洁度', () => {
     module.apply(ctx)
     expect(unregistered).toEqual([])
     for (const dispose of [...effects].reverse()) dispose()
-    // 七个槽位贡献（品牌三槽 + 外观行 + composer 配色 chip + 设置分区 + 会话行装饰）的 disposer
+    // 七个槽位贡献（品牌三槽 + 外观行 + composer 配色 chip + 设置分区 + 项目分组浏览器）的 disposer
     // 都要随 fiber 卸载执行——新槽位接入装配时必须同步扩这里的期望（卸载清洁度不豁免新贡献）
     expect(unregistered.sort()).toEqual([
       'conversation.hero.brand.mark',
@@ -174,7 +174,7 @@ describe('V5 卸载清洁度', () => {
       'settings.section',
       'sidebar.brand.mark',
       'sidebar.brand.name',
-      'sidebar.session.row.leading',
+      'sidebar.workspaces',
     ])
   })
 
@@ -196,8 +196,11 @@ describe('V5 卸载清洁度', () => {
     expect(Config).toBeDefined()
     expect(Reflect.get(Config, Symbol.for('schemastery'))).toBe(true)
     expect(Config.type).toBe('object')
-    expect(Object.keys(Config.dict)).toEqual(['appearance'])
+    expect(Object.keys(Config.dict)).toEqual(['appearance', 'projects', 'assignments'])
     expect(Config.dict.appearance.meta.volatile).toBe(true)
+    // projects/assignments 同为 volatile（持久但免重挂载——设置表单通道只收 volatile 字段）
+    expect(Config.dict.projects.meta.volatile).toBe(true)
+    expect(Config.dict.assignments.meta.volatile).toBe(true)
 
     // 行在、用户没点选过 → 段里没有 appearance（默认色是包内默认，不写持久键）。
     // 这里的派生视图复刻宿主 describe 的两步：plainConfig 拆 volatile 包装 + projectForm 丢 undefined 键。
@@ -222,8 +225,10 @@ describe('V5 卸载清洁度', () => {
       }
       return out
     }
-    expect(section({})).toEqual({})
-    expect(section({ appearance: 'hao' })).toEqual({ appearance: 'hao' })
+    // schemastery 对 array/dict 字段的 undefined 输入回填空集合默认值（用户没建过项目 =
+    // 空集合，不是缺席）；appearance 仍是缺省不落键
+    expect(section({})).toEqual({ projects: [], assignments: {} })
+    expect(section({ appearance: 'hao' })).toEqual({ appearance: 'hao', projects: [], assignments: {} })
   })
 
   it('③ 持久状态没有第二条通道：浏览器半场零 Web Storage 调用', () => {

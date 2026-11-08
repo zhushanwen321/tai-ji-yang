@@ -1,0 +1,547 @@
+/* 项目分组浏览器样式（与 client/projects/browser.tsx 同目录，经构建脚本的目录扫描注入——
+ * 普通 CSS 文本 + taiji-pb- 前缀类名隔离，不用 CSS Modules）。
+ *
+ * 视觉基准 = taiji-sidebar-ideal.html demo 逐值（组头无线、左缘细线两档、行 30px、状态点
+ * 7px、标题 12.5px/500、右槽 mono 10px、计数让位、chevron 12px 收起 -90°）。demo 的
+ * --t-* 令牌按下表映射到宿主令牌（取色全部经 var(--dsw-alias-*) / var(--dsw-specific-*)，
+ * 零硬编码色——覆盖层换六色后本浏览器自动跟随）：
+ *   fg→label-primary · fg2→label-secondary · bd→border-l1 · bd2→border-l2 ·
+ *   ac→brand-primary · warn→state-warn-primary · ok→state-success-primary ·
+ *   err→state-error-primary · side→dsw-specific-sidebar-fill
+ * 行悬停/选中两档是 demo 的 color-mix 派生值，收成本文件的局部变量（仍由令牌派生）。 */
+
+.taiji-pb {
+  --taiji-pb-hover: color-mix(in srgb, var(--dsw-alias-label-primary) 6%, transparent);
+  --taiji-pb-sel: color-mix(in srgb, var(--dsw-alias-brand-primary) 17%, transparent);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 显隐切换（草稿输入行 / 各编辑器的「输入框替换名称」形态：同挂载、视觉互斥）。 */
+.taiji-pb-hidden {
+  display: none;
+}
+
+/* ── 区头：标题 + 总计数（mono）+ 新建项目「+」 ────────────────────────────── */
+
+.taiji-pb-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 12px 12px 4px;
+  padding: 0 2px;
+}
+
+.taiji-pb-head-title {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.taiji-pb-head-count {
+  font: 400 10.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--dsw-alias-label-secondary);
+  opacity: 0.8;
+}
+
+.taiji-pb-head-flex {
+  flex: 1;
+}
+
+/* 区头「+」：与组头动作钮同量级的小图标钮。 */
+.taiji-pb-head-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-pb-head-add:hover {
+    color: var(--dsw-alias-label-primary);
+    background: var(--taiji-pb-hover);
+  }
+}
+
+/* 新建项目草稿输入行：默认隐藏（区头「+」切换显隐）。 */
+.taiji-pb-newdraft {
+  box-sizing: border-box;
+  height: 26px;
+  margin: 4px 12px 6px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-1);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 5px;
+}
+
+/* ── 列表滚动容器（滚动衔接 ref 的绑定目标）─────────────────────────────────── */
+
+.taiji-pb-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 8px 8px;
+}
+
+/* ── 项目组 ──────────────────────────────────────────────────────────────────── */
+
+.taiji-pb-group {
+  margin: 5px 0 2px;
+}
+
+/* 组头（无线）：chevron + 名 + 「当前」chip + 计数（hover 让位给动作钮）。 */
+.taiji-pb-ghead {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 29px;
+  padding: 0 6px;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+@media (hover: hover) {
+  .taiji-pb-ghead:hover {
+    background: var(--taiji-pb-hover);
+  }
+}
+
+/* 默认项目轻量头行：无框无线（taiji 2026-10-13 裁决），缩进仅 chevron 内移、高度低一档。 */
+.taiji-pb-ghead-default {
+  min-height: 26px;
+  gap: 6px;
+  padding: 0 8px;
+}
+
+/* chevron 展开指示：展开向下（0°）/ 收起向右（-90°），旋转过渡与组体高度动画同语系。 */
+.taiji-pb-chev {
+  display: flex;
+  flex: none;
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease;
+}
+
+.taiji-pb-open .taiji-pb-chev {
+  transform: rotate(0deg);
+}
+
+.taiji-pb-gname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+}
+
+@media (hover: hover) {
+  .taiji-pb-ghead:hover .taiji-pb-gname {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+/* 「当前」chip（仅当前选中会话所在组）：accent 软底 + 描边。 */
+.taiji-pb-chip {
+  flex: none;
+  border-radius: 999px;
+  padding: 2px 6px;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--dsw-alias-label-primary);
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 15%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-brand-primary) 45%, transparent);
+}
+
+/* 会话计数：mono 小字；hover 动作钮浮现时让位（同位替换惯例）。 */
+.taiji-pb-count {
+  flex: none;
+  margin-left: auto;
+  font: 400 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--dsw-alias-label-secondary);
+  opacity: 0.75;
+}
+
+@media (hover: hover) {
+  .taiji-pb-ghead:hover .taiji-pb-count {
+    display: none;
+  }
+}
+
+/* 组头动作钮：hover 浮现（+ / pencil / trash；默认项目只有 +）。 */
+.taiji-pb-gacts {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+@media (hover: hover) {
+  .taiji-pb-ghead:hover .taiji-pb-gacts {
+    display: flex;
+  }
+}
+
+/* 删除两段确认的武装态：红色后果文案即确认钮（第二击执行；Esc / pointerleave 复位）。 */
+.taiji-pb-confirm {
+  flex: 1;
+  min-width: 0;
+  margin-left: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  padding: 2px 4px 2px 0;
+  font-size: 10.5px;
+  color: var(--dsw-alias-state-error-primary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+/* 展开体（常驻 DOM，grid 0fr↔1fr 高度动画 + 收起延迟 visibility——隐藏行不进 Tab 焦点序）；
+   左缘细线只在命名项目的展开内容区（不含组头），组收起随体隐藏。 */
+.taiji-pb-gbody-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin: 0 6px 4px 12px;
+  visibility: hidden;
+  transition: grid-template-rows 0.15s ease-out, visibility 0s 0.1s;
+}
+
+.taiji-pb-open .taiji-pb-gbody-wrap {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition: grid-template-rows 0.15s ease-out;
+}
+
+/* 内层：滚动裁剪 + 左缘细线两档 + opacity 跟进淡入消除高度动画生硬感。 */
+.taiji-pb-gbody {
+  min-height: 0;
+  overflow: hidden;
+  padding: 1px 0 2px 9px;
+  border-left: 2px solid var(--dsw-alias-border-l1);
+  opacity: 0;
+  transition: opacity 0.1s ease-out;
+}
+
+.taiji-pb-open .taiji-pb-gbody {
+  opacity: 1;
+}
+
+/* 当前组 = accent 细线（60% 透明度）；非当前组 = border-l1 极淡 hairline（缺省值）。 */
+.taiji-pb-gbody-current {
+  border-left-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 60%, transparent);
+}
+
+/* 默认项目的展开体：无框无线（轻量行语义），仅保留小内缩。 */
+.taiji-pb-group-default .taiji-pb-gbody-wrap {
+  margin: 0 4px 4px 4px;
+}
+
+.taiji-pb-group-default .taiji-pb-gbody {
+  border-left: none;
+  padding-left: 0;
+}
+
+/* ── 会话行 ──────────────────────────────────────────────────────────────────── */
+
+.taiji-pb-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  margin: 1px 0;
+  padding: 0 6px 0 7px;
+  border-radius: 6px;
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .taiji-pb-row:hover {
+    background: var(--taiji-pb-hover);
+  }
+}
+
+.taiji-pb-row-current {
+  background: var(--taiji-pb-sel);
+}
+
+.taiji-pb-row-current .taiji-pb-title {
+  font-weight: 600;
+}
+
+/* 状态点 7px（行首不放品牌图标——用户硬性要求；idle 留空位保对齐）：
+   wait = warn 空心环 · run = 旋转环 · done-unread = success 实心。 */
+.taiji-pb-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.taiji-pb-dot-wait {
+  border: 1.5px solid var(--dsw-alias-state-warn-primary);
+  background: transparent;
+}
+
+.taiji-pb-dot-run {
+  border: 1.5px solid var(--dsw-alias-label-secondary);
+  border-top-color: var(--dsw-alias-brand-primary);
+  animation: taiji-pb-spin 0.9s linear infinite;
+}
+
+.taiji-pb-dot-done-unread {
+  background: var(--dsw-alias-state-success-primary);
+}
+
+@keyframes taiji-pb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.taiji-pb-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 行内重命名输入框（替换标题位）：宿主输入面取色。 */
+.taiji-pb-rename-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-1);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 5px;
+}
+
+/* 子会话计数 chip（运行中行的徽标族）：hairline 描边 + 层叠图标 + mono 数字。 */
+.taiji-pb-sub {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px;
+  font: 600 9.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.4;
+  color: var(--dsw-alias-label-secondary);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 4px;
+}
+
+/* 置顶图钉：可点按取消置顶（M2 的置顶入口 = 图钉点按；置顶发起归 M3 右键菜单）。 */
+.taiji-pb-pin {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-pb-pin:hover {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+/* 右槽：相对时间（mono）/ 待交互紧凑文案（warn 色，替换时间位）。 */
+.taiji-pb-time {
+  flex: none;
+  font: 400 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.taiji-pb-waittext {
+  flex: none;
+  font-size: 10px;
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+/* hover 操作钮（重命名 / 移动到项目 / 归档）：绝对定位覆盖右槽，左缘渐变遮住底下的时间。 */
+.taiji-pb-acts {
+  position: absolute;
+  right: 3px;
+  display: none;
+  align-items: center;
+  gap: 1px;
+  padding-left: 14px;
+  background: linear-gradient(90deg, transparent, var(--dsw-specific-sidebar-fill) 12px);
+}
+
+@media (hover: hover) {
+  .taiji-pb-row:hover .taiji-pb-acts {
+    display: flex;
+  }
+}
+
+/* 当前行 hover：渐变底混入选中色（时间被覆盖处的过渡不突兀）。 */
+@media (hover: hover) {
+  .taiji-pb-row-current:hover .taiji-pb-acts {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--dsw-alias-brand-primary) 17%, var(--dsw-specific-sidebar-fill)) 12px
+    );
+  }
+}
+
+/* 行/组头共用的图标动作钮。 */
+.taiji-pb-abtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-pb-abtn:hover {
+    color: var(--dsw-alias-label-primary);
+    background: var(--taiji-pb-hover);
+  }
+}
+
+/* ── 空态 / 加载态 / 数据服务缺席占位 ──────────────────────────────────────── */
+
+.taiji-pb-empty {
+  padding: 10px 8px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.taiji-pb-loading {
+  padding: 8px 8px 2px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.taiji-pb-skeleton {
+  height: 30px;
+  margin: 1px 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 5%, transparent);
+  animation: taiji-pb-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes taiji-pb-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.taiji-pb-unavailable {
+  padding: 12px 8px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ── 移动到项目弹层（portal 到 document.body + fixed 定位，appearance-chip 同款）── */
+
+.taiji-pb-menu-anchor {
+  position: fixed;
+  z-index: 100;
+}
+
+.taiji-pb-menu {
+  min-width: 180px;
+  padding: 5px;
+  background: var(--dsw-alias-bg-overlay);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--dsw-alias-label-primary) 18%, transparent);
+}
+
+.taiji-pb-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 26px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-pb-menu-item:hover {
+    background: var(--taiji-pb-hover);
+  }
+}
+
+.taiji-pb-menu-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taiji-pb-menu-check {
+  flex: none;
+  display: flex;
+  color: var(--dsw-alias-brand-primary);
+}
+
+/* ── 动画可及性：reduced-motion 下全部过渡/动画归零（= 即时切换）─────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .taiji-pb-chev,
+  .taiji-pb-gbody-wrap,
+  .taiji-pb-gbody {
+    transition: none;
+  }
+
+  .taiji-pb-dot-run,
+  .taiji-pb-skeleton {
+    animation: none;
+  }
+}

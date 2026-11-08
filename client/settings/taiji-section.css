@@ -85,3 +85,128 @@
 .taiji-section-guide {
   color: var(--dsw-alias-label-secondary);
 }
+
+/* ---- 项目管理块（M1 数据通道；store 未接线时整块不渲染） --------------------------
+ * 排版口径沿用本文件既有约定：行 chrome 的 0.5px hairline 分隔、标签色两档、圆角经
+ * --dsw-radius-* 读取（覆盖层改圆角后自动跟随）。取色全部经宿主令牌，零硬编码色。 */
+
+.taiji-projects {
+  display: flex;
+  flex-direction: column;
+  padding-top: 8px;
+}
+
+/* 块头：与分区状态行同款 chrome（16px 0 内距 + 0.5px 底部分隔线）。 */
+.taiji-projects-head {
+  display: flex;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 项目行：名称占主位（截断），动作钮靠右；行间 hairline、末行不画（列表底收尾）。 */
+.taiji-projects-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.taiji-projects-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+.taiji-projects-item:last-child {
+  border-bottom: none;
+}
+
+.taiji-projects-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 行内重命名输入框与新建草稿行：宿主输入面取色（layer-1 底 + l2 边 + 继承字体）。 */
+.taiji-projects-input {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 8px;
+  font: inherit;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+}
+
+/* 新建草稿行：独立成行（不与项目行同格），与列表保持呼吸间距。 */
+.taiji-projects-create {
+  flex: none;
+  margin-top: 10px;
+}
+
+.taiji-projects-actions {
+  display: inline-flex;
+  flex: none;
+  gap: 6px;
+}
+
+/* 动作钮：次级色小钮；禁用态（首行上移 / 末行下移）降透明度且不可点。 */
+.taiji-projects-button {
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-xs);
+  cursor: pointer;
+}
+
+.taiji-projects-button:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary);
+}
+
+.taiji-projects-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 删除两段确认的武装态（第二击才执行）：错误色提示破坏性后果。 */
+.taiji-projects-button-danger {
+  color: var(--dsw-alias-state-error-primary);
+  border-color: var(--dsw-alias-state-error-primary);
+}
+
+/* 读取中（镜像 loading）与错误行：微文案层级，不与块头抢主位。 */
+.taiji-projects-loading {
+  padding: 10px 0;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.taiji-projects-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+.taiji-projects-error-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* 显隐切换（重命名的「输入框替换名称」形态：两者同挂载，视觉上互斥）。 */
+.taiji-projects-hidden {
+  display: none;
+}
