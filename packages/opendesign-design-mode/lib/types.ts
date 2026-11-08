@@ -38,6 +38,12 @@ export interface VersionProfile {
   resourceRoot: string
   /** open-design.json 清单文件绝对路径。 */
   manifestPath: string
+  /**
+   * 清单所在场景包目录（manifestPath 的父目录；清单内 "./assets/..." 相对路径的解析根）。
+   * 默认读取器与组装器（U3 任务档绝对路径）都以它为锚——不加此字段则每个消费方都得从
+   * manifestPath 自行推导同一件事。
+   */
+  scenarioRoot: string
   /** 清单三层版本。 */
   versions: ManifestVersions
   /** 全部候选根与渠道（doctor 报告多候选并存时的选中依据）。 */
