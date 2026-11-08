@@ -1,0 +1,17 @@
+#!/bin/bash
+set -euo pipefail
+
+ROOT=$(git rev-parse --show-toplevel)
+cd "$ROOT"
+
+node scripts/check-all.mjs --static
+
+if git diff --cached --name-only | grep -q '^\.agents/workflows/'; then
+  BUILDER=.agents/workflows/scripts/build-workflows.mjs
+  if [ ! -f "$BUILDER" ]; then
+    printf 'workflow 文件已暂存但构建器缺失：%s。恢复：先接入 .agents/workflows 单源构建体系再提交。\n' "$BUILDER" >&2
+    exit 1
+  fi
+  node "$BUILDER" --check
+  node --test .agents/workflows/tests/*.test.mjs
+fi

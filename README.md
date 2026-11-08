@@ -4,16 +4,18 @@
 
 本包负责「打开就认得出是太极」与「会话按项目组织」这两层。对话流、模型切换、工具调用、右栏面板等日常能力全部走 DSH 原生，本包不接管。
 
+开发与审查入口：项目规则见 [AGENTS.md](AGENTS.md)，当前架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，DSH 插件约束与有意偏离登记见 [docs/DSH-PLUGIN-RULES.md](docs/DSH-PLUGIN-RULES.md)。
+
 外观由「染色 + 界面贡献」两部分构成：
 
 - **染色三层**：① 静态调色板重定义——把宿主 `--dsw-static-deepseek-*`（品牌蓝 10 档）整层改成太极灰绿阶梯（强调档随所选配色派生），`--dsw-static-neutral-bluish-*`（带蓝偏的中性 22 档）整层去蓝为太极锌灰/纸白阶梯；宿主全部引用这两张表的别名 token 自动跟随，宿主将来新增的也一样吃到。② 职能分色——链接保持太极正蓝（不做品牌色）、对话气泡用中性抬高层（不做强调色）、深度思考标签用思考紫。③ 字体复合简写（font shorthand：一个变量同时声明字重/字号/行高/字族）安全重写——只替换字重与行高两段（此前这两档从未生效，现在正文 500、行高 1.32/1.62/1.4 三档真正落地），字号与字族表达式逐字保留宿主原样，⌘+/⌘- 与字族选择不受影响。代码高亮、终端 ANSI 色板等功能色不动。
-- **界面贡献**（前三项注册进宿主槽位、新格追加，不替换宿主已有条目）：空会话首屏品牌区（双鱼标放大版 + 产品名「太极」+ 欢迎语）；composer 工具行的快速配色 chip（点击弹出六色色卡，与设置页外观行共用同一控制器与持久状态）；设置页「太极」分区（配色状态页 + 项目管理：建/改名/删除/排序）。第四项是**整槽替换**：侧栏会话区（`sidebar.workspaces`，负优先级阴影宿主官方列表）渲染太极式项目分组列表——默认项目（未归类轻量行，无框无左线）+ 命名项目（组头 + 展开体左缘细线，当前组 accent 细线/非当前极淡）+ 会话行（状态点四态/子会话计数/置顶图钉/相对时间，**行首无品牌图标**）；打开/新建/归档/置顶走宿主 `uiWorkspace` 服务，重命名走宿主 `sessions` 公开合同，项目与归属映射（含组展开态）存本包 Config 的 volatile 字段（跨设备持久；禁用/卸载即回落官方列表——卸载（remove）时项目数据随 profile 行一起清除，禁用（disable）时数据留存）。第五、六项：侧栏品牌行的**版本行**（Node 半场解析本包版本与运行中的 DSH 版本——桌面形态读进程 argv 命名的 asar 运行时根、CLI 形态从安装锚点向上解析——经宿主 `webserver/index-inject` 的 `global` 注入行递给页面，品牌栈在「太极」下方渲染 `v{本包} · dsh v{宿主}`，宿主版本解析不到时降级只显 `v{本包}`）；**会话头 taiji 化**（40px 单行 + 标题 14px 次要色 + 「对话|轨迹」分段控件归并到标题行右端；宿主 DOM 保留，`conversation.session.header.actions` 槽追加 13px 会话状态图标——整槽替换会让 utilities 子槽（「打开方式」按钮）失去渲染者，故走 CSS 重塑 + 槽位追加；More ⋯ 菜单与只读的预设标签按太极「卡头只留会话级控件」隐藏，其功能入口在侧栏会话行与 utilities 按钮均有等价物）。
+- **界面贡献**（前三项注册进宿主槽位、新格追加，不替换宿主已有条目）：空会话首屏品牌区（双鱼标放大版 + 产品名「太极」+ 欢迎语）；composer 工具行的快速配色 chip（点击弹出六色色卡，与设置页外观行共用同一控制器与持久状态）；设置页「太极」分区（配色状态页 + 项目管理：建/改名/删除/排序）。第四项是**整槽替换**：侧栏会话区（`sidebar.workspaces`，负优先级阴影宿主官方列表）渲染太极式项目分组列表——默认项目（未归类轻量行，无框无左线）+ 命名项目（组头 + 展开体左缘细线，当前组 accent 细线/非当前极淡）+ 会话行（状态点四态/子会话计数/置顶图钉/相对时间，**行首无品牌图标**）；打开/新建/归档/置顶走宿主 `uiWorkspace` 服务，重命名走宿主 `sessions` 公开合同，项目与归属映射（含组展开态）存本包 Config 的 volatile 字段（跨设备持久；禁用/卸载即回落官方列表——卸载（remove）时项目数据随 profile 行一起清除，禁用（disable）时数据留存）。第五、六项：侧栏品牌行的**版本行**（Node 半场解析本包版本与运行中的 DSH 版本——桌面形态读进程 argv 命名的 asar 运行时根、CLI 形态从安装解析起点向上解析——经宿主 `webserver/index-inject` 的 `global` 注入行递给页面，品牌栈在「太极」下方渲染 `v{本包} · dsh v{宿主}`，宿主版本解析不到时降级只显 `v{本包}`）；**会话头 taiji 化**（40px 单行 + 标题 14px 次要色 + 「对话|轨迹」分段控件归并到标题行右端；宿主 DOM 保留，`conversation.session.header.actions` 槽追加 13px 会话状态图标——整槽替换会让 utilities 子槽（「打开方式」按钮）失去渲染者，故走 CSS 重塑 + 槽位追加；More ⋯ 菜单与只读的预设标签按太极「卡头只留会话级控件」隐藏，其功能入口在侧栏会话行与 utilities 按钮均有等价物）。
 
 一个包同时承载两个半场（单包 = profile 里的单行条目，两个半场的生命周期因此一致）：
 
 | 半场 | 产物 | 职责 |
 |------|------|------|
-| Node 半场 | 源 `index.js`；安装后入口 = `lib/index.js`（`package.json` 的 `main`） | 订阅宿主 `webserver/index-inject`，把首帧样式行推入注入表；装载期检查 profile 是否具备 web 承载能力并给出可行动诊断 |
+| Node 半场 | 源 `index.js`；安装后入口 = `lib/index.js`（`package.json` 的 `main`） | 订阅宿主 `webserver/index-inject`，把首次绘制前的样式与版本信息行推入注入表；声明插件 Config；装载期检查 profile 是否具备 web 承载能力并给出可行动诊断 |
 | 浏览器半场 | `client/` → 安装后的 `lib/client.js` | 经宿主 `window.__ModuleLoader__.load({ id, factory })` 契约物化；装配染色三层（静态调色板重定义、token 职能分色、字体复合简写重写）、结构值（圆角）、品牌与设置槽位贡献、外观行、项目分组浏览器（会话区整槽替换 + ProjectStore 持久通道），以及持久状态通道 |
 
 ## 前置条件
@@ -139,7 +141,7 @@ dsh plugin --profile web remove tai-ji-yang-shell
 ```
 
 - 范围取宽（覆盖当前主版本的全部 rc，直到下一个 minor 之前）：DSH 的 rc 迭代属于常规发版，不该把本包挡在门外；上界 `<0.3.0` 挡住破坏性升级。
-- **为什么必须写 peerDependencies 而不只写 engines.dsh**：宿主的版本门禁只读 `peerDependencies` 里名为 `@deepseek-ai/dsh`（或以 `@deepseek-ai/dsh-` 开头）的条目，`engines.dsh` 整段不被读取（实装 `dsh-app-boot` 的 `evaluatePluginCompatibility`；`dsh/lib` 下 grep `engines` 命中 0 处）。实测对照：只写 `engines.dsh = ">=9.9.9 <10.0.0"`（当前实装 0.1.7-rc.2 明显不在范围）时 `dsh plugin add` 照常装成功、无任何拒绝——**只写 engines.dsh 等于没有门禁**。
+- **为什么必须写 peerDependencies 而不只写 engines.dsh**：宿主的版本门禁只读 `peerDependencies` 里名为 `@deepseek-ai/dsh`（或以 `@deepseek-ai/dsh-` 开头）的条目，`engines.dsh` 整段不被读取（实际实现 `dsh-app-boot` 的 `evaluatePluginCompatibility`；`dsh/lib` 下 grep `engines` 命中 0 处）。实测对照：只写 `engines.dsh = ">=9.9.9 <10.0.0"`（当前实际实现 0.1.7-rc.2 明显不在范围）时 `dsh plugin add` 照常装成功、无任何拒绝——**只写 engines.dsh 等于没有门禁**。
 - 门禁语义是「不满足即阻止」：宿主在安装前拒绝，并给出可行动的提示，而不是装上后运行时崩溃。
 - 这与「零 npm 运行时依赖」不冲突：那条禁的是 `@deepseek-ai/dsh-client-*`（由宿主模块表供给的 client 包），而 `@deepseek-ai/dsh` 是**运行时本身**，正是兼容性评估的设计对象。
 - 落在范围外且已确认兼容时，可显式豁免（**承担崩溃与数据丢失风险**，只对该包与该 DSH 版本的组合生效）：
@@ -170,7 +172,7 @@ npm 的 `latest` dist-tag 当前指向 0.2.2-rc.1，落在本包范围内（门�
 
 其余登记差异：
 
-- **代码高亮 / 工具 JSON 面板 / 附件文件图标**保持宿主自带的彩色字面色板（不染成太极灰阶）：这三处是内容区的高差异化信息载体，改色会削弱其信息功能。
+- **代码高亮 / 工具 JSON 面板 / 附件文件图标**保持宿主自带的彩色字面色板（不染成太极灰阶）：这三处用高差异化颜色承载内容信息，改色会削弱其信息功能。
 - **字号与字体轴**完全交回宿主：本包不写字族与字号，只重写字体复合简写里的字重/行高两段（字号与字族表达式逐字保留，见开头「染色三层」③），⌘+/⌘- 与字体选择照常生效。
 - **分区独立字号**不做：太极桌面版的侧栏/对话/抽屉各有独立字号档位；宿主的字号维度只有 text / code / terminal 三种内容类型轴（宿主 `theme-settings.ts` 的 `FONT_ROLES`），侧栏 UI 字号不可独立调。一套按界面分区定档、一套按内容类型定轴，两套维度对不上，硬映射只能造出没有对应语义的档位，故不承诺。
 - **第三方主题插件**不承诺共存：本包以 token 覆盖层表达配色，与其他覆盖层叠加的结果不做保证。
@@ -185,7 +187,7 @@ npm 的 `latest` dist-tag 当前指向 0.2.2-rc.1，落在本包范围内（门�
 
 **2. 非 HMR profile：装完必须停机重启，不能即时生效**
 
-有 HMR 的应用型 profile（`web`、`desktop`，base 的 `hmr` 行在 profile 上下文里是启用的）装完即生效；没有 HMR 的 profile（`headless`、`sdk`、`acp` 显式关掉 base 的 `hmr` 行，`sdk-minimal` 不基于 base 因此也没有 hmr 行）在装完新包后返回 `restart-required`（0.2.2 起还附带 `restartReason: no-hmr`），含义是「这个 profile 只在启动时应用变更」。处置：停止 DSH，再执行一次同一条 `dsh plugin ... add`，然后启动 profile。以 0.1.7 实装为例，插件管理在无 HMR 的 profile 里对正在运行的组合包直接以 `stop-profile` 拒绝移除（0.2.2 的对应提示文案是：停机后执行 `dsh plugin --profile <profile> remove <bundle>`）。
+有 HMR 的应用型 profile（`web`、`desktop`，base 的 `hmr` 行在 profile 上下文里是启用的）装完即生效；没有 HMR 的 profile（`headless`、`sdk`、`acp` 显式关掉 base 的 `hmr` 行，`sdk-minimal` 不基于 base 因此也没有 hmr 行）在装完新包后返回 `restart-required`（0.2.2 起还附带 `restartReason: no-hmr`），含义是「这个 profile 只在启动时应用变更」。处置：停止 DSH，再执行一次同一条 `dsh plugin ... add`，然后启动 profile。以 0.1.7 实际实现为例，插件管理在无 HMR 的 profile 里对正在运行的组合包直接以 `stop-profile` 拒绝移除（0.2.2 的对应提示文案是：停机后执行 `dsh plugin --profile <profile> remove <bundle>`）。
 
 **3. 包被解析到了别的目录**
 
@@ -209,7 +211,7 @@ allowBuilds:
 
 **5. 安装日志里有 `missing peer` 警告（cordis / schemastery）**
 
-本包有两个 peer：`@deepseek-ai/cordis` 与 `@deepseek-ai/schemastery`（运行时都由宿主提供，不由插件安装）。git 或 registry 方式安装时 pnpm 会做 peer 检查并打印对应的 `missing peer` 警告，两类都要排查：`@deepseek-ai/cordis` 缺失 = 宿主 Cordis 运行时那一份没被解析到（Node 半场的 `ctx` 与 `apply(ctx)` 签名都来自它）；`@deepseek-ai/schemastery` 缺失 = 插件 `Config` 声明用的 schema 库没被解析到（`dsh plugin add` 的安装锚点是 dsh 自身 package.json，插件 import 向上解析即命中宿主那一份，单一副本）。宿主侧以模块表供给，不影响装载。要静音警告可保持用本地路径 / tarball 安装。
+本包有两个 peer：`@deepseek-ai/cordis` 与 `@deepseek-ai/schemastery`（运行时都由宿主提供，不由插件安装）。git 或 registry 方式安装时 pnpm 会做 peer 检查并打印对应的 `missing peer` 警告，两类都要排查：`@deepseek-ai/cordis` 缺失 = 宿主 Cordis 运行时那一份没被解析到（Node 半场的 `ctx` 与 `apply(ctx)` 签名都来自它）；`@deepseek-ai/schemastery` 缺失 = 插件 `Config` 声明用的 schema 库没被解析到（`dsh plugin add` 的安装解析起点是 dsh 自身 package.json，插件 import 向上解析即命中宿主那一份，单一副本）。宿主侧以模块表供给，不影响装载。要静音警告可保持用本地路径 / tarball 安装。
 
 **6. 版本门禁拒绝安装或启动**
 
@@ -265,18 +267,18 @@ cd ~/.dsh/profiles/<profile> && pnpm install
 
 ## 开发约定（本包自身的边界）
 
-- 不注册第三方主题 id、不写宿主主题偏好（否则「跟随系统」失效）；配色走宿主 token 覆盖层，明暗模式归宿主。
-- 不写宿主字族、字号轴与布局几何变量；字体结构值走复合简写安全重写（只替换字重/行高两段，字号与字族表达式逐字保留；升级护栏见「静态自检」），圆角走独立子 token。
-- 每个贡献点（覆盖层、结构 CSS、槽位、外观行、locale 字典）都挂在 `ctx.effect` 上并返回 disposer，卸载即撤除。
-- 持久状态（配色 id）存宿主管辖的插件 Config，不用浏览器 localStorage：卸载时本包代码已不再执行，Config 随 profile 行一并消失才是可达的清理路径。
-- 浏览器半场的 `require` 只落在宿主模块表基线内；`package.json` 的 `dependencies` 为空，两个对等依赖（`@deepseek-ai/cordis` 与 `@deepseek-ai/schemastery`）都走 `peerDependencies`（宿主 `dsh-settings` 同款惯例，且 `dsh plugin add` 的安装锚点是 dsh 自身 package.json，插件 import 向上解析即命中宿主那一份，单一副本）。
+开发、审查与有意偏离的完整登记见 [docs/DSH-PLUGIN-RULES.md](docs/DSH-PLUGIN-RULES.md)；双半场与界面贡献的职责边界见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 ## 静态自检
 
 一键入口（静态断言 → 构建 → 全仓单测，固定顺序）：
 
 ```bash
-node scripts/check-all.mjs              # 全跑；--static 只跑静态断言、--skip-build 跳过构建
+pnpm check          # 全跑：静态断言 → 构建 → 全仓单测
+pnpm check:static   # 只跑静态断言
+pnpm test           # 只跑全仓单测
+
+# 等价的直接入口：node scripts/check-all.mjs（另支持 --skip-build）
 ```
 
 单项脚本（各自由产出单元维护，断言逻辑只此一处）：
@@ -293,8 +295,8 @@ node scripts/check-profile-probe.mjs     # V8 自检：装错 profile 时 Node �
 构建入口（`check-all.mjs` 的构建段即调它）：
 
 ```bash
-node scripts/build-client.mjs            # 产出 lib/client.js 与 lib/index.js
-node scripts/build-client.mjs --self-test  # 12 项自证，含四条失败支证明会红
+pnpm build            # 产出 lib/client.js 与 lib/index.js
+pnpm build:self-test  # 12 项自证，含四条失败支证明会红
 ```
 
 全仓单测里的 `client/theme/host-font-sheet.spec.ts` 是字体复合简写的**升级护栏**：对宿主源样式表 `gradient-shadow-text.css` 逐 token 对账——复合简写名单对齐（宿主增删档即红）、字号段与字族段逐字一致（字重/行高不比对，那是本包要改的两段）。宿主升级改了字号表达式而本包 `client/theme/structure.ts` 未同步时，这条测试会红，提示同步重写表。宿主样式表定位：`DSH_FONT_SHEET` 环境变量优先；缺省探测本机 DSH 源码仓的固定路径（探测串写在 spec 文件内）；找不到时测试直接失败并在错误信息里给出设置指引，不静默跳过——在他机上跑 `check-all` 或单测前，先把 `DSH_FONT_SHEET` 指向本机 DSH 源码仓里的 `gradient-shadow-text.css`。

@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "build": "node scripts/build-client.mjs",
+    "build:self-test": "node scripts/build-client.mjs --self-test",
+    "test": "node node_modules/vitest/vitest.mjs run",
+    "check": "node scripts/check-all.mjs",
+    "check:static": "node scripts/check-all.mjs --static"
+  },
   "main": "lib/index.js",
   "exports": {
     ".": {
@@ -46,6 +54,8 @@
     "@deepseek-ai/dsh": ">=0.1.7-rc.2 <0.3.0"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "~4.1.0",
+    "@deepseek-ai/schemastery": "~3.18.4",
     "esbuild": "^0.25.0",
     "vitest": "^3.0.0"
   }

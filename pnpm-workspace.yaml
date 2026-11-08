@@ -5,3 +5,7 @@
 # 预声明放行使该流程干净通过；esbuild 无副作用安装脚本，放行不扩大信任面。
 allowBuilds:
   esbuild: true
+
+# DSH 由宿主提供，不能因 peer 自动安装把整套宿主运行时拉进插件开发环境。
+# 测试真正使用的 Cordis 与 Schemastery 已在 devDependencies 显式声明。
+autoInstallPeers: false

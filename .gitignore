@@ -9,3 +9,9 @@ node_modules/
 # 给 pnpm），唯一权威锁文件 = 仓库根的 pnpm-lock.yaml。npm 的 package-lock.json 不被 pnpm 消费，
 # 一旦入库会让「按 README 执行 pnpm install」与锁记录脱节、复现构建失去基准，故忽略防混入。
 package-lock.json
+
+# AI workflow、真实宿主验收与浏览器测试产物：证据保存在技能数据目录或临时目录，不入库。
+.tmp/
+.review/
+test-results/
+playwright-report/
