@@ -22,9 +22,14 @@
 
 /* ── 1. 容器：grid 双行 → 40px 单行 flex ────────────────────────────────────────
  * 宿主原形态：grid[auto 1fr] + 第二行视图标签页（min-height 76px；无标签页时回落约 50px）。
- * 改法：容器转 flex；titleRow 与 tabs 的无类包装 div 用 display:contents 提升为容器直接
- * 子项，titleRow 占满剩余宽（min-width:0 保标题 truncate 链），tabs 作为行尾项（在 corner
- * 之后，与 taiji「分段控件在 drawer 钮之前」次序相反——flex 提升无法跨父重排，接受此偏差）。
+ * 改法：容器转 flex；titleRow 与其外层无类包装 div（§1 的 > div:last-child）连续两层
+ * display:contents——孙辈（titleCluster / headerUtilities / headerCorner / tabs）提升为
+ * header 的 flex 直接子项，由 order 统一定序为 taiji 序（标题簇 → 分段控件 → 打开方式 →
+ * 右侧栏；此前 tabs 只能整层排在行尾、次序与 taiji 相反，titleRow 一并提升后跨层重排
+ * 解锁）。titleRow 的 height:40 规则随之删除——高度由 header 的 min-height:40 与
+ * align-items:center 保证；其宿主 container-type 在 header 区无 @container 消费者
+ * （宿主样式表实测仅一条 @container，挂在 composer 的 row 上），contents 化无影响。
+ * 子项间距统一走 header 的 gap 8px（titleRow 自身 gap 随盒子消失）。
  * 空会话态（headerBlank）：宿主隐藏标题簇只留 corner，同样 40px 单行、边框保留（taiji 卡头
  * 常驻带边框）。
  */
@@ -41,12 +46,10 @@ header:has([data-conversation-header-leading]) > div:last-child {
   display: contents;
 }
 
+/* titleRow 一并 contents 化：孙辈提升为 header flex 直接子项，序与间距由 §2/§4/§5 的
+ * order + header gap 接管（其 flex/height/gap 在 contents 形态下无盒子可挂）。 */
 header:has([data-conversation-header-leading]) [class*="titleRow"] {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  height: 40px;
-  gap: 8px;
+  display: contents;
 }
 
 /* ── 2. 标题：14px 次要色、单行省略 ────────────────────────────────────────────
@@ -54,9 +57,14 @@ header:has([data-conversation-header-leading]) [class*="titleRow"] {
  * 当前标题 14px/常规/次要色 truncate；祖先节点与分隔符同色降不透明度。
  */
 header:has([data-conversation-header-leading]) [class*="titleCluster"] {
+  order: 1;
   flex: 1;
   min-width: 0;
   gap: 8px;
+  /* darwin 让位内边距（宿主 titleRow 原式整体迁移，逐字保留）：桌面 frame 交通灯占
+   * leading 区时标题起点右移避让；web 端 --dsh-frame-leading-clearance 缺席回落 0px。
+   * titleRow contents 化后其原式随盒子失效，改挂到行首的 titleCluster 上接管。 */
+  padding-inline-start: max(0px, calc(var(--dsh-frame-leading-clearance, 0px) - 20px));
 }
 
 header:has([data-conversation-header-leading]) [class*="crumbs"] {
@@ -126,10 +134,18 @@ header:has([data-conversation-header-leading]) [class*="headerActions"] [class*=
   }
 }
 
+/* utilities（打开方式拆分钮 + ⋯ 包装）：order 3，排 tabs 之后、corner 之前。宿主的
+ * margin-left:20px 是其双行布局的让位值，归零后间距统一走 header 的 gap 8px（叠 gap 会过宽）。 */
+header:has([data-conversation-header-leading]) [class*="headerUtilities"] {
+  order: 3;
+  margin-left: 0;
+}
+
 /* corner 的 -16px 右负边距是宿主「下一元素可叠进 corner 盒子右缘」的设计：跟随者是普通
  * ghost 钮时无感，但我们的分段控件带可见底色，会实画到 corner 按钮上——中和为 0，
- * 后续元素从 corner 完整盒子之后起排。 */
+ * 后续元素从 corner 完整盒子之后起排。order 4 使其贴最右（taiji 卡头行尾）。 */
 header:has([data-conversation-header-leading]) [class*="headerCorner"] {
+  order: 4;
   margin-right: 0;
 }
 
@@ -137,29 +153,42 @@ header:has([data-conversation-header-leading]) [class*="headerCorner"] {
  * taiji 的三点菜单整项 DEFERRED 不渲染（PanelHeader.vue:145）。DSH More 菜单的独有项
  * （重命名 / 归档 / 打开方式子菜单）在侧栏会话行与 utilities 的「打开方式」按钮里都有
  * 等价入口，隐藏不丢功能。
+ * 锚定依据（0.1.7 / 0.2.2 双版本实测同构）：utilities 的包装层 div 内恰两个 span——
+ * 「打开方式」拆分钮的包装带 menuAnchor 类，⋯ 的包装是裸 _root_ span（其内 button 的
+ * local 名 moreButton 随宿主构建漂移、不可锚；旧规则曾锚 headerMenuButton，双版本均无
+ * 命中，已删）。split 内部是 div>button 结构、无更深 span，:not(menuAnchor) 的命中集
+ * 恰为 ⋯ 一枚。已知局限：宿主未来若在 utilities 注册第三个不带 menuAnchor 的包装 span，
+ * 会被本规则一并误隐藏——记录在案，届时随宿主结构再收敛锚点。
  */
-header:has([data-conversation-header-leading]) [class*="headerMenuButton"] {
+header:has([data-conversation-header-leading]) [class*="headerUtilities"] span:not([class*="menuAnchor"]) {
   display: none;
 }
 
-/* ── 5. 第二行标签页 → taiji 分段控件（行尾） ────────────────────────────────────
+/* ── 5. 第二行标签页 → taiji 分段控件（order 2：标题簇后、utilities 前） ──────────
  * 两版宿主结构不同（均实测探针）：0.1.7 的 role=tablist 挂在 .tabs 轨道本体（单层）；
  * 0.2.2 是双层（.tabs 外轨 > .viewTabs[role=tablist]），且外轨带 width:100% /
- * margin-top:10px / padding-left:8px / flex-wrap:wrap / gap:16px 20px——经 §1 的
- * display:contents 提升后这些尺寸把标签页撑成整行宽、与 utilities/corner 同一 y 带
- * 叠压（把「打开方式」按钮整个盖住）。故外轨尺寸必须整体中和；分段容器样式锚
- * [role=tablist]（结构属性，不随 CSS Modules hash 漂移，两版都命中正确那层）。
+ * margin-top:10px / padding-left:8px / flex-wrap:wrap / gap:16px 20px——这些尺寸会把
+ * 标签页撑成整行宽、与 utilities/corner 同一 y 带叠压，故外轨尺寸必须整体中和；分段
+ * 容器样式锚 [role=tablist]（结构属性，不随 CSS Modules hash 漂移，两版都命中正确那层）。
  */
+/* tabs 层 order 定序（§1 孙辈提升后它已是 header 的 flex 直接子项）：0.2.2 命中外轨
+ * .tabs（内层 viewTabs 的类名不含小写 "tabs" 子串，不会误中、其在外轨内部与 more 钮
+ * 保持 DOM 序）；0.1.7 的 .tabs 即 tablist 本体，直接命中。只设 order，形态样式由
+ * 下面两条规则按层分流（外轨规则 :not 不命中 0.1.7，其 tablist 走 [role=tablist] 规则）。 */
+header:has([data-conversation-header-leading]) [class*="tabs"] {
+  order: 2;
+}
+
 header:has([data-conversation-header-leading]) [class*="tabs"]:not([role="tablist"]) {
   flex: none;
   width: auto;
   /* 最小宽度喂给宿主 visibleViewLimit（floor((row.clientWidth - 48) / 120)）：内容宽会让
    * limit 算出 1，第二个视图（Trajectory）被折进「More conversation views」启动钮——
    * 288px 恰好让 limit = 2，两枚标签直显。外轨自身无底色，多出的宽度只是不可见保留区。
-   * justify-content:flex-end 把 tablist+more 推到外轨右缘：保留区转移到左侧（corner 与
-   * 分段控件之间），行尾不再出现「more 之后一大段空白、控件悬在半空」的观感（对齐 taiji
-   * 卡头「控件贴右、间隙由标题 flex 区吸收」的布局）。0.1.7 无独立外轨（.tabs 即
-   * tablist），本规则不命中，无影响。 */
+   * justify-content:flex-end 把 tablist+more 推到外轨右缘：保留区转移到左侧（标题簇的
+   * flex 余宽吸收区与分段控件之间），不再出现「more 之后一大段空白、控件悬在半空」的
+   * 观感（对齐 taiji 卡头「控件贴右、间隙由标题 flex 区吸收」的布局）。0.1.7 无独立外轨
+   * （.tabs 即 tablist），本规则不命中，无影响。 */
   min-width: 288px;
   justify-content: flex-end;
   margin: 0;
