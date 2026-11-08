@@ -121,11 +121,19 @@
   }
 }
 
-/* 默认项目轻量头行：无框无线（taiji 2026-10-13 裁决），缩进仅 chevron 内移、高度低一档。 */
+/* 默认项目轻量头行：缩进仅 chevron 内移、高度低一档（展开内容区与命名组同款左缘细线——
+   用户裁决，轻量头行保留）。 */
 .taiji-pb-ghead-default {
   min-height: 26px;
   gap: 6px;
   padding: 0 8px;
+}
+
+/* 拖拽悬停高亮（session 改归属的 dropActive / project 换位的 projectDragOver，两类独立
+   锚点同视觉 = 组头 hover 底色；taiji bg-surface-hover 同语义）。 */
+.taiji-pb-ghead-drop,
+.taiji-pb-ghead-pdrag {
+  background: var(--taiji-pb-hover);
 }
 
 /* chevron 展开指示：展开向下（0°）/ 收起向右（-90°），旋转过渡与组体高度动画同语系。 */
@@ -215,7 +223,7 @@
 }
 
 /* 展开体（常驻 DOM，grid 0fr↔1fr 高度动画 + 收起延迟 visibility——隐藏行不进 Tab 焦点序）；
-   左缘细线只在命名项目的展开内容区（不含组头），组收起随体隐藏。 */
+   左缘细线在展开内容区（不含组头；默认项目同款），组收起随体隐藏。 */
 .taiji-pb-gbody-wrap {
   display: grid;
   grid-template-rows: 0fr;
@@ -244,19 +252,10 @@
   opacity: 1;
 }
 
-/* 当前组 = accent 细线（60% 透明度）；非当前组 = border-l1 极淡 hairline（缺省值）。 */
+/* 当前组 = accent 细线（60% 透明度）；非当前组 = border-l1 极淡 hairline（缺省值）。
+   默认项目承载当前会话时同样走 accent 档（展开内容区与命名组同款——用户裁决）。 */
 .taiji-pb-gbody-current {
   border-left-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 60%, transparent);
-}
-
-/* 默认项目的展开体：无框无线（轻量行语义），仅保留小内缩。 */
-.taiji-pb-group-default .taiji-pb-gbody-wrap {
-  margin: 0 4px 4px 4px;
-}
-
-.taiji-pb-group-default .taiji-pb-gbody {
-  border-left: none;
-  padding-left: 0;
 }
 
 /* ── 会话行 ──────────────────────────────────────────────────────────────────── */
@@ -285,6 +284,11 @@
 
 .taiji-pb-row-current .taiji-pb-title {
   font-weight: 600;
+}
+
+/* 拖拽中的源行半透明（taiji SessionItem opacity-50 同款；dragend 兜底复位）。 */
+.taiji-pb-row-dragging {
+  opacity: 0.5;
 }
 
 /* 状态点 7px（行首不放品牌图标——用户硬性要求；idle 留空位保对齐）：

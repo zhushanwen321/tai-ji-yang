@@ -1,17 +1,19 @@
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
-import { collectElements, createTsxLoader, elementsWithClass, textOf, type FakeElement } from '../testing/load-tsx'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { collectElements, createTsxLoader, elementsWithClass, textOf, type FakeElement, type TsxLoader } from '../testing/load-tsx'
 import { TAIJI_LOCALE_NS, en, zh } from '../locale'
 
 /**
  * hero 品牌区单测（hero 槽 taiji 化：放大双鱼标 + 产品名 + 欢迎语）。
  *
- * 两条测试线（与 mark.test.ts 同形态）：
+ * 三条测试线（装配线与组件线同 mark.test.ts 形态）：
  *   ① 装配线（假宿主 slots）——hero 槽注册的是品牌区组件 TaijiHeroArea（不是裸 mark），
  *      locale 声明、优先级避让、区间占满的降级回落；
  *   ② 组件线（测试夹具装载 .tsx + 假 react）——竖排结构与文案（mark 56 / 产品名 / 欢迎语）、
- *      宿主几何类透传到 mark svg、size 请求值不被消费。
- * 真渲染（品牌区真的出现在 hero）归真实宿主场景，本层不越界。
+ *      宿主几何类透传到 mark svg、size 请求值不被消费；
+ *   ③ 隐藏样式线（最小 document stub）——宿主标题组的隐藏样式随组件挂载注入 head、随
+ *      disposer 移除（双欢迎语修复：样式串的 :has 结构锚 + 可逆性）。
+ * 真渲染（品牌区真的出现在 hero、样式真的藏掉宿主标题）归真实宿主场景，本层不越界。
  */
 
 const MARK_PATH = fileURLToPath(new URL('./mark.tsx', import.meta.url))
@@ -74,6 +76,12 @@ interface HeroAreaModule {
     className?: string
     t: (key: string) => string
   }) => FakeElement
+  /** 隐藏宿主标题组的样式串（模块常量；内容断言用）。 */
+  HERO_HOST_TITLE_HIDE_CSS: string
+  /** style 元素的 data-taiji-hero 标记值。 */
+  HERO_HOST_TITLE_STYLE_MARK: string
+  /** 样式安装函数（最小 DOM 面；安装/卸载断言用）。 */
+  installHeroHostTitleStyle: (doc: StyleDocumentStub['document']) => () => void
 }
 
 interface MarkModule {
@@ -85,11 +93,71 @@ interface MarkModule {
  * 同一 loader 装载 mark.tsx + hero-area.tsx：模块循环（mark ⇄ hero-area）下两边拿到
  * 彼此的同一实例引用，component 身份断言（toBe）才成立。
  */
-function loadBrandModules(): { mark: MarkModule; heroArea: HeroAreaModule } {
+function loadBrandModules(): { loader: TsxLoader; mark: MarkModule; heroArea: HeroAreaModule } {
   const loader = createTsxLoader()
   const mark = loader.load(MARK_PATH) as unknown as MarkModule
   const heroArea = loader.load(HERO_AREA_PATH) as unknown as HeroAreaModule
-  return { mark, heroArea }
+  return { loader, mark, heroArea }
+}
+
+/** 最小 style 元素 stub：记录 textContent 与 data 属性（断言注入内容用）。 */
+interface StyleStub {
+  textContent: string | null
+  readonly attributes: Record<string, string>
+  setAttribute(name: string, value: string): void
+}
+
+/** 最小 document stub：只提供 installHeroHostTitleStyle 用到的三个面。 */
+interface StyleDocumentStub {
+  document: {
+    createElement(tagName: 'style'): StyleStub
+    head: {
+      appendChild(node: unknown): unknown
+      removeChild(node: unknown): unknown
+    }
+  }
+  /** head 里当前的元素（appendChild 进来的；断言「随安装出现 / 随 disposer 消失」）。 */
+  children: unknown[]
+  /** 全部创建过的 style 元素（创建即记录，与是否挂载无关）。 */
+  created: StyleStub[]
+}
+
+/**
+ * 造最小 document stub（node 测试环境无真实 DOM，见 testing/load-tsx.ts 边界）。
+ *
+ * removeChild 收到不在 head 里的元素时抛错：安装/卸载若不配对，测试当场红——
+ * 这正是「样式元素随安装出现、随 disposer 消失」要锁的行为。
+ */
+function createStyleDocumentStub(): StyleDocumentStub {
+  const children: unknown[] = []
+  const created: StyleStub[] = []
+  const document = {
+    createElement(tagName: 'style'): StyleStub {
+      if (tagName !== 'style') throw new Error(`stub 只造 style 元素，收到 ${String(tagName)}`)
+      const element: StyleStub = {
+        textContent: null,
+        attributes: {},
+        setAttribute(name: string, value: string) {
+          element.attributes[name] = value
+        },
+      }
+      created.push(element)
+      return element
+    },
+    head: {
+      appendChild(node: unknown): unknown {
+        children.push(node)
+        return node
+      },
+      removeChild(node: unknown): unknown {
+        const index = children.indexOf(node)
+        if (index < 0) throw new Error('stub removeChild：元素不在 head 里（安装/卸载不配对）')
+        children.splice(index, 1)
+        return node
+      },
+    },
+  }
+  return { document, children, created }
 }
 
 describe('installBrandMarkSlots 的 hero 槽（品牌区组件）', () => {
@@ -130,6 +198,15 @@ describe('installBrandMarkSlots 的 hero 槽（品牌区组件）', () => {
 
 describe('TaijiHeroArea 组件输出', () => {
   const { mark, heroArea } = loadBrandModules()
+
+  // 组件体内 useEffect 注入隐藏样式 → 夹具桩立即执行 effect → 读全局 document；node
+  // 测试环境无 DOM，每条用例装一个最小 stub（真机 document 天然满足同一最小面）
+  beforeEach(() => {
+    vi.stubGlobal('document', createStyleDocumentStub().document)
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
 
   /** 树中定位 mark 元素（type = TaijiBrandMark 组件函数；夹具不递归执行组件）。 */
   function markElement(root: FakeElement): FakeElement | undefined {
@@ -177,5 +254,50 @@ describe('TaijiHeroArea 组件输出', () => {
   it('size 是宿主请求值，品牌区不消费：传任意 size，mark 调用边长恒为展示值 56', () => {
     const root = heroArea.TaijiHeroArea({ size: 34, t: () => '太极' })
     expect(markElement(root)?.props.size).toBe(HERO_MARK_SIZE)
+  })
+})
+
+describe('宿主标题组隐藏样式（双欢迎语修复）', () => {
+  it('样式串：:has 锚定品牌区根类（在场才隐藏）+ 紧邻兄弟 titleGroup + display:none', () => {
+    const { heroArea } = loadBrandModules()
+    const css = heroArea.HERO_HOST_TITLE_HIDE_CSS
+    // 结构锚（真机探针 + EmptyHero.tsx 132-158 行）：fishHitbox span 的槽容器内含品牌区
+    // 根类，titleGroup 是 fishHitbox 的紧邻兄弟——选择器必须原样携带这两级锚
+    expect(css).toContain("span:has(> [data-slot='conversation.hero.brand.mark'] .taiji-hero-area) + span")
+    expect(css).toContain('display: none')
+  })
+
+  it('installHeroHostTitleStyle：head 追加带 data-taiji-hero 标记的 style 元素，disposer 移除它', () => {
+    const { heroArea } = loadBrandModules()
+    const stub = createStyleDocumentStub()
+    const dispose = heroArea.installHeroHostTitleStyle(stub.document)
+
+    expect(stub.created).toHaveLength(1)
+    expect(stub.children).toHaveLength(1)
+    const style = stub.children[0] as StyleStub
+    expect(style).toBe(stub.created[0]) // head 里挂的就是创建的那个元素
+    expect(style.attributes['data-taiji-hero']).toBe(heroArea.HERO_HOST_TITLE_STYLE_MARK)
+    expect(style.textContent).toBe(heroArea.HERO_HOST_TITLE_HIDE_CSS)
+
+    dispose()
+    expect(stub.children).toHaveLength(0) // 卸载语义：宿主欢迎语自动回来，不留全局副作用
+  })
+
+  it('样式生命周期挂在组件上：渲染即注入 head，effect 清理即移除', () => {
+    const stub = createStyleDocumentStub()
+    vi.stubGlobal('document', stub.document)
+    const { loader, heroArea } = loadBrandModules()
+
+    // 夹具语义：手动调用组件函数 = 夹具的 useEffect 桩立即执行 effect（注入 head）
+    heroArea.TaijiHeroArea({ size: 34, t: () => '太极' })
+    expect(stub.children).toHaveLength(1)
+    expect((stub.children[0] as StyleStub).textContent).toBe(heroArea.HERO_HOST_TITLE_HIDE_CSS)
+
+    // 真 React 的卸载 = 执行 effect cleanup（桩记录在 effectCleanups）
+    const cleanup = loader.effectCleanups.at(-1)
+    expect(cleanup).toBeTypeOf('function')
+    cleanup?.()
+    expect(stub.children).toHaveLength(0)
+    vi.unstubAllGlobals()
   })
 })

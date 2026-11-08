@@ -5,17 +5,20 @@ import { TAIJI_LOCALE_NS, zh } from '../locale'
 import type { ProjectStoreLike } from './store'
 
 /**
- * 项目分组浏览器单测（M2 整槽替换）。锁死四件事的可机器化部分：
+ * 项目分组浏览器单测（M2 整槽替换 + M3 提前的拖拽段）。锁死五件事的可机器化部分：
  *   · 注册契约：注入槽名 sidebar.workspaces、优先级避让（-10 起向下）、区间占满降级不注册
  *     + warn、注册 disposer 透传、选项只传 name/priority/locale；
  *   · 动作接线：install 闭包捕获 uiWorkspace/sessions（行点击打开、组头「+」新建、归档、
  *     取消置顶、会话重命名走宿主 sessions.using 合同）；
  *   · 新建归组：findPendingAssignment 判定 + PendingProjectTracker 一次性消费（mock 快照序列）；
  *   · 渲染 smoke：区头/组头/chip/计数/行四态/徽标族/空态/加载态/数据缺席占位/折叠轨 null/
- *     滚动衔接 ref 绑定；删除两段确认与新建草稿行（taiji-section.test 同款夹具技巧）。
+ *     滚动衔接 ref 绑定；删除两段确认与新建草稿行（taiji-section.test 同款夹具技巧）；
+ *   · 拖拽（双 MIME 分流）：classifyDragOver 判定、行 dragstart 写 session MIME、组头
+ *     dragover/drop 的 session 改归属与 project 换位分流、自组/自落静默、重命名态禁拖。
  *
  * 夹具边界（单次渲染语义）：真实宿主渲染、展开动画、弹层 portal 归 L3 场景；弹层内容经
- * 纯组件 ProjectMoveMenu 直接测，组件内关态零 DOM 依赖。
+ * 纯组件 ProjectMoveMenu 直接测，组件内关态零 DOM 依赖。拖拽高亮类名是 rerender 后的
+ * 渲染产物（夹具不重渲染），夹具层锁行为面：preventDefault / dropEffect / store 调用分流。
  */
 
 const BROWSER_PATH = fileURLToPath(new URL('./browser.tsx', import.meta.url))
@@ -33,6 +36,9 @@ interface BrowserModule {
     consume(input: Record<string, unknown>): { sessionId: string; projectId: string } | null
   }
   performSessionRename: (deps: Record<string, unknown>, sessionId: string, title: string) => void
+  classifyDragOver: (types: readonly string[]) => 'session' | 'project' | null
+  SESSION_DRAG_MIME: string
+  PROJECT_DRAG_MIME: string
   PROJECTS_BROWSER_SLOT: string
   PREFERRED_BROWSER_PRIORITY: number
   PRIORITY_FLOOR: number
@@ -167,7 +173,10 @@ function fakeStore(initial: { projects?: { id: string; name: string }[]; assignm
       calls.push({ method: 'deleteProject', args: [id] })
       return true
     },
-    reorderProjects: async () => true,
+    reorderProjects: async (draggedId: string, targetId: string) => {
+      calls.push({ method: 'reorderProjects', args: [draggedId, targetId] })
+      return true
+    },
     assignSession: async (sessionId: string, projectId: string) => {
       calls.push({ method: 'assignSession', args: [sessionId, projectId] })
       return true
@@ -237,6 +246,40 @@ const buttonByLabel = (scope: FakeElement, label: string): FakeElement => {
   const found = elementsWithClass(collectElements(scope), 'taiji-pb-abtn').find((button) => button.props['aria-label'] === label)
   if (found === undefined) throw new Error(`找不到 aria-label 为「${label}」的动作钮`)
   return found
+}
+
+/** 取组头元素（data-project-id 定位组 → 内层 .taiji-pb-ghead；'' = 默认项目）。 */
+const headOf = (elements: readonly FakeElement[], projectId: string): FakeElement => {
+  const group = findBy(elements, 'taiji-pb-group', 'data-project-id', projectId)
+  if (group === undefined) throw new Error(`找不到项目组 data-project-id="${projectId}"`)
+  const head = elementsWithClass(collectElements(group), 'taiji-pb-ghead')[0]
+  if (head === undefined) throw new Error(`项目组 ${projectId} 无组头`)
+  return head
+}
+
+/** 拖拽事件夹具（browser.tsx 内 DragEventLike 同构的最小结构；preventDefault 调用可查）。 */
+function fakeDragEvent(init: {
+  types?: readonly string[]
+  data?: Record<string, string>
+  relatedTarget?: unknown
+  currentTarget?: unknown
+} = {}) {
+  const payload = { ...init.data }
+  let prevented = false
+  return {
+    /** preventDefault 是否被调（HTML5 DnD「允许成为落点」的契约面）。 */
+    prevented: (): boolean => prevented,
+    dataTransfer: {
+      types: init.types ?? [],
+      getData: (mime: string): string => payload[mime] ?? '',
+      setData: (mime: string, value: string): void => { payload[mime] = value },
+      effectAllowed: undefined as string | undefined,
+      dropEffect: undefined as string | undefined,
+    },
+    relatedTarget: init.relatedTarget ?? null,
+    currentTarget: init.currentTarget,
+    preventDefault: (): void => { prevented = true },
+  }
 }
 
 // ── 注册契约 ─────────────────────────────────────────────────────────────────────
@@ -492,6 +535,143 @@ describe('ProjectMoveMenu（移动到项目弹层列表）', () => {
   })
 })
 
+// ── 拖拽（M3 提前：行拖改归属 / 组头拖换位，双 MIME 分流）─────────────────────────
+
+describe('拖拽：行拖改归属 + 组头拖换位（双 MIME 分流）', () => {
+  const { SESSION_DRAG_MIME, PROJECT_DRAG_MIME } = browserModule
+
+  /** 两命名组夹具：p1 含 s1（当前会话），s2/s3 在默认组（无映射）。 */
+  const TWO_PROJECTS = { projects: [{ id: 'p1', name: '甲' }, { id: 'p2', name: '乙' }], assignments: { s1: 'p1' } }
+
+  function subject(
+    initial: { projects?: { id: string; name: string }[]; assignments?: Record<string, string> } = TWO_PROJECTS,
+  ) {
+    const storeFace = fakeStore(initial)
+    const fake = fakeBrowserHost()
+    const { elements } = renderBrowser({ store: storeFace.store, uiWorkspace: fake.ui, sessions: fake.sessions })
+    return { storeFace, elements }
+  }
+
+  it('classifyDragOver 分流：project 优先 / session / 无关拖拽 null（types 是 dragover 阶段唯一判别通道）', () => {
+    expect(browserModule.classifyDragOver([PROJECT_DRAG_MIME])).toBe('project')
+    expect(browserModule.classifyDragOver([SESSION_DRAG_MIME])).toBe('session')
+    expect(browserModule.classifyDragOver(['Files', SESSION_DRAG_MIME])).toBe('session')
+    expect(browserModule.classifyDragOver(['Files'])).toBeNull()
+    expect(browserModule.classifyDragOver([])).toBeNull()
+    // 两类同时命中物理不可达（一次拖拽只写一种 MIME），到达时 project 优先（taiji 同序）
+    expect(browserModule.classifyDragOver([SESSION_DRAG_MIME, PROJECT_DRAG_MIME])).toBe('project')
+  })
+
+  it('行 dragstart：写 session MIME（值 = 行 id）+ effectAllowed move；dragend 复位不 throw', () => {
+    const { elements } = subject()
+    const row = findBy(elements, 'taiji-pb-row', 'data-session-id', 's2')
+    expect(row?.props.draggable).toBe(true)
+    const start = fakeDragEvent()
+    ;(row!.props.onDragStart as (event: unknown) => void)(start)
+    expect(start.dataTransfer.getData(SESSION_DRAG_MIME)).toBe('s2')
+    expect(start.dataTransfer.effectAllowed).toBe('move')
+    ;(row!.props.onDragEnd as () => void)()
+  })
+
+  it('组头 dragover 双 MIME 分流：session/project 各自命中才 preventDefault + dropEffect；默认头不接换位；无关拖拽不响应', () => {
+    const { elements } = subject()
+    // session MIME 悬停命名组头：允许落点 + 落点效果 move（session 改归属的 dragover 面）
+    const sessionOver = fakeDragEvent({ types: [SESSION_DRAG_MIME] })
+    ;(headOf(elements, 'p1').props.onDragOver as (event: unknown) => void)(sessionOver)
+    expect(sessionOver.prevented()).toBe(true)
+    expect(sessionOver.dataTransfer.dropEffect).toBe('move')
+    // project MIME 悬停命名组头：换位落点同样允许（高亮锚点与 session 独立，drop 分流见下）
+    const projectOver = fakeDragEvent({ types: [PROJECT_DRAG_MIME] })
+    ;(headOf(elements, 'p2').props.onDragOver as (event: unknown) => void)(projectOver)
+    expect(projectOver.prevented()).toBe(true)
+    expect(projectOver.dataTransfer.dropEffect).toBe('move')
+    // project MIME 悬停默认组头：不响应（默认头只接 session 改归属，taiji DefaultProjectHead 同构）
+    const projectOverDefault = fakeDragEvent({ types: [PROJECT_DRAG_MIME] })
+    ;(headOf(elements, '').props.onDragOver as (event: unknown) => void)(projectOverDefault)
+    expect(projectOverDefault.prevented()).toBe(false)
+    // 无关拖拽（文件拖入窗口）：不 preventDefault（浏览器不派发 drop，不误触高亮）
+    const unrelated = fakeDragEvent({ types: ['Files'] })
+    ;(headOf(elements, 'p1').props.onDragOver as (event: unknown) => void)(unrelated)
+    expect(unrelated.prevented()).toBe(false)
+  })
+
+  it('dragleave 真离开（relatedTarget null / 缺席）不 throw；子元素抖动不算离开；drop 不依赖高亮态', () => {
+    const { storeFace, elements } = subject()
+    const head = headOf(elements, 'p1')
+    ;(head.props.onDragOver as (event: unknown) => void)(fakeDragEvent({ types: [SESSION_DRAG_MIME] }))
+    // 子元素间抖动（relatedTarget 仍被组头包含）：不清高亮分支
+    const inner = { tag: 'span' }
+    ;(head.props.onDragLeave as (event: unknown) => void)(fakeDragEvent({
+      relatedTarget: inner,
+      currentTarget: { contains: (node: unknown) => node === inner },
+    }))
+    // 真离开（relatedTarget null）：清；随后 drop 仍按 types 分流正常工作（不读高亮状态）
+    ;(head.props.onDragLeave as (event: unknown) => void)(fakeDragEvent({}))
+    const drop = fakeDragEvent({ types: [SESSION_DRAG_MIME], data: { [SESSION_DRAG_MIME]: 's2' } })
+    ;(head.props.onDrop as (event: unknown) => void)(drop)
+    expect(drop.prevented()).toBe(true)
+    expect(storeFace.calls).toEqual([{ method: 'assignSession', args: ['s2', 'p1'] }])
+  })
+
+  it('drop 改归属：session drop 到组头（含默认头 = 归回默认）→ store.assignSession；自组拖自组 no-op', () => {
+    const { storeFace, elements } = subject()
+    // s2 在默认组 → drop 到 p2 头 = 改归属（折叠组同样可落：drop 不看展开态）
+    ;(headOf(elements, 'p2').props.onDrop as (event: unknown) => void)(
+      fakeDragEvent({ types: [SESSION_DRAG_MIME], data: { [SESSION_DRAG_MIME]: 's2' } }),
+    )
+    expect(storeFace.calls).toEqual([{ method: 'assignSession', args: ['s2', 'p2'] }])
+    // s1 在 p1 组 → drop 到默认头 = 归回默认（assignSession(id, '')）
+    ;(headOf(elements, '').props.onDrop as (event: unknown) => void)(
+      fakeDragEvent({ types: [SESSION_DRAG_MIME], data: { [SESSION_DRAG_MIME]: 's1' } }),
+    )
+    expect(storeFace.calls).toEqual([
+      { method: 'assignSession', args: ['s2', 'p2'] },
+      { method: 'assignSession', args: ['s1', ''] },
+    ])
+    // 自组拖自组（s1 已在 p1）→ no-op 不写 store
+    ;(headOf(elements, 'p1').props.onDrop as (event: unknown) => void)(
+      fakeDragEvent({ types: [SESSION_DRAG_MIME], data: { [SESSION_DRAG_MIME]: 's1' } }),
+    )
+    expect(storeFace.calls).toHaveLength(2)
+  })
+
+  it('组头换位：project drop 到其他命名组头 → reorderProjects(拖动 id, 目标 id)；自拖自落静默；默认头不接', () => {
+    const { storeFace, elements } = subject()
+    ;(headOf(elements, 'p2').props.onDrop as (event: unknown) => void)(
+      fakeDragEvent({ types: [PROJECT_DRAG_MIME], data: { [PROJECT_DRAG_MIME]: 'p1' } }),
+    )
+    expect(storeFace.calls).toEqual([{ method: 'reorderProjects', args: ['p1', 'p2'] }])
+    // 自拖自落（p1 拖回 p1 头）：组件内静默
+    ;(headOf(elements, 'p1').props.onDrop as (event: unknown) => void)(
+      fakeDragEvent({ types: [PROJECT_DRAG_MIME], data: { [PROJECT_DRAG_MIME]: 'p1' } }),
+    )
+    expect(storeFace.calls).toHaveLength(1)
+    // project drop 到默认头：不响应（不产生「移到末尾」——taiji 默认头无换位落点）
+    ;(headOf(elements, '').props.onDrop as (event: unknown) => void)(
+      fakeDragEvent({ types: [PROJECT_DRAG_MIME], data: { [PROJECT_DRAG_MIME]: 'p1' } }),
+    )
+    expect(storeFace.calls).toHaveLength(1)
+  })
+
+  it('组头 dragstart 与禁拖：命名组头写 project MIME + move；默认头恒 draggable=false；重命名态兜底拦截', () => {
+    const { elements } = subject()
+    expect(headOf(elements, 'p1').props.draggable).toBe(true)
+    const start = fakeDragEvent()
+    ;(headOf(elements, 'p1').props.onDragStart as (event: unknown) => void)(start)
+    expect(start.dataTransfer.getData(PROJECT_DRAG_MIME)).toBe('p1')
+    expect(start.dataTransfer.effectAllowed).toBe('move')
+    expect(headOf(elements, '').props.draggable).toBe(false)
+    // 重命名态禁拖：点 pencil 进入行内重命名后，dragstart 兜底 preventDefault 且不写载荷
+    //（真浏览器里 draggable=false 根本不发起 dragstart，兜底防冒泡/夹具形态——taiji 同款双保险）
+    const p2 = findBy(elements, 'taiji-pb-group', 'data-project-id', 'p2')!
+    ;(buttonByLabel(p2, '重命名项目').props.onClick as (event: unknown) => void)({ stopPropagation: () => {} })
+    const duringRename = fakeDragEvent()
+    ;(headOf(elements, 'p2').props.onDragStart as (event: unknown) => void)(duringRename)
+    expect(duringRename.prevented()).toBe(true)
+    expect(duringRename.dataTransfer.getData(PROJECT_DRAG_MIME)).toBe('')
+  })
+})
+
 // ── 渲染 smoke ──────────────────────────────────────────────────────────────────
 
 describe('渲染 smoke（taiji-section.test 同款夹具技巧）', () => {
@@ -624,5 +804,75 @@ describe('渲染 smoke（taiji-section.test 同款夹具技巧）', () => {
     const row = findBy(elements, 'taiji-pb-row', 'data-session-id', 's1')
     ;(row!.props.onClick as () => void)()
     expect(fake.uiCalls.map((call) => call.method)).toEqual(['openSession'])
+  })
+
+  it('草稿行提交后自动收起：Enter 提交后失焦不重复提交，点「+」重新展开可再提交', () => {
+    const storeFace = fakeStore(SAMPLE_STORE_STATE)
+    const fake = fakeBrowserHost()
+    const { elements } = renderBrowser({ store: storeFace.store, uiWorkspace: fake.ui, sessions: fake.sessions })
+    const draft = elementsWithClass(elements, 'taiji-pb-newdraft')[0]!
+    const headAdd = elementsWithClass(elements, 'taiji-pb-head-add')[0]!
+    const enter = (value: string) => {
+      const target = { value }
+      ;(draft.props.onKeyDown as (event: unknown) => void)({ key: 'Enter', target, preventDefault: () => {} })
+      return target
+    }
+    const blur = (value: string): void => {
+      ;(draft.props.onBlur as (event: unknown) => void)({ target: { value } })
+    }
+    ;(headAdd.props.onClick as () => void)() // 展开草稿行
+    const first = enter('甲')
+    expect(first.value).toBe('') // 提交即清值（下次展开内容为空）
+    expect(storeFace.calls).toEqual([{ method: 'createProject', args: ['甲'] }])
+    blur('乙') // 收起态失焦（含 Enter 收起 display:none 引发的浏览器失焦）：不重复提交
+    expect(storeFace.calls).toHaveLength(1)
+    ;(headAdd.props.onClick as () => void)() // 点「+」重新展开
+    blur('丙') // 展开态失焦 = 失焦提交
+    expect(storeFace.calls).toEqual([
+      { method: 'createProject', args: ['甲'] },
+      { method: 'createProject', args: ['丙'] },
+    ])
+  })
+
+  it('草稿行 Esc 取消：清值收起，后续失焦不提交', () => {
+    const storeFace = fakeStore(SAMPLE_STORE_STATE)
+    const fake = fakeBrowserHost()
+    const { elements } = renderBrowser({ store: storeFace.store, uiWorkspace: fake.ui, sessions: fake.sessions })
+    const draft = elementsWithClass(elements, 'taiji-pb-newdraft')[0]!
+    const headAdd = elementsWithClass(elements, 'taiji-pb-head-add')[0]!
+    ;(headAdd.props.onClick as () => void)()
+    const target = { value: '草稿名' }
+    ;(draft.props.onKeyDown as (event: unknown) => void)({ key: 'Escape', target, preventDefault: () => {} })
+    expect(target.value).toBe('')
+    ;(draft.props.onBlur as (event: unknown) => void)({ target: { value: '乙' } })
+    expect(storeFace.calls).toEqual([])
+  })
+
+  it('草稿行空值失焦：丢弃不建项目，同样收起（后续失焦不提交）', () => {
+    const storeFace = fakeStore(SAMPLE_STORE_STATE)
+    const fake = fakeBrowserHost()
+    const { elements } = renderBrowser({ store: storeFace.store, uiWorkspace: fake.ui, sessions: fake.sessions })
+    const draft = elementsWithClass(elements, 'taiji-pb-newdraft')[0]!
+    const headAdd = elementsWithClass(elements, 'taiji-pb-head-add')[0]!
+    const blur = (value: string): void => {
+      ;(draft.props.onBlur as (event: unknown) => void)({ target: { value } })
+    }
+    ;(headAdd.props.onClick as () => void)()
+    blur('   ')
+    expect(storeFace.calls).toEqual([])
+    blur('乙') // 已收起：不再提交
+    expect(storeFace.calls).toEqual([])
+  })
+
+  it('默认组展开内容区挂同款细线类名：与命名组同构，承载当前会话时走 accent 档', () => {
+    // s1 无映射 → 落默认组且是当前会话：默认组 isCurrent（当前组的判据在派生层锁死）
+    const state = { projects: [{ id: 'p1', name: '太极侧栏' }], assignments: {} }
+    const fake = fakeBrowserHost()
+    const { elements } = renderBrowser({ store: fakeStore(state).store, uiWorkspace: fake.ui, sessions: fake.sessions })
+    const bodyOf = (projectId: string) =>
+      elementsWithClass(collectElements(findBy(elements, 'taiji-pb-group', 'data-project-id', projectId)!), 'taiji-pb-gbody')[0]
+    // 默认组内容区与命名组同款细线类名；当前组 accent 档类两组通用（视觉同款 = 同一套类）
+    expect(bodyOf('')!.props.className).toBe('taiji-pb-gbody taiji-pb-gbody-current')
+    expect(bodyOf('p1')!.props.className).toBe('taiji-pb-gbody')
   })
 })

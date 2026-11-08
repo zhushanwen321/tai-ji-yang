@@ -31,12 +31,16 @@
  * 立即成为当前选中）→ 记 `pendingProjectId` → 快照出现「blank 且无映射且是当前选中」的会话时
  * 消费它（一次性，消费即清；判定收进纯函数 findPendingAssignment，消费在 useEffect 里做）。
  *
- * 交互语义权威 = taiji 源组件（ProjectGroup.vue / DefaultProjectHead.vue）：组头 hover 三钮
- * （+/pencil/trash）、行内重命名 Enter 提交 Esc 取消失焦提交、删除两段确认（Esc/pointerleave
- * 复位）、计数 hover 让位（CSS 同位替换）、展开体 grid 0fr↔1fr 高度动画 + 内层 opacity 跟进
- * + 收起延迟 visibility（reduced-motion 归零）。展开态纯组件内 state（默认：当前所在组展开、
- * 其余收起；**不用 localStorage**——tests/uninstall-cleanliness 禁 client 侧存储调用），
- * 组操作无拖拽换位（M3）。
+ * 交互语义权威 = taiji 源组件（ProjectGroup.vue / DefaultProjectHead.vue / SessionItem.vue
+ * 拖拽段）：组头 hover 三钮（+/pencil/trash）、行内重命名 Enter 提交 Esc 取消失焦提交、删除
+ * 两段确认（Esc/pointerleave 复位）、计数 hover 让位（CSS 同位替换）、展开体 grid 0fr↔1fr
+ * 高度动画 + 内层 opacity 跟进 + 收起延迟 visibility（reduced-motion 归零）、双 MIME 拖拽
+ * （HTML5 DnD 原生事件，M3 提前）：会话行拖到组头 = 改归属（dragover 高亮、折叠组可落、
+ * 落点强制展开、自组 no-op）、命名组头互拖 = 换位（默认项目头不可拖不发换位、重命名态禁拖、
+ * 自拖自落静默），dragover/drop 按 dataTransfer.types 分流互不误触（dragover 阶段 getData
+ * 不可读，types 是唯一判别通道），拖拽中源行半透明（dragend 兜底复位）。展开态纯组件内
+ * state（默认：当前所在组展开、其余收起；**不用 localStorage**——tests/uninstall-cleanliness
+ * 禁 client 侧存储调用）。
  *
  * 行首不放任何品牌图标（用户硬性要求）：只有 7px 状态点，无状态（idle）时留空位保对齐。
  *
@@ -224,6 +228,58 @@ interface InputEventLike {
 
 /** 类名拼接（仓内既有口径：不为几个类名引宿主基线外的依赖）。 */
 const cx = (...names: (string | false | undefined)[]): string => names.filter(Boolean).join(' ')
+
+// ── 拖拽（M3 提前，taiji session-drag.ts 同值）：双 MIME 分流 ─────────────────────
+
+/** 会话行拖拽 MIME（值 = sessionId）：拖到组头 = 改归属。 */
+export const SESSION_DRAG_MIME = 'application/x-taiji-session'
+
+/** 项目组头换位拖拽 MIME（值 = projectId）：拖到其他命名组头 = 换位。 */
+export const PROJECT_DRAG_MIME = 'application/x-taiji-project'
+
+/** 拖拽载荷的最小结构面（HTML5 DnD 原生事件只用到这些；夹具照 InputEventLike 模式模拟）。 */
+interface DataTransferLike {
+  /** 悬停阶段可读的类型清单——getData 在 dragover 阶段不可读（安全限制），types 是唯一判别通道。 */
+  types: readonly string[]
+  getData(mime: string): string
+  setData(mime: string, value: string): void
+  /** dragstart 写（源侧声明允许的效果）；dragover 写（落点侧声明的实际效果）。 */
+  effectAllowed?: string
+  dropEffect?: string
+}
+
+/** 拖拽事件的最小结构面（与 InputEventLike 同构子集：真宿主是 DragEvent，夹具传同形对象）。 */
+interface DragEventLike {
+  dataTransfer: DataTransferLike | null
+  preventDefault(): void
+  /** dragleave 抖动过滤：移出去向（null = 离开窗口）。 */
+  relatedTarget?: unknown
+  currentTarget?: unknown
+}
+
+/**
+ * 拖拽悬停分流判定（taiji ProjectGroup.vue 的 isProjectDrag 模式收成纯函数）：
+ * session 与 project 两类拖拽共享组头落点，dragover/drop 阶段各按 types 命中分流互不误触。
+ * 两类同时命中的形态物理上不可达（一次拖拽只写一种 MIME），万一到达按 project 优先
+ * （与 taiji onHeadDragOver 先判 isProjectDrag 同序）。
+ */
+export function classifyDragOver(types: readonly string[]): 'session' | 'project' | null {
+  if (types.includes(PROJECT_DRAG_MIME)) return 'project'
+  if (types.includes(SESSION_DRAG_MIME)) return 'session'
+  return null
+}
+
+/**
+ * dragleave 的真离开判定（taiji 同判）：relatedTarget 仍落在组头元素内 = 组头子元素间抖动
+ * （进入文字 span / 按钮也会冒泡 dragleave），不算离开；null / 缺席 = 真离开（宽松处理，
+ * 夹具简陋事件没有 currentTarget.contains 时同样按真离开收敛）。
+ */
+function dragLeaveIsReal(event: DragEventLike): boolean {
+  const related = event.relatedTarget
+  if (related === null || related === undefined) return true
+  const current = event.currentTarget as { contains?(node: unknown): boolean } | undefined
+  return typeof current?.contains === 'function' ? !current.contains(related) : true
+}
 
 /**
  * 会话重命名：宿主公开合同 `sessions.using(id, { source: 'workspaceOperation' },
@@ -417,6 +473,13 @@ export function ProjectBrowser(props: ProjectBrowserProps & ProjectBrowserDeps) 
   const renamingSessionId = useRef<string | null>(null)
   const newDraftOpen = useRef(false)
   const moveMenu = useRef<{ rowId: string; top: number; left: number } | null>(null)
+  // 拖拽态（M3 提前）：session 悬停高亮的组头 id（dropActive 态）/ project 换位悬停高亮的
+  // 组头 id（projectDragOver 态）——两类独立锚点、同视觉；一次拖拽物理上只有一个悬停位，
+  // 组件级单值 id 即可表达（taiji 是每组件实例自持 ref，同一时刻也只有一个置位）。
+  const sessionDropOverId = useRef<string | null>(null)
+  const projectDragOverId = useRef<string | null>(null)
+  // 拖拽中的源行 id（行半透明反馈；dragend 兜底复位——drop 被取消也还原）。
+  const draggingSessionId = useRef<string | null>(null)
   const [, rerender] = useState(0)
 
   /** 行的当前归属（悬空映射收敛成默认项目——与派生层同一判据）。 */
@@ -462,6 +525,16 @@ export function ProjectBrowser(props: ProjectBrowserProps & ProjectBrowserDeps) 
     })
   }
 
+  /**
+   * 草稿行收起回「+」态：提交 / Esc / 失焦的共用出口。值已由各分支清空（submitNewProject
+   * 内清 / Esc 分支清），下次点「+」重新展开时内容为空；重复收起幂等（无扳机）。
+   */
+  const closeNewDraft = (): void => {
+    if (!newDraftOpen.current) return
+    newDraftOpen.current = false
+    rerender((count) => count + 1)
+  }
+
   /** 打开弹层：取按钮视口几何做 fixed 锚点（appearance-chip 同款；夹具事件无几何时锚 0,0）。 */
   const openMoveMenu = (rowId: string, event: { currentTarget?: unknown }): void => {
     const element = event.currentTarget as { getBoundingClientRect?: () => { bottom: number; left: number } } | undefined
@@ -497,13 +570,30 @@ export function ProjectBrowser(props: ProjectBrowserProps & ProjectBrowserDeps) 
   const renderRow = (row: SessionRowModel) => {
     const renaming = renamingSessionId.current === row.id
     const phrase = formatRelativeTime(row.updatedAtMs)
+    const dragging = draggingSessionId.current === row.id
     return (
       <div
         key={row.id}
-        className={cx('taiji-pb-row', row.isCurrent && 'taiji-pb-row-current')}
+        className={cx('taiji-pb-row', row.isCurrent && 'taiji-pb-row-current', dragging && 'taiji-pb-row-dragging')}
         role="button"
         tabIndex={0}
         data-session-id={row.id}
+        /* 行拖拽改归属（M3 提前）：draggable + dragstart 写 session MIME；重命名态禁拖
+           （与组头重命名禁拖同理：输入框内的文本选中拖拽不得冒泡成整行拖拽） */
+        draggable={!renaming}
+        onDragStart={(event: DragEventLike) => {
+          if (event.dataTransfer === null) return
+          event.dataTransfer.setData(SESSION_DRAG_MIME, row.id)
+          event.dataTransfer.effectAllowed = 'move'
+          draggingSessionId.current = row.id
+          rerender((count) => count + 1)
+        }}
+        onDragEnd={() => {
+          /* 兜底复位：drop 被取消（Esc / 拖到无效区）也还原半透明（taiji SessionItem 同款） */
+          if (draggingSessionId.current === null) return
+          draggingSessionId.current = null
+          rerender((count) => count + 1)
+        }}
         onClick={() => { uiWorkspace.openSession(row.id) }}
         onKeyDown={(event: InputEventLike) => {
           if (event.key === 'Enter') {
@@ -606,13 +696,95 @@ export function ProjectBrowser(props: ProjectBrowserProps & ProjectBrowserDeps) 
     )
   }
 
-  /** 单个项目组（命名项目带框分组 + 展开体；默认项目无框无线轻量行——taiji 2026-10-13 裁决）。 */
+  /** 单个项目组（命名组头三钮 / 默认组轻量头行 +「+」；展开内容区两组同款左缘细线）。 */
   const renderGroup = (group: (typeof groups)[number]) => {
     const expanded = expandedIds.has(group.id)
     const armed = armedDeleteId.current === group.id
     const renaming = renamingGroupId.current === group.id && !group.isDefault
     const visibleRows = group.rows.filter((row) => row.visible)
     const label = group.isDefault ? t('projects.default') : group.name
+    // 拖拽悬停高亮（两类独立锚点、同视觉 = 组头 hover 底色；taiji dropActive / projectDragOver 同构）
+    const dropActive = sessionDropOverId.current === group.id
+    const projectDragOver = projectDragOverId.current === group.id
+
+    /** 组头发起换位拖拽：写本组 projectId（默认项目头不可拖由 draggable=false 保证，此处兜底）。 */
+    const onHeadDragStart = (event: DragEventLike): void => {
+      // 重命名态禁拖（taiji 同判：防与输入框文本选中/输入冲突）。判定读 ref 实时值而非
+      // 渲染闭包快照——本仓「真相在 ref」纪律：rerender 前的旧闭包里 renaming 恒 false
+      if ((renamingGroupId.current === group.id && !group.isDefault) || group.isDefault) {
+        event.preventDefault()
+        return
+      }
+      if (event.dataTransfer === null) return
+      event.dataTransfer.setData(PROJECT_DRAG_MIME, group.id)
+      event.dataTransfer.effectAllowed = 'move'
+    }
+
+    /** dragover 按 types 分流：project 换位高亮（默认头不接）/ session 改归属高亮；无关拖拽不响应。 */
+    const onHeadDragOver = (event: DragEventLike): void => {
+      if (event.dataTransfer === null) return
+      const kind = classifyDragOver(event.dataTransfer.types)
+      if (kind === null) return
+      // 默认项目头只接 session 改归属，不是换位落点（taiji DefaultProjectHead 同构：无 project 分支）
+      if (kind === 'project' && group.isDefault) return
+      // preventDefault 是 HTML5 DnD「允许成为落点」的契约；dropEffect 声明落点侧效果
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      const ref = kind === 'project' ? projectDragOverId : sessionDropOverId
+      // dragover 高频连续触发：只在状态实际变化时扳机重渲染
+      if (ref.current !== group.id) {
+        ref.current = group.id
+        rerender((count) => count + 1)
+      }
+    }
+
+    /** dragleave 两类高亮同清；relatedTarget 仍在组头内的子元素抖动不算离开（taiji 同判）。 */
+    const onHeadDragLeave = (event: DragEventLike): void => {
+      if (!dragLeaveIsReal(event)) return
+      let changed = false
+      if (sessionDropOverId.current === group.id) {
+        sessionDropOverId.current = null
+        changed = true
+      }
+      if (projectDragOverId.current === group.id) {
+        projectDragOverId.current = null
+        changed = true
+      }
+      if (changed) rerender((count) => count + 1)
+    }
+
+    /** drop 按 types 分流：project 换位（自拖自落静默）/ session 改归属（自组 no-op + 强制展开）。 */
+    const onHeadDrop = (event: DragEventLike): void => {
+      if (event.dataTransfer === null) return
+      const kind = classifyDragOver(event.dataTransfer.types)
+      if (kind === null) return
+      // 与 dragover 对称：默认项目头不接换位（其 dragover 未 preventDefault，浏览器不会
+      // 派发 drop 到它——此处拦截的是夹具/边缘形态的手动派发）
+      if (kind === 'project' && group.isDefault) return
+      event.preventDefault()
+      if (kind === 'project') {
+        if (projectDragOverId.current !== null) {
+          projectDragOverId.current = null
+          rerender((count) => count + 1)
+        }
+        const draggedId = event.dataTransfer.getData(PROJECT_DRAG_MIME)
+        // 自拖自落组件内静默（taiji 同判：draggedId === 目标组不 emit reorder）
+        if (draggedId !== '' && draggedId !== group.id) void store.reorderProjects(draggedId, group.id)
+        return
+      }
+      if (sessionDropOverId.current !== null) {
+        sessionDropOverId.current = null
+        rerender((count) => count + 1)
+      }
+      const sessionId = event.dataTransfer.getData(SESSION_DRAG_MIME)
+      if (sessionId === '') return
+      // 自组拖自组 no-op：归属未变不写 store（store 层另有幂等，组件层短路省一次异步）
+      if (effectiveProjectId(sessionId) === group.id) return
+      void store.assignSession(sessionId, group.id)
+      // 折叠组同样可落：落点组强制展开（taiji 父级 drop 后展开同语义；已展开时引用不变即 bail out）
+      setExpandedIds((prev) => (prev.has(group.id) ? prev : new Set(prev).add(group.id)))
+    }
+
     return (
       <div
         key={group.id === DEFAULT_PROJECT_ID ? 'default' : group.id}
@@ -621,11 +793,25 @@ export function ProjectBrowser(props: ProjectBrowserProps & ProjectBrowserDeps) 
         data-current={group.isCurrent || undefined}
       >
         <div
-          className={cx('taiji-pb-ghead', group.isDefault && 'taiji-pb-ghead-default')}
+          className={cx(
+            'taiji-pb-ghead',
+            group.isDefault && 'taiji-pb-ghead-default',
+            dropActive && 'taiji-pb-ghead-drop',
+            projectDragOver && 'taiji-pb-ghead-pdrag',
+          )}
           role="button"
           tabIndex={0}
           aria-expanded={expanded}
           aria-label={label}
+          data-dragover={dropActive || undefined}
+          data-project-dragover={projectDragOver || undefined}
+          /* 组头 = 双 MIME 拖拽交互面：自身 draggable 发起换位（默认头不可拖、重命名态禁拖）；
+             dragover/drop 按 types 分流接 session 改归属与 project 换位（taiji ProjectGroup.vue 同构） */
+          draggable={!renaming && !group.isDefault}
+          onDragStart={onHeadDragStart}
+          onDragOver={onHeadDragOver}
+          onDragLeave={onHeadDragLeave}
+          onDrop={onHeadDrop}
           onClick={() => { toggleGroup(group.id) }}
           onKeyDown={(event: InputEventLike) => {
             if (event.key === 'Enter' || event.key === ' ') {
@@ -737,8 +923,8 @@ export function ProjectBrowser(props: ProjectBrowserProps & ProjectBrowserDeps) 
           )}
         </div>
         {/* 展开体常驻 DOM：grid 0fr↔1fr 高度动画 + 内层 opacity 跟进 + 收起延迟 visibility
-            （taiji 逐值语义）；默认项目无框无线（taiji 2026-10-13 裁决），命名项目左缘细线
-            两档：当前组 accent 60% / 非当前组 border-l1 极淡 hairline */}
+            （taiji 逐值语义）；左缘细线两档（默认项目同款——用户裁决对齐命名组，轻量头行
+            保留）：当前组 accent 60% / 非当前组 border-l1 极淡 hairline，收起随体隐藏 */}
         <div className={cx('taiji-pb-gbody-wrap', expanded && 'taiji-pb-gbody-open')}>
           <div className={cx('taiji-pb-gbody', group.isCurrent && 'taiji-pb-gbody-current')}>
             {visibleRows.map(renderRow)}
@@ -778,9 +964,22 @@ export function ProjectBrowser(props: ProjectBrowserProps & ProjectBrowserDeps) 
         aria-hidden={!newDraftOpen.current}
         tabIndex={!newDraftOpen.current ? -1 : undefined}
         onKeyDown={(event: InputEventLike) => {
-          if (event.key !== 'Enter') return
-          event.preventDefault()
+          if (event.key === 'Enter') {
+            // Enter = 结束本次输入：提交（空值丢弃）后一律收起回「+」态
+            event.preventDefault()
+            submitNewProject(event.target.value, event.target)
+            closeNewDraft()
+          } else if (event.key === 'Escape') {
+            event.target.value = ''
+            closeNewDraft()
+          }
+        }}
+        onBlur={(event: InputEventLike) => {
+          // 收起态的失焦不重复提交（Enter 收起把行 display:none 会引发浏览器失焦，值已清空，
+          // guard 挡住夹具/边缘形态下的二次提交）；展开态失焦 = 失焦提交，空值丢弃后同样收起
+          if (!newDraftOpen.current) return
           submitNewProject(event.target.value, event.target)
+          closeNewDraft()
         }}
       />
       {/* 列表滚动容器：bindScrollerRef 在场时绑上（滚动衔接白捡；缺席不绑） */}
