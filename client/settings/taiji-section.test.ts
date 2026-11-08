@@ -365,7 +365,7 @@ describe('项目管理块（M1 数据通道）', () => {
     expect(counts.filter((id) => id === 'p3')).toHaveLength(0)
   })
 
-  it('上移/下移：目标 = 前一项 / 后两项边界（倒数第二位的下移 target 为默认项目 id）', () => {
+  it('上移/下移：目标 = 前一项 / 紧邻下一位（交换语义，方向直觉与拖拽一致）', () => {
     const fake = fakeProjectStore(SAMPLE)
     const { elements } = renderWithStore(fake)
     const click = (itemIndex: number, label: string) => {
@@ -374,14 +374,14 @@ describe('项目管理块（M1 数据通道）', () => {
     // 首行上移 / 末行下移禁用（无位移）
     expect(buttonByLabel(itemElements(elements, 0), zh['projects.moveUp']).props.disabled).toBe(true)
     expect(buttonByLabel(itemElements(elements, 2), zh['projects.moveDown']).props.disabled).toBe(true)
-    click(0, zh['projects.moveDown']) // 甲移到丙之前
+    click(0, zh['projects.moveDown']) // 甲与乙交换（新语义：相邻互拖即下移一位）
     click(1, zh['projects.moveUp']) // 乙移到甲之前
-    click(1, zh['projects.moveDown']) // 乙（原序倒数第二）移到末位：target = ''（默认项目之前 = 数组尾）
+    click(1, zh['projects.moveDown']) // 乙与丙交换
     click(2, zh['projects.moveUp']) // 丙移到乙之前
     expect(fake.calls).toEqual([
-      { method: 'reorderProjects', args: ['p1', 'p3'] },
+      { method: 'reorderProjects', args: ['p1', 'p2'] },
       { method: 'reorderProjects', args: ['p2', 'p1'] },
-      { method: 'reorderProjects', args: ['p2', ''] },
+      { method: 'reorderProjects', args: ['p2', 'p3'] },
       { method: 'reorderProjects', args: ['p3', 'p2'] },
     ])
   })

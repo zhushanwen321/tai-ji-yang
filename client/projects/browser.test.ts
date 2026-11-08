@@ -11,7 +11,7 @@ import type { ProjectStoreLike } from './store'
  *   · 动作接线：install 闭包捕获 uiWorkspace/sessions（行点击打开、组头「+」新建、归档、
  *     取消置顶、会话重命名走宿主 sessions.using 合同）；
  *   · 新建归组：findPendingAssignment 判定 + PendingProjectTracker 一次性消费（mock 快照序列）；
- *   · 渲染 smoke：区头/组头/chip/计数/行四态/徽标族/空态/加载态/数据缺席占位/折叠轨 null/
+ *   · 渲染 smoke：区头/组头/chip/计数/行四态/徽标族/空态/加载态/数据缺席占位/折叠轨最小入口/
  *     滚动衔接 ref 绑定；删除两段确认与新建草稿行（taiji-section.test 同款夹具技巧）；
  *   · 拖拽（双 MIME 分流）：classifyDragOver 判定、行 dragstart 写 session MIME、组头
  *     dragover/drop 的 session 改归属与 project 换位分流、自组/自落静默、重命名态禁拖。
@@ -19,6 +19,8 @@ import type { ProjectStoreLike } from './store'
  * 夹具边界（单次渲染语义）：真实宿主渲染、展开动画、弹层 portal 归 L3 场景；弹层内容经
  * 纯组件 ProjectMoveMenu 直接测，组件内关态零 DOM 依赖。拖拽高亮类名是 rerender 后的
  * 渲染产物（夹具不重渲染），夹具层锁行为面：preventDefault / dropEffect / store 调用分流。
+ * M3 同范式：详情卡 / 归档子视图 / 右键菜单内容经 SessionHoverCard / ArchiveSubview /
+ * SessionContextMenu 纯组件直接测；浮层开合与点外/Esc/滚动关闭的 document 监听归 L3 真渲染。
  */
 
 const BROWSER_PATH = fileURLToPath(new URL('./browser.tsx', import.meta.url))
@@ -27,16 +29,36 @@ const BROWSER_PATH = fileURLToPath(new URL('./browser.tsx', import.meta.url))
 interface BrowserModule {
   ProjectBrowser: (props: Record<string, unknown>) => FakeElement | null
   ProjectMoveMenu: (props: Record<string, unknown>) => FakeElement
+  SessionHoverCard: (props: Record<string, unknown>) => FakeElement
+  ArchiveSubview: (props: Record<string, unknown>) => FakeElement
+  SessionContextMenu: (props: Record<string, unknown>) => FakeElement
   installProjectsBrowser: (host: unknown, deps: { store: unknown }) => void
   createProjectsBrowser: (host: unknown, deps: { store: unknown }) => (props: Record<string, unknown>) => FakeElement
   resolveBrowserPriority: (entries: readonly { options: { priority?: number } }[]) => number | undefined
   findPendingAssignment: (input: Record<string, unknown>) => { sessionId: string; projectId: string } | null
   createPendingProjectTracker: () => {
-    begin(projectId: string): void
+    begin(projectId: string, beginCurrentId: string | null): void
     consume(input: Record<string, unknown>): { sessionId: string; projectId: string } | null
   }
   performSessionRename: (deps: Record<string, unknown>, sessionId: string, title: string) => void
   classifyDragOver: (types: readonly string[]) => 'session' | 'project' | null
+  resolveHoverParent: (row: { parentId?: string }, byId: Record<string, unknown> | undefined) => unknown
+  abbreviateHomePath: (cwd: string) => string
+  performCopySessionId: (deps: Record<string, unknown>, sessionId: string) => void
+  archiveBucketOf: (updatedAtMs: number, now?: number) => string
+  resolveSeedExpansion: (state: {
+    seeded: boolean
+    userTouched: boolean
+    currentGroupId: string | undefined
+    expandedSize: number
+  }) => string | null
+  targetInsideContainer: (target: unknown, selector: string) => boolean
+  performMovePick: (
+    deps: { closeLayer(): void; assignSession(sessionId: string, projectId: string): Promise<boolean> },
+    rowId: string,
+    projectId: string,
+  ) => void
+  ctxAnchorValid: (anchor: { rowId: string } | null, rowsById: ReadonlyMap<string, unknown>) => boolean
   SESSION_DRAG_MIME: string
   PROJECT_DRAG_MIME: string
   PROJECTS_BROWSER_SLOT: string
@@ -70,6 +92,7 @@ function fakeUiWorkspace() {
       openSession: (target: string) => { calls.push({ method: 'openSession', args: [target] }) },
       startSession: (...args: unknown[]) => { calls.push({ method: 'startSession', args }) },
       archiveSession: async (id: string) => { calls.push({ method: 'archiveSession', args: [id] }) },
+      unarchiveSession: async (id: string) => { calls.push({ method: 'unarchiveSession', args: [id] }) },
       pinSession: async (id: string) => { calls.push({ method: 'pinSession', args: [id] }) },
       unpinSession: async (id: string) => { calls.push({ method: 'unpinSession', args: [id] }) },
     },
@@ -154,13 +177,35 @@ function fakeBrowserHost(options: {
   }
 }
 
-/** 假 store：状态只读 + 动作全记录（与 taiji-section.test 的 fakeProjectStore 同形态）。 */
-function fakeStore(initial: { projects?: { id: string; name: string }[]; assignments?: Record<string, string> } = {}) {
-  const state = { projects: initial.projects ?? [], assignments: initial.assignments ?? {} }
+/**
+ * 假 store：状态只读 + 动作全记录（与 taiji-section.test 的 fakeProjectStore 同形态）。
+ * expanded = M3 展开态持久面的 mock（真实 store.ts 由并行任务实装，浏览器测试不依赖它）；
+ * expandFail 编排 setExpanded 持久化失败分支。
+ */
+function fakeStore(
+  initial: {
+    projects?: { id: string; name: string }[]
+    assignments?: Record<string, string>
+    expanded?: readonly string[]
+    expandFail?: boolean
+  } = {},
+) {
+  const state = { projects: initial.projects ?? [], assignments: initial.assignments ?? {}, expanded: [...(initial.expanded ?? [])] }
   const calls: { method: string; args: unknown[] }[] = []
+  const listeners = new Set<() => void>()
   const store = {
     getState: () => state,
-    subscribe: (_listener: () => void) => () => {},
+    subscribe: (listener: () => void) => {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+    getExpanded: () => state.expanded,
+    setExpanded: async (ids: readonly string[]) => {
+      calls.push({ method: 'setExpanded', args: [[...ids]] })
+      if (initial.expandFail) return false
+      state.expanded = [...ids]
+      return true
+    },
     createProject: async (name: string) => {
       calls.push({ method: 'createProject', args: [name] })
       return null
@@ -183,7 +228,19 @@ function fakeStore(initial: { projects?: { id: string; name: string }[]; assignm
     },
     dispose: () => {},
   }
-  return { store: store as unknown as ProjectStoreLike, calls }
+  return {
+    store: store as unknown as ProjectStoreLike,
+    calls,
+    /**
+     * 模拟镜像晚答采纳（真实 store 的 applySnapshot 路径）：换新数组引用（getExpanded 引用
+     * 稳定契约——值变更必换引用）并 notify 全部订阅者。用于复现「挂载时镜像 loading、
+     * 其后才 ready 采纳持久值」的迟到时序。
+     */
+    adoptExternalExpanded(ids: readonly string[]): void {
+      state.expanded = [...ids]
+      for (const listener of [...listeners]) listener()
+    },
+  }
 }
 
 // ── 数据样本（三路事实 + 项目数据）──────────────────────────────────────────────
@@ -424,21 +481,46 @@ describe('新建会话归组（pendingProjectId 消费逻辑）', () => {
       .toEqual({ sessionId: 'b1', projectId: '' })
   })
 
-  it('PendingProjectTracker 按快照序列一次性消费：未命中保持 pending，命中即清', () => {
+  it('PendingProjectTracker 按快照序列一次性消费：在途快照（currentId 未漂移）保持等待，blank 到达即命中', () => {
     const tracker = browserModule.createPendingProjectTracker()
-    expect(tracker.consume({ currentId: null, list: blankList('b1'), assignments: {} })).toBeNull() // 还没有当前会话
-    tracker.begin('p1')
-    // 快照 1：当前仍是存量会话（startSession 尚未生效）→ 保持 pending
+    expect(tracker.consume({ currentId: null, list: blankList('b1'), assignments: {} })).toBeNull() // 无 pending 恒 null
+    tracker.begin('p1', 's1') // 点「+」时当前会话是 s1（此后漂移判定的基线）
+    // 快照 1：宿主建 blank 需要若干快照才到达，期间 currentId 仍是 s1（未漂移）→ 不误杀，保持等待
     expect(tracker.consume({ currentId: 's1', list: blankList('b1'), assignments: {} })).toBeNull()
     // 快照 2：blank 出现且成为当前选中、无映射 → 命中
     expect(tracker.consume({ currentId: 'b1', list: blankList('b1'), assignments: {} }))
       .toEqual({ sessionId: 'b1', projectId: 'p1' })
     // 快照 3（消费后的重复通知）：一次性，消费即清
     expect(tracker.consume({ currentId: 'b1', list: blankList('b1'), assignments: {} })).toBeNull()
-    // 再次 begin 后可重新消费（连点两组以最后一击为准）
-    tracker.begin('p2')
+    // 再次 begin 后可重新消费（连点两组以最后一击为准；基线 = 再次点击时的当前会话）
+    tracker.begin('p2', 'b1')
     expect(tracker.consume({ currentId: 'b1', list: blankList('b1'), assignments: {} }))
       .toEqual({ sessionId: 'b1', projectId: 'p2' })
+  })
+
+  it('pending 过期清除：currentId 漂移到别的会话（用户点了别的行）→ 清除，其后到达的未映射 blank 不被误归组', () => {
+    const tracker = browserModule.createPendingProjectTracker()
+    tracker.begin('p1', 's1')
+    // 用户点了 s2：currentId 漂移且非「未映射 blank」可消费形态 → 判定过期清除（返回仍 null）
+    expect(tracker.consume({ currentId: 's2', list: blankList('b1'), assignments: {} })).toBeNull()
+    // 之后外部入口新建的未映射 blank 成为当前 → pending 已清除，不再消费（不劫持）
+    expect(tracker.consume({ currentId: 'b1', list: blankList('b1'), assignments: {} })).toBeNull()
+  })
+
+  it('pending 过期清除：宿主复用已映射 blank（漂移到已映射 blank）→ 同样清除，不抢改既有归属', () => {
+    const tracker = browserModule.createPendingProjectTracker()
+    tracker.begin('p1', 's1')
+    // 宿主复用已归过组的 blank：currentId 漂移到它（已映射 → 不可消费）→ 过期清除
+    expect(tracker.consume({ currentId: 'bOld', list: blankList('bOld', { bOld: 'p2' }), assignments: { bOld: 'p2' } })).toBeNull()
+    expect(tracker.consume({ currentId: 'b1', list: blankList('b1'), assignments: {} })).toBeNull() // 已解除武装
+  })
+
+  it('begin 时无当前会话（currentId null）：null 不算漂移，blank 到达仍可消费', () => {
+    const tracker = browserModule.createPendingProjectTracker()
+    tracker.begin('p1', null)
+    expect(tracker.consume({ currentId: null, list: blankList('b1'), assignments: {} })).toBeNull() // 未漂移，等待
+    expect(tracker.consume({ currentId: 'b1', list: blankList('b1'), assignments: {} }))
+      .toEqual({ sessionId: 'b1', projectId: 'p1' })
   })
 
   it('组件消费闭环的接线形态：shell 闭包携带 store，组头「+」只调 startSession 不直写 store', () => {
@@ -535,6 +617,42 @@ describe('ProjectMoveMenu（移动到项目弹层列表）', () => {
   })
 })
 
+describe('performMovePick（弹层点选：关层不依赖 store 回声）', () => {
+  it('点「当前归属」（assignSession 幂等 no-op、不产生 notify）：仍无条件先关层再写归属', () => {
+    const events: string[] = []
+    browserModule.performMovePick(
+      {
+        closeLayer: () => { events.push('close') },
+        assignSession: async () => { events.push('assign'); return true }, // 幂等形态：值未变不写不 notify
+      },
+      's1',
+      'p1', // s1 本就归属 p1（点的是当前归属）
+    )
+    expect(events).toEqual(['close', 'assign'])
+  })
+})
+
+describe('targetInsideContainer（关层豁免判定：mousedown / scroll 同判据）', () => {
+  it('目标落在菜单容器内 → true（豁免不关层）；容器外 / 无 closest / null → false（关层）', () => {
+    const menuContainer = { tag: 'ctx' }
+    const inside = { closest: (selector: string) => (selector === '.taiji-pb-ctx' ? menuContainer : null) }
+    expect(browserModule.targetInsideContainer(inside, '.taiji-pb-ctx')).toBe(true) // 菜单自身内容滚动
+    const outside = { closest: () => null }
+    expect(browserModule.targetInsideContainer(outside, '.taiji-pb-ctx')).toBe(false) // 列表滚动
+    expect(browserModule.targetInsideContainer({}, '.taiji-pb-ctx')).toBe(false) // 无 closest（文本节点等）
+    expect(browserModule.targetInsideContainer(null, '.taiji-pb-ctx')).toBe(false) // 无目标
+  })
+})
+
+describe('ctxAnchorValid（右键菜单锚点有效性）', () => {
+  it('目标行在当前数据 → 有效；行消失 / 无锚点 → 无效（调用方渲染 null 并清 ctxMenu ref）', () => {
+    const rows = new Map([['s1', { id: 's1' }]])
+    expect(browserModule.ctxAnchorValid({ rowId: 's1' }, rows)).toBe(true)
+    expect(browserModule.ctxAnchorValid({ rowId: 'gone' }, rows)).toBe(false) // 会话被删 / 数据源变化
+    expect(browserModule.ctxAnchorValid(null, rows)).toBe(false)
+  })
+})
+
 // ── 拖拽（M3 提前：行拖改归属 / 组头拖换位，双 MIME 分流）─────────────────────────
 
 describe('拖拽：行拖改归属 + 组头拖换位（双 MIME 分流）', () => {
@@ -615,16 +733,19 @@ describe('拖拽：行拖改归属 + 组头拖换位（双 MIME 分流）', () =
 
   it('drop 改归属：session drop 到组头（含默认头 = 归回默认）→ store.assignSession；自组拖自组 no-op', () => {
     const { storeFace, elements } = subject()
-    // s2 在默认组 → drop 到 p2 头 = 改归属（折叠组同样可落：drop 不看展开态）
+    // s2 在默认组 → drop 到 p2 头 = 改归属（折叠组同样可落：drop 不看展开态）。
+    // M3 起 drop 强制展开走 applyExpanded（多出 setExpanded 持久写，展开语义另行单测），
+    // 本用例只锁归属写分流：对账先滤掉 setExpanded。
+    const assigns = () => storeFace.calls.filter((call) => call.method !== 'setExpanded')
     ;(headOf(elements, 'p2').props.onDrop as (event: unknown) => void)(
       fakeDragEvent({ types: [SESSION_DRAG_MIME], data: { [SESSION_DRAG_MIME]: 's2' } }),
     )
-    expect(storeFace.calls).toEqual([{ method: 'assignSession', args: ['s2', 'p2'] }])
+    expect(assigns()).toEqual([{ method: 'assignSession', args: ['s2', 'p2'] }])
     // s1 在 p1 组 → drop 到默认头 = 归回默认（assignSession(id, '')）
     ;(headOf(elements, '').props.onDrop as (event: unknown) => void)(
       fakeDragEvent({ types: [SESSION_DRAG_MIME], data: { [SESSION_DRAG_MIME]: 's1' } }),
     )
-    expect(storeFace.calls).toEqual([
+    expect(assigns()).toEqual([
       { method: 'assignSession', args: ['s2', 'p2'] },
       { method: 'assignSession', args: ['s1', ''] },
     ])
@@ -632,7 +753,7 @@ describe('拖拽：行拖改归属 + 组头拖换位（双 MIME 分流）', () =
     ;(headOf(elements, 'p1').props.onDrop as (event: unknown) => void)(
       fakeDragEvent({ types: [SESSION_DRAG_MIME], data: { [SESSION_DRAG_MIME]: 's1' } }),
     )
-    expect(storeFace.calls).toHaveLength(2)
+    expect(assigns()).toHaveLength(2)
   })
 
   it('组头换位：project drop 到其他命名组头 → reorderProjects(拖动 id, 目标 id)；自拖自落静默；默认头不接', () => {
@@ -744,9 +865,47 @@ describe('渲染 smoke（taiji-section.test 同款夹具技巧）', () => {
     expect(elementsWithClass(elements, 'taiji-pb-group').map((group) => group.props['data-project-id'])).toEqual(['p1', ''])
   })
 
-  it('wide=false（折叠轨）：渲染 null（轨态按钮归侧栏 shell 所有）', () => {
-    const { root } = subject({ wide: false })
-    expect(root).toBeNull()
+  it('wide=false（折叠轨）：渲染最小轨态入口，点击先 expandSidebar 再 startSession', () => {
+    // 序列断言需两路回调写同一账本：外部注入 uiWorkspace face 与 expandSidebar 都推 order
+    const order: string[] = []
+    const fake = fakeBrowserHost({
+      uiWorkspace: {
+        openSession: () => {},
+        startSession: () => { order.push('startSession') },
+        archiveSession: async () => {},
+        unarchiveSession: async () => {},
+        pinSession: async () => {},
+        unpinSession: async () => {},
+      },
+    })
+    const { root, elements } = renderBrowser(
+      { store: fakeStore(SAMPLE_STORE_STATE).store, uiWorkspace: fake.ui, sessions: fake.sessions },
+      { wide: false, expandSidebar: () => { order.push('expandSidebar') } },
+    )
+    expect(root).not.toBeNull()
+    const rail = elementsWithClass(elements, 'taiji-pb-rail')[0]!
+    const button = elementsWithClass(collectElements(rail), 'taiji-pb-rail-add')[0]!
+    expect(button.props['aria-label']).toBe('新建会话')
+    // 轨态是最小入口：宽态的区头/组结构不渲染（轨态会话区不再整块空白）
+    expect(elementsWithClass(elements, 'taiji-pb-head')).toHaveLength(0)
+    expect(elementsWithClass(elements, 'taiji-pb-group')).toHaveLength(0)
+    ;(button.props.onClick as () => void)()
+    // 宿主轨入口同款次序：先经 owner 份额请求展开侧栏，再新建/复用 blank
+    expect(order).toEqual(['expandSidebar', 'startSession'])
+  })
+
+  it('wide=false 且 expandSidebar 缺席：点击只新建会话（owner 份额宽松缺席不炸）', () => {
+    const { fake, elements } = subject({ wide: false })
+    const button = elementsWithClass(elements, 'taiji-pb-rail-add')[0]!
+    ;(button.props.onClick as () => void)()
+    expect(fake.uiCalls.map((call) => call.method)).toEqual(['startSession'])
+  })
+
+  it('wide 缺省按宽态：渲染完整浏览器（区头在场，无轨态入口）', () => {
+    const { root, elements } = subject()
+    expect(root).not.toBeNull()
+    expect(elementsWithClass(elements, 'taiji-pb-head-title')).toHaveLength(1)
+    expect(elementsWithClass(elements, 'taiji-pb-rail')).toHaveLength(0)
   })
 
   it('滚动衔接：useSectionScroller 的 bindScrollerRef 绑到列表滚动容器；缺席时不绑', () => {
@@ -874,5 +1033,380 @@ describe('渲染 smoke（taiji-section.test 同款夹具技巧）', () => {
     // 默认组内容区与命名组同款细线类名；当前组 accent 档类两组通用（视觉同款 = 同一套类）
     expect(bodyOf('')!.props.className).toBe('taiji-pb-gbody taiji-pb-gbody-current')
     expect(bodyOf('p1')!.props.className).toBe('taiji-pb-gbody')
+  })
+})
+
+// ── M3：展开态持久化（消费 store.getExpanded / setExpanded）─────────────────────
+
+describe('展开态持久化（store 消费）', () => {
+  function subject(initial: Parameters<typeof fakeStore>[0] = SAMPLE_STORE_STATE) {
+    const storeFace = fakeStore(initial)
+    const fake = fakeBrowserHost()
+    const { elements } = renderBrowser({ store: storeFace.store, uiWorkspace: fake.ui, sessions: fake.sessions, logger: fake.host.logger })
+    return { storeFace, fake, elements }
+  }
+
+  it('初值 getExpanded：持久展开的组渲染 open 类（空串成员 = 默认项目展开同样生效）', () => {
+    const { elements } = subject({ ...SAMPLE_STORE_STATE, expanded: ['p1', ''] })
+    expect(findBy(elements, 'taiji-pb-group', 'data-project-id', 'p1')!.props.className).toContain('taiji-pb-open')
+    expect(findBy(elements, 'taiji-pb-group', 'data-project-id', '')!.props.className).toContain('taiji-pb-open')
+  })
+
+  it('持久初值非空时不播种、无持久写：store 无 setExpanded 调用（播种是纯视觉默认）', () => {
+    const { storeFace } = subject({ ...SAMPLE_STORE_STATE, expanded: ['p1'] })
+    expect(storeFace.calls).toEqual([])
+  })
+
+  it('空初值播种当前组也不写 store（默认态跟随当前组，用户首次开合才产生持久事实）', () => {
+    // SAMPLE 里 s1（当前会话）在 p1 组 → 播种效应命中 p1；断言播种只动视觉不动 store
+    const { storeFace } = subject(SAMPLE_STORE_STATE)
+    expect(storeFace.calls).toEqual([])
+  })
+
+  it('切换组头 → 乐观 setExpanded 收新集合（初值 {p1}：点 p1 头收起 → 空数组；再点默认头展开 → [空串]）', () => {
+    const { storeFace, elements } = subject({ ...SAMPLE_STORE_STATE, expanded: ['p1'] })
+    // 收起 p1（初值集合摘掉 p1；toggle 读 expandedRef 的最新值）
+    ;(headOf(elements, 'p1').props.onClick as () => void)()
+    expect(storeFace.calls).toEqual([{ method: 'setExpanded', args: [[]] }])
+    // 展开默认组（前一次收起后的最新集合 + ''）
+    ;(headOf(elements, '').props.onClick as () => void)()
+    expect(storeFace.calls).toEqual([
+      { method: 'setExpanded', args: [[]] },
+      { method: 'setExpanded', args: [['']] },
+    ])
+  })
+
+  it('持久化失败（setExpanded false）：显式 warn 一条，不回滚不外抛', async () => {
+    const { storeFace, fake, elements } = subject({ ...SAMPLE_STORE_STATE, expanded: ['p1'], expandFail: true })
+    // 初值含 p1（不播种）；点 p1 头 = 收起 → setExpanded(空数组) 拒绝
+    ;(headOf(elements, 'p1').props.onClick as () => void)()
+    expect(storeFace.calls).toEqual([{ method: 'setExpanded', args: [[]] }])
+    await Promise.resolve()
+    expect(fake.warns).toHaveLength(1)
+    expect(fake.warns[0]).toContain('展开态持久化失败')
+  })
+})
+
+// ── 展开态迟到采纳：store 快照单一数据源（组件行为面）──────────────────────────
+
+describe('展开态迟到采纳（镜像晚答 loading→ready）', () => {
+  function subject(initial: Parameters<typeof fakeStore>[0] = SAMPLE_STORE_STATE) {
+    const storeFace = fakeStore(initial)
+    const fake = fakeBrowserHost()
+    const deps = { store: storeFace.store, uiWorkspace: fake.ui, sessions: fake.sessions }
+    return { storeFace, deps, render: () => renderBrowser(deps) }
+  }
+
+  it('迟到持久值到达后：渲染跟随 store 新快照（useSyncExternalStore 订阅驱动，不冻结挂载初值）', () => {
+    const { storeFace, render } = subject() // 初值 expanded=[]（镜像尚未答）
+    const first = render().elements
+    expect(findBy(first, 'taiji-pb-group', 'data-project-id', 'p1')!.props.className).not.toContain('taiji-pb-open')
+    // 镜像晚答：store 采纳持久值 ['p1'] 并 notify（真实时序：loading→ready 的 applySnapshot）
+    storeFace.adoptExternalExpanded(['p1'])
+    // 通知驱动的重渲染（真实 React 由 useSyncExternalStore 监听器触发；夹具手动驱动同一渲染）
+    const second = render().elements
+    expect(findBy(second, 'taiji-pb-group', 'data-project-id', 'p1')!.props.className).toContain('taiji-pb-open')
+  })
+
+  it('迟到持久值到达后用户开合：计算基线 = 最新 store 快照，不把过期空集整写回 store 销毁持久值', () => {
+    const { storeFace, render } = subject()
+    const { elements } = render()
+    storeFace.adoptExternalExpanded(['p1']) // 挂载后才采纳的持久事实
+    // 用户点默认组头展开：开合动作实时读 store，保留迟到的 p1（旧实现读挂载初值 ∅ →
+    // setExpanded(['']) 静默销毁 p1）
+    ;(headOf(elements, '').props.onClick as () => void)()
+    expect(storeFace.calls).toEqual([{ method: 'setExpanded', args: [['p1', '']] }])
+  })
+})
+
+// ── 播种守卫判定表（resolveSeedExpansion 纯函数）──────────────────────────────
+
+describe('resolveSeedExpansion（播种守卫）', () => {
+  const base = { seeded: false, userTouched: false, currentGroupId: 'p1' as string | undefined, expandedSize: 0 }
+
+  it('正常播种：未播过 + 用户未动过 + 首次拿到当前组 + 无展开事实 → 返回当前组 id', () => {
+    expect(browserModule.resolveSeedExpansion(base)).toBe('p1')
+  })
+
+  it('守卫：已播过 / 用户动过展开（含全收起）/ 无当前组 / 已有展开事实 → 不播', () => {
+    expect(browserModule.resolveSeedExpansion({ ...base, seeded: true })).toBeNull()
+    // 用户中途全收起 = 用户意图事实：其后才首次出现的 currentGroupId 不得强制展开回去
+    expect(browserModule.resolveSeedExpansion({ ...base, userTouched: true })).toBeNull()
+    expect(browserModule.resolveSeedExpansion({ ...base, currentGroupId: undefined })).toBeNull()
+    expect(browserModule.resolveSeedExpansion({ ...base, expandedSize: 2 })).toBeNull()
+  })
+})
+
+// ── M3：悬停详情卡 ─────────────────────────────────────────────────────────────
+
+describe('SessionHoverCard（悬停详情卡内容）', () => {
+  it('完整标题 + 父会话行（标题形态）+ cwd（~ 缩写 mono）+ 相对时间', () => {
+    const card = browserModule.SessionHoverCard({
+      t,
+      row: { title: '主题令牌三层重构', cwd: '/Users/dev/Code/main', updatedAtMs: NOW - 5 * MINUTE, blank: false },
+      parent: { title: '插槽系统侦查' },
+    })
+    const els = collectElements(card)
+    expect(textOf(elementsWithClass(els, 'taiji-pb-hover-title')[0]!)).toBe('主题令牌三层重构')
+    expect(textOf(elementsWithClass(els, 'taiji-pb-hover-text')[0]!)).toBe('父会话「插槽系统侦查」')
+    expect(textOf(elementsWithClass(els, 'taiji-pb-hover-cwd')[0]!)).toBe('~/Code/main')
+    expect(textOf(elementsWithClass(els, 'taiji-pb-hover-meta')[0]!)).toBe('5 分钟前')
+  })
+
+  it('blank 行：标题换「新会话」文案、无时间行；无 cwd / 无父会话时对应行不渲染', () => {
+    const card = browserModule.SessionHoverCard({
+      t,
+      row: { title: '', cwd: undefined, updatedAtMs: NOW, blank: true },
+      parent: null,
+    })
+    const els = collectElements(card)
+    expect(textOf(elementsWithClass(els, 'taiji-pb-hover-title')[0]!)).toBe('新会话')
+    expect(elementsWithClass(els, 'taiji-pb-hover-meta')).toHaveLength(0)
+    expect(elementsWithClass(els, 'taiji-pb-hover-cwd')).toHaveLength(0)
+    expect(elementsWithClass(els, 'taiji-pb-hover-text')).toHaveLength(0)
+  })
+
+  it('父会话回退：byId 找不到 → id 前 8 位形态', () => {
+    const card = browserModule.SessionHoverCard({
+      t,
+      row: { title: '子会话', updatedAtMs: NOW, blank: false },
+      parent: { shortId: 'abcd1234' },
+    })
+    expect(textOf(elementsWithClass(collectElements(card), 'taiji-pb-hover-text')[0]!)).toBe('父会话 abcd1234')
+  })
+})
+
+describe('resolveHoverParent / abbreviateHomePath（纯函数）', () => {
+  it('父会话解析：命中显标题（title 空回落 displayTitle）；未命中显前 8 位；无 parentId null', () => {
+    const byId = {
+      full: { id: 'full', title: '父标题', displayTitle: '', running: false, retainedBy: {}, blank: false, updatedAt: NOW },
+      fallback: { id: 'fallback', title: '  ', displayTitle: '展示兜底', running: false, retainedBy: {}, blank: false, updatedAt: NOW },
+    }
+    expect(browserModule.resolveHoverParent({ parentId: 'full' }, byId)).toEqual({ title: '父标题' })
+    expect(browserModule.resolveHoverParent({ parentId: 'fallback' }, byId)).toEqual({ title: '展示兜底' })
+    expect(browserModule.resolveHoverParent({ parentId: 'gone0000000' }, byId)).toEqual({ shortId: 'gone0000' })
+    expect(browserModule.resolveHoverParent({ parentId: 'gone0000000' }, undefined)).toEqual({ shortId: 'gone0000' })
+    expect(browserModule.resolveHoverParent({}, byId)).toBeNull()
+  })
+
+  it('cwd 缩写：/Users/<name> 与 /home/<name> 前缀替换 ~；其余原样（Windows 盘符等不丢信息）', () => {
+    expect(browserModule.abbreviateHomePath('/Users/dev/Code/main')).toBe('~/Code/main')
+    expect(browserModule.abbreviateHomePath('/home/dev/work')).toBe('~/work')
+    expect(browserModule.abbreviateHomePath('C:\\Users\\dev')).toBe('C:\\Users\\dev')
+    expect(browserModule.abbreviateHomePath('/srv/data')).toBe('/srv/data')
+  })
+})
+
+describe('详情卡与右键菜单的行接线（本体，单次渲染锁行为面）', () => {
+  it('行 contextmenu → preventDefault（压原生菜单）；mouseenter/mouseleave 不 throw；关态无浮层 DOM', () => {
+    const fake = fakeBrowserHost()
+    const { elements } = renderBrowser({ store: fakeStore(SAMPLE_STORE_STATE).store, uiWorkspace: fake.ui, sessions: fake.sessions })
+    // 关态：三个浮层（移动弹层 / 详情卡 / 右键菜单）都不在树里（portal 只在打开时渲染）
+    expect(elementsWithClass(elements, 'taiji-pb-menu-anchor')).toHaveLength(0)
+    expect(elementsWithClass(elements, 'taiji-pb-hover-anchor')).toHaveLength(0)
+    expect(elementsWithClass(elements, 'taiji-pb-ctx-anchor')).toHaveLength(0)
+    const row = findBy(elements, 'taiji-pb-row', 'data-session-id', 's1')!
+    let prevented = false
+    ;(row.props.onContextMenu as (event: unknown) => void)({ clientX: 10, clientY: 20, preventDefault: () => { prevented = true } })
+    expect(prevented).toBe(true)
+    // 夹具事件无几何（currentTarget 缺席）→ 锚 0,0 兜底路径，不 throw
+    ;(row.props.onMouseEnter as (event: unknown) => void)({ currentTarget: undefined })
+    ;(row.props.onMouseLeave as () => void)()
+  })
+})
+
+// ── M3：归档子视图 ─────────────────────────────────────────────────────────────
+
+describe('ArchiveSubview（归档子视图）', () => {
+  const DAY = 24 * 60 * 60 * 1000
+
+  /** 归档行夹具：ageDays = 距今天数（跨档安全取档中值）。 */
+  const archRow = (id: string, ageDays: number): Record<string, unknown> => ({
+    id,
+    title: `t-${id}`,
+    updatedAtMs: Date.now() - ageDays * DAY,
+    blank: false,
+  })
+  const rows = [archRow('a1', 0.5), archRow('a2', 2), archRow('a3', 5), archRow('a4', 10)]
+
+  function view(overrides: Record<string, unknown> = {}) {
+    const events: { kind: string; value: unknown }[] = []
+    const node = browserModule.ArchiveSubview({
+      t,
+      rows,
+      filter: 'all',
+      onBack: () => { events.push({ kind: 'back', value: null }) },
+      onFilterChange: (filter: string) => { events.push({ kind: 'filter', value: filter }) },
+      onUnarchive: (id: string) => { events.push({ kind: 'unarchive', value: id }) },
+      ...overrides,
+    })
+    return { node, events, els: collectElements(node) }
+  }
+
+  it('渲染：返回钮 + 标题计数 + chips 全档计数（选中 all）+ 归档行（标题/时间/恢复钮）', () => {
+    const { els } = view()
+    expect(textOf(elementsWithClass(els, 'taiji-pb-a-title')[0]!)).toBe('已归档 (4)')
+    const chips = elementsWithClass(els, 'taiji-pb-chip')
+    expect(chips.map((chip) => textOf(chip))).toEqual(['全部 4', '1天内 1', '2-3天 1', '4-7天 1', '7天+ 1'])
+    expect(chips[0]!.props['aria-pressed']).toBe(true)
+    expect(chips.slice(1).every((chip) => chip.props['aria-pressed'] === false)).toBe(true)
+    expect(elementsWithClass(els, 'taiji-pb-a-row').map((row) => row.props['data-session-id'])).toEqual(['a1', 'a2', 'a3', 'a4'])
+    expect(elementsWithClass(els, 'taiji-pb-a-restore')).toHaveLength(4)
+    expect(textOf(elementsWithClass(els, 'taiji-pb-a-restore')[0]!)).toBe('恢复')
+  })
+
+  it('filter 过滤行（d3 档只显 2 天前那行）；点 chip → onFilterChange(档)', () => {
+    const { els, events } = view({ filter: 'd3' })
+    expect(elementsWithClass(els, 'taiji-pb-a-row').map((row) => row.props['data-session-id'])).toEqual(['a2'])
+    const chips = elementsWithClass(els, 'taiji-pb-chip')
+    expect(chips[2]!.props['aria-pressed']).toBe(true)
+    ;(chips[4]!.props.onClick as () => void)()
+    expect(events).toEqual([{ kind: 'filter', value: 'older' }])
+  })
+
+  it('筛选无匹配 → 空态文案', () => {
+    const { els } = view({ rows: [archRow('a1', 0.5)], filter: 'older' })
+    expect(textOf(elementsWithClass(els, 'taiji-pb-empty')[0]!)).toBe('暂无归档会话')
+    expect(elementsWithClass(els, 'taiji-pb-a-row')).toHaveLength(0)
+  })
+
+  it('恢复钮 → onUnarchive(行 id)；返回钮 → onBack（动作面见本体 unarchiveSession 接线）', () => {
+    const { els, events } = view()
+    const first = findBy(els, 'taiji-pb-a-row', 'data-session-id', 'a1')!
+    ;(elementsWithClass(collectElements(first), 'taiji-pb-a-restore')[0]!.props.onClick as () => void)()
+    ;(elementsWithClass(els, 'taiji-pb-a-back')[0]!.props.onClick as () => void)()
+    expect(events).toEqual([{ kind: 'unarchive', value: 'a1' }, { kind: 'back', value: null }])
+  })
+
+  it('archiveBucketOf 分档边界（时长差：恰 1/3/7 天进下一档；未来时间戳兜底 d1）', () => {
+    const now = 1_000_000_000_000
+    expect(browserModule.archiveBucketOf(now - 0.9 * DAY, now)).toBe('d1')
+    expect(browserModule.archiveBucketOf(now - 1 * DAY, now)).toBe('d3')
+    expect(browserModule.archiveBucketOf(now - 3 * DAY, now)).toBe('d7')
+    expect(browserModule.archiveBucketOf(now - 7 * DAY, now)).toBe('older')
+    expect(browserModule.archiveBucketOf(now + 5_000, now)).toBe('d1')
+  })
+})
+
+describe('区头归档入口（角标 + 可访问名）', () => {
+  function subject(overrides: Record<string, unknown> = {}) {
+    const fake = fakeBrowserHost()
+    const { elements } = renderBrowser(
+      { store: fakeStore(SAMPLE_STORE_STATE).store, uiWorkspace: fake.ui, sessions: fake.sessions },
+      overrides,
+    )
+    return { elements }
+  }
+
+  it('有归档（SAMPLE 1 条）：钮 + 角标计数；aria-label 带数', () => {
+    const { elements } = subject()
+    const btn = elementsWithClass(elements, 'taiji-pb-head-arch')[0]!
+    expect(btn.props['aria-label']).toBe('已归档 1 个会话')
+    expect(textOf(elementsWithClass(collectElements(btn), 'taiji-pb-nbadge')[0]!)).toBe('1')
+  })
+
+  it('零归档：角标隐藏、钮保留（可进空态子视图确认）', () => {
+    const { elements } = subject({
+      useWorkspaces: (selector: (state: unknown) => unknown) => selector({ archivedSessionIds: [], pinnedSessionIds: ['s2'] }),
+    })
+    expect(elementsWithClass(elements, 'taiji-pb-head-arch')).toHaveLength(1)
+    expect(elementsWithClass(elements, 'taiji-pb-nbadge')).toHaveLength(0)
+  })
+})
+
+// ── M3：右键菜单 ───────────────────────────────────────────────────────────────
+
+describe('SessionContextMenu（右键菜单）', () => {
+  const projects = [
+    { id: 'p1', name: '甲' },
+    { id: 'p2', name: '乙' },
+  ]
+
+  function menu(overrides: Record<string, unknown> = {}) {
+    return browserModule.SessionContextMenu({
+      t,
+      row: { id: 's1', pinned: false },
+      projects,
+      currentProjectId: 'p1',
+      onTogglePin: () => {},
+      onRename: () => {},
+      onArchive: () => {},
+      onCopyId: () => {},
+      onPickProject: (_projectId: string) => {},
+      ...overrides,
+    })
+  }
+
+  /** 按 data-act 找动作项（项目项无 data-act，两族靠属性分流）。 */
+  const actItem = (elements: readonly FakeElement[], act: string): FakeElement | undefined =>
+    elementsWithClass(elements, 'taiji-pb-ctx-item').find((item) => item.props['data-act'] === act)
+
+  it('项清单：置顶/重命名/归档/复制 ID + 分隔线 + 「移动到项目」标签 + 项目组（默认在前，当前归属打勾）', () => {
+    const els = collectElements(menu())
+    expect(textOf(actItem(els, 'pin')!)).toBe('置顶')
+    expect(textOf(actItem(els, 'rename')!)).toBe('重命名')
+    expect(textOf(actItem(els, 'archive')!)).toBe('归档')
+    expect(textOf(actItem(els, 'copy-id')!)).toBe('复制会话 ID')
+    expect(elementsWithClass(els, 'taiji-pb-ctx-sep')).toHaveLength(1)
+    expect(textOf(elementsWithClass(els, 'taiji-pb-ctx-label')[0]!)).toBe('移动到项目')
+    const projectItems = elementsWithClass(els, 'taiji-pb-ctx-item').filter((item) => item.props['data-act'] === undefined)
+    expect(projectItems.map((item) => item.props['data-project-id'])).toEqual(['', 'p1', 'p2'])
+    expect(textOf(projectItems[0]!)).toContain('未分组')
+    expect(projectItems.find((item) => item.props['aria-current'] === true)?.props['data-project-id']).toBe('p1')
+    expect(elementsWithClass(els, 'taiji-pb-ctx-check')).toHaveLength(1)
+  })
+
+  it('置顶态切文案：已置顶行显「取消置顶」', () => {
+    const els = collectElements(menu({ row: { id: 's1', pinned: true } }))
+    expect(textOf(actItem(els, 'pin')!)).toBe('取消置顶')
+  })
+
+  it('点项分流：置顶/重命名/归档/复制/移动各归其回调', () => {
+    const calls: string[] = []
+    const els = collectElements(menu({
+      onTogglePin: () => { calls.push('pin') },
+      onRename: () => { calls.push('rename') },
+      onArchive: () => { calls.push('archive') },
+      onCopyId: () => { calls.push('copy') },
+      onPickProject: (projectId: string) => { calls.push(`move:${projectId}`) },
+    }))
+    ;(actItem(els, 'pin')!.props.onClick as () => void)()
+    ;(actItem(els, 'rename')!.props.onClick as () => void)()
+    ;(actItem(els, 'archive')!.props.onClick as () => void)()
+    ;(actItem(els, 'copy-id')!.props.onClick as () => void)()
+    ;(elementsWithClass(els, 'taiji-pb-ctx-item').find((item) => item.props['data-project-id'] === 'p2')!.props.onClick as () => void)()
+    expect(calls).toEqual(['pin', 'rename', 'archive', 'copy', 'move:p2'])
+  })
+})
+
+describe('performCopySessionId（剪贴板合同）', () => {
+  it('成功：clipboard.writeText(id)，无 warn', async () => {
+    const written: string[] = []
+    const warns: string[] = []
+    browserModule.performCopySessionId(
+      { clipboard: { writeText: async (text: string) => { written.push(text) } }, logger: { warn(message: string) { warns.push(message) } } },
+      's1',
+    )
+    await Promise.resolve()
+    expect(written).toEqual(['s1'])
+    expect(warns).toEqual([])
+  })
+
+  it('剪贴板缺席 → warn 一条；写入拒绝 → warn 一条（含原因），不外抛', async () => {
+    const warns: string[] = []
+    const logger = { warn(message: string) { warns.push(message) } }
+    browserModule.performCopySessionId({ logger }, 's1')
+    expect(warns).toHaveLength(1)
+    expect(() => {
+      browserModule.performCopySessionId(
+        { clipboard: { writeText: () => Promise.reject(new Error('denied')) }, logger },
+        's2',
+      )
+    }).not.toThrow()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(warns).toHaveLength(2)
+    expect(warns[1]).toContain('s2')
+    expect(warns[1]).toContain('denied')
   })
 })

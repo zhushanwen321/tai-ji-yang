@@ -77,6 +77,8 @@ export const zh = {
   'projects.deleteConfirm': '再点确认删除，{n} 个会话将归回未归类',
   /** blank 会话行的标题（刚创建、还没有首条消息）。 */
   'projects.rowNewSession': '新会话',
+  /** 折叠轨态「新建会话」入口钮的可访问名（动词条——轨态无项目上下文，与组头「+」的 newSessionIn 区分）。 */
+  'projects.railNewSession': '新建会话',
   /** 会话行重命名钮的可访问名。 */
   'projects.renameSession': '重命名会话',
   /** 会话行「移动到项目」钮的可访问名（弹层列出全部项目）。 */
@@ -99,6 +101,45 @@ export const zh = {
   'projects.waiting': '等待确认',
   /** 子会话计数 chip 的悬停提示（N = 运行中的直接子会话数）。 */
   'projects.subagents': '{n} 个子会话',
+
+  /* ── 悬停详情卡（M3：行 hover 右弹 232px 卡）── */
+
+  /** 父会话行：父会话在当前列表里找得到（title = 父标题）。 */
+  'projects.parentSession': '父会话「{title}」',
+  /** 父会话行回退：父会话不在列表里（id = 父 id 前 8 位）。 */
+  'projects.parentMissing': '父会话 {id}',
+
+  /* ── 归档子视图（M3：区头归档入口切入，与主列表互斥）── */
+
+  /** 区头归档入口钮的可访问名（N = 归档会话数；计数角标另渲染）。 */
+  'projects.archiveEntry': '已归档 {n} 个会话',
+  /** 归档子视图返回行的标题（N = 归档会话数）。 */
+  'projects.archivedCount': '已归档 ({n})',
+  /** 归档子视图返回钮的可访问名。 */
+  'projects.backToSessions': '返回会话列表',
+  /** 时间筛选 chip：全部。 */
+  'projects.archiveFilter.all': '全部',
+  /** 时间筛选 chip：1 天内（距今 < 1 天）。 */
+  'projects.archiveFilter.d1': '1天内',
+  /** 时间筛选 chip：2-3 天（距今 1-3 天）。 */
+  'projects.archiveFilter.d3': '2-3天',
+  /** 时间筛选 chip：4-7 天（距今 3-7 天）。 */
+  'projects.archiveFilter.d7': '4-7天',
+  /** 时间筛选 chip：7 天以上（距今 ≥ 7 天）。 */
+  'projects.archiveFilter.older': '7天+',
+  /** 归档行 hover 恢复钮（调 uiWorkspace.unarchiveSession）。 */
+  'projects.unarchiveSession': '恢复',
+  /** 归档子视图空态：当前筛选档无归档行（含归档总数为 0）。 */
+  'projects.archiveEmpty': '暂无归档会话',
+
+  /* ── 右键菜单（M3：行 contextmenu 自绘菜单）── */
+
+  /** 菜单项「重命名」（比 hover 钮的「重命名会话」短一字，菜单排版贴 demo）。 */
+  'projects.renameShort': '重命名',
+  /** 菜单项「归档」（同上，短形态）。 */
+  'projects.archiveShort': '归档',
+  /** 菜单项「复制会话 ID」（navigator.clipboard）。 */
+  'projects.copySessionId': '复制会话 ID',
 
   /** 相对时间：刚刚（<1 分钟，含未来时间戳兜底）。 */
   'projects.time.justNow': '刚刚',
@@ -146,6 +187,7 @@ export const en = {
   'projects.deleteProject': 'Delete project',
   'projects.deleteConfirm': 'Click again to delete — {n} sessions will return to Ungrouped',
   'projects.rowNewSession': 'New session',
+  'projects.railNewSession': 'New session',
   'projects.renameSession': 'Rename session',
   'projects.moveToProject': 'Move to project',
   'projects.moveToProjectTitle': 'Move to project',
@@ -157,6 +199,24 @@ export const en = {
   'projects.dataUnavailable': 'Data services unavailable',
   'projects.waiting': 'Awaiting approval',
   'projects.subagents': '{n} subagents',
+
+  'projects.parentSession': 'Parent session "{title}"',
+  'projects.parentMissing': 'Parent {id}',
+
+  'projects.archiveEntry': '{n} archived sessions',
+  'projects.archivedCount': 'Archived ({n})',
+  'projects.backToSessions': 'Back to sessions',
+  'projects.archiveFilter.all': 'All',
+  'projects.archiveFilter.d1': '≤1 day',
+  'projects.archiveFilter.d3': '2-3 days',
+  'projects.archiveFilter.d7': '4-7 days',
+  'projects.archiveFilter.older': '7+ days',
+  'projects.unarchiveSession': 'Restore',
+  'projects.archiveEmpty': 'No archived sessions',
+
+  'projects.renameShort': 'Rename',
+  'projects.archiveShort': 'Archive',
+  'projects.copySessionId': 'Copy session ID',
 
   'projects.time.justNow': 'Just now',
   'projects.time.minutesAgo': '{n} min ago',

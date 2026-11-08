@@ -25,6 +25,39 @@
   display: none;
 }
 
+/* ── 折叠轨态（wide=false：Web 载体侧栏折叠成 56px 轨）────────────────────── */
+
+/* 轨态容器：左缘锚定（宿主轨径的 shared base left anchor——宿主轨区 padding-left: 0、
+   justify-content: flex-start，外层 shell 据此统一平移各区轨图标成列），不自造居中偏移。 */
+.taiji-pb-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* 轨态「新建会话」钮：几何与颜色逐值对齐宿主轨入口（宿主 WorkspaceBrowser.module.css 的
+   .rail .iconButton——36px 方形、轨径 12px 圆角 var(--dsw-radius-md)、label-primary 前景、
+   interactive-bg-hover 悬停、18px 图标），保证整槽替换前后轨态观感一致；全走令牌零硬编码。 */
+.taiji-pb-rail-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-pb-rail-add:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
 /* ── 区头：标题 + 总计数（mono）+ 新建项目「+」 ────────────────────────────── */
 
 .taiji-pb-head {
@@ -530,6 +563,332 @@
 }
 
 .taiji-pb-menu-check {
+  flex: none;
+  display: flex;
+  color: var(--dsw-alias-brand-primary);
+}
+
+/* ── 区头归档入口（M3）：archive 图标钮 + 计数角标（0 隐藏角标）────────────────── */
+
+.taiji-pb-head-arch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-pb-head-arch:hover {
+    color: var(--dsw-alias-label-primary);
+    background: var(--taiji-pb-hover);
+  }
+}
+
+/* 计数角标：右上浮层小圆（demo .nbadge 逐值：fg2 30% 底 + 8.5px 粗体）。 */
+.taiji-pb-nbadge {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  min-width: 13px;
+  height: 13px;
+  box-sizing: border-box;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--dsw-alias-label-secondary) 30%, transparent);
+  color: var(--dsw-alias-label-primary);
+  font-size: 8.5px;
+  font-weight: 600;
+  line-height: 13px;
+  text-align: center;
+  padding: 0 3px;
+}
+
+/* ── 悬停详情卡（M3）：行 hover 右弹 232px fixed 卡，pointer-events:none 纯展示 ── */
+
+/* 锚层与卡体都禁指针：卡不抢行的 hover（leave 即关），也拦不掉底下行的点击。 */
+.taiji-pb-hover-anchor {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.taiji-pb-hover-card {
+  width: 232px;
+  padding: 10px 11px;
+  background: var(--dsw-alias-bg-overlay);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--dsw-alias-label-primary) 20%, transparent),
+    0 2px 8px color-mix(in srgb, var(--dsw-alias-label-primary) 12%, transparent);
+  pointer-events: none;
+}
+
+/* 标题不截断（这是卡存在的第一理由）：允许换行，行内省略号留给行本身。 */
+.taiji-pb-hover-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+
+/* 信息行（父会话 / cwd）：图标 + 文案，demo .h-r 同构。 */
+.taiji-pb-hover-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11.5px;
+  line-height: 1.5;
+  margin: 3px 0;
+}
+
+.taiji-pb-hover-row svg {
+  flex: none;
+}
+
+.taiji-pb-hover-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* cwd：mono + ~ 缩写；长路径折行不撑破卡宽。 */
+.taiji-pb-hover-cwd {
+  font: 400 10.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* 底部 meta 行（相对时间）：上边框分隔 + mono（demo .h-m 同构）。 */
+.taiji-pb-hover-meta {
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  font: 400 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ── 归档子视图（M3）：返回行 + 时间筛选 chips + 归档行（demo 归档视图逐值）────── */
+
+.taiji-pb-a-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 8px;
+}
+
+.taiji-pb-a-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-pb-a-back:hover {
+    color: var(--dsw-alias-label-primary);
+    background: var(--taiji-pb-hover);
+  }
+}
+
+.taiji-pb-a-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.taiji-pb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 2px 8px;
+}
+
+/* 时间筛选 chip：胶囊形 mono 小字（demo .chip 逐值）；选中 = accent 软底。 */
+.taiji-pb-chip {
+  height: 22px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 11px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  font: 500 10.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-pb-chip:hover {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.taiji-pb-chip-on {
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 17%, transparent);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 归档行：与主列表行同量级（30px / 圆角 6），标题次要色、hover 提亮 + 时间让位恢复钮。 */
+.taiji-pb-a-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  margin: 1px 0;
+  padding: 0 8px;
+  border-radius: 6px;
+}
+
+@media (hover: hover) {
+  .taiji-pb-a-row:hover {
+    background: var(--taiji-pb-hover);
+  }
+}
+
+.taiji-pb-a-ttl {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+}
+
+@media (hover: hover) {
+  .taiji-pb-a-row:hover .taiji-pb-a-ttl {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.taiji-pb-a-time {
+  flex: none;
+  font: 400 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* hover 动作位：时间让位（与主列表行的计数让位同惯例）。 */
+.taiji-pb-a-acts {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: 8px;
+}
+
+@media (hover: hover) {
+  .taiji-pb-a-row:hover .taiji-pb-a-acts {
+    display: flex;
+  }
+
+  .taiji-pb-a-row:hover .taiji-pb-a-time {
+    display: none;
+  }
+}
+
+/* 恢复钮：文字钮（demo .abtn.txt.ok），accent 色示意「回到列表」。 */
+.taiji-pb-a-restore {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dsw-alias-brand-primary);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-pb-a-restore:hover {
+    background: var(--taiji-pb-hover);
+  }
+}
+
+/* ── 右键菜单（M3）：fixed ~200px，宿主 overlay 令牌底（demo .ctx 逐值）───────── */
+
+.taiji-pb-ctx-anchor {
+  position: fixed;
+  z-index: 100;
+}
+
+.taiji-pb-ctx {
+  min-width: 200px;
+  padding: 5px;
+  background: var(--dsw-alias-bg-overlay);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--dsw-alias-label-primary) 18%, transparent);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.taiji-pb-ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 26px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-pb-ctx-item:hover {
+    background: var(--taiji-pb-hover);
+  }
+}
+
+.taiji-pb-ctx-item svg {
+  flex: none;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.taiji-pb-ctx-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 分隔线 + 分组标签（demo .c-sep / .c-lb 逐值）。 */
+.taiji-pb-ctx-sep {
+  height: 1px;
+  background: var(--dsw-alias-border-l1);
+  margin: 4px 8px;
+}
+
+.taiji-pb-ctx-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  padding: 5px 9px 2px;
+  letter-spacing: 0.5px;
+}
+
+/* 当前归属的勾（右缘 accent 位）。 */
+.taiji-pb-ctx-check {
   flex: none;
   display: flex;
   color: var(--dsw-alias-brand-primary);

@@ -34,7 +34,7 @@
  */
 import { useRef, useState, useSyncExternalStore } from 'react'
 import { TAIJI_LOCALE_NS, type LocaleKey } from '../locale'
-import { DEFAULT_PROJECT_ID, type ProjectStoreLike, type ProjectStoreStatus, type ProjectsState } from '../projects/store'
+import { type ProjectStoreLike, type ProjectStoreStatus, type ProjectsState } from '../projects/store'
 import { resolveTheme } from '../theme/resolve'
 // 类型-only 引入（esbuild 整体擦除，不把外观行模块拖进装载链）：controller 契约由
 // appearance-row.tsx 声明为公共出口，本文件只消费类型不消费实现。
@@ -242,13 +242,10 @@ export function TaijiSection({ t, getThemeId, subscribeThemeId, projectStore }: 
                   const moveUp = index > 0
                     ? () => { void projectStore.reorderProjects(project.id, projectsState.projects[index - 1]!.id) }
                     : undefined
-                  // 下移一位 = 移到「再下一位」之前；倒数第二位移到末位时 target = ''（默认项目
-                  // 之前 = 数组尾）；已是末位则无位移（禁用）。
+                  // 下移一位 = 与紧邻下一位交换（reorder 的方向直觉语义：from < target 落
+                  // target 之后，相邻互拖即交换）；已是末位则无位移（禁用）。
                   const moveDown = index < last
-                    ? () => {
-                        const target = index + 2 <= last ? projectsState.projects[index + 2]!.id : DEFAULT_PROJECT_ID
-                        void projectStore.reorderProjects(project.id, target)
-                      }
+                    ? () => { void projectStore.reorderProjects(project.id, projectsState.projects[index + 1]!.id) }
                     : undefined
                   return (
                     <div className="taiji-projects-item" key={project.id}>

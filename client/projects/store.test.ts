@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { PLUGIN_ENTRY_ID } from '../persist'
 import { DEFAULT_PROJECT_ID, ProjectStore } from './store'
 
@@ -10,6 +10,8 @@ import { DEFAULT_PROJECT_ID, ProjectStore } from './store'
  * 可直接 import，无需 tsx 夹具。锁死五件事：
  *   · sanitize：脏数据（非对象条目 / 缺 id 缺 name / 重复 id / 非法类型）装载期收敛；
  *   · CRUD / 排序 / 归属：整字段写的内容、乐观 notify、幂等与非法入参拒绝；
+ *   · 组展开态（expanded）：缺省空数组、sanitize（'' 合法 / 悬空 id 保留）、整组写与幂等
+ *     no-op、重试与四段式上报、外部快照采纳；
  *   · 写入被拒 → 重读重试一次 → 仍拒 → 四段式上报，且会话内不回滚；
  *   · 外部快照采纳（含在途写入的序号防护）；
  *   · dispose 幂等与订阅反注册。
@@ -202,6 +204,21 @@ describe('CRUD / 排序 / 归属：整字段写与乐观 notify', () => {
     expect(harness.setCalls).toEqual([])
   })
 
+  it('createProject 的 id 生成兜底：randomUUID 缺席（非安全上下文，如局域网 IP 访问）时退回 getRandomValues，仍得 8 位 hex、不抛 TypeError', async () => {
+    const harness = createHarness({ section: { projects: [], assignments: {} } })
+    const store = new ProjectStore(harness.host)
+    // 遮掉 randomUUID、保留 getRandomValues——非安全上下文的真实形态（randomUUID 是唯一缺席者）
+    vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto) })
+    try {
+      const created = await store.createProject('甲')
+      expect(created).not.toBeNull()
+      expect(created?.id).toMatch(/^[0-9a-f]{8}$/)
+      expect(store.getState().projects).toEqual([{ id: created?.id, name: '甲' }])
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('renameProject：全量数组写回且仅目标项改名；未知 id / 默认项目 / 空名 / 同名均不写', async () => {
     const { harness, store, notified } = seededStore()
     expect(await store.renameProject('pa', ' 甲改 ')).toBe(true)
@@ -241,32 +258,39 @@ describe('CRUD / 排序 / 归属：整字段写与乐观 notify', () => {
     expect(harness.setCalls).toHaveLength(2)
   })
 
-  it('reorderProjects：把 dragged 移到 target 之前（跨位 / 前移 / target="" 追加末尾）；无位移与未知 id 不写', async () => {
+  it('reorderProjects：taiji 方向语义——下拖（from<to）落到 target 后 / 上拖（from>to）落到 target 前 / 相邻互拖即交换；target="" 移到末尾；无位移与未知 id 不写', async () => {
     const harness = createHarness({
       section: { projects: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }] },
     })
     const store = new ProjectStore(harness.host)
     const ids = () => store.getState().projects.map((project) => project.id)
 
-    expect(await store.reorderProjects('a', 'c')).toBe(true) // a 移到 c 之前
-    expect(ids()).toEqual(['b', 'a', 'c'])
-    expect(await store.reorderProjects('a', 'b')).toBe(true) // a 移回 b 之前 = 复原原序（真实位移，写一次）
+    // 下拖（from<to，跨位）：a 拖到 c 上 → 落到 c 之后（往下拖 = 排到它下面）
+    expect(await store.reorderProjects('a', 'c')).toBe(true)
+    expect(ids()).toEqual(['b', 'c', 'a'])
+    // 上拖（from>to，跨位）：末项 a 拖到 b 上 → 落到 b 之前
+    expect(await store.reorderProjects('a', 'b')).toBe(true)
     expect(ids()).toEqual(['a', 'b', 'c'])
-    expect(await store.reorderProjects('c', 'a')).toBe(true) // 末位移到首位的 splice 反向支
-    expect(ids()).toEqual(['c', 'a', 'b'])
-    expect(await store.reorderProjects('b', DEFAULT_PROJECT_ID)).toBe(true) // target='' = 追加末尾
-    expect(ids()).toEqual(['c', 'a', 'b']) // b 已在末位 → 无位移
+    // 相邻互拖（下拖侧）：a 拖到紧邻其后的 b 上 = 交换
+    expect(await store.reorderProjects('a', 'b')).toBe(true)
+    expect(ids()).toEqual(['b', 'a', 'c'])
+    // 相邻互拖（上拖侧）：a 拖到紧邻其前的 b 上 = 交换回来
+    expect(await store.reorderProjects('a', 'b')).toBe(true)
+    expect(ids()).toEqual(['a', 'b', 'c'])
+    // target=''（默认项目恒在末位）= 移到末尾
+    expect(await store.reorderProjects('a', DEFAULT_PROJECT_ID)).toBe(true)
+    expect(ids()).toEqual(['b', 'c', 'a'])
     await flush()
-    // 前三次各一次写；第 4 次（无位移）不写 → 共 3 次
-    expect(harness.setCalls).toHaveLength(3)
+    // 前五次都是真实位移，各写一次
+    expect(harness.setCalls).toHaveLength(5)
     expect(harness.setCalls.every((call) => call.field === 'projects')).toBe(true)
-    // 幂等 / 非法（当前序 [c,a,b]：c 后一位就是 a）
-    expect(await store.reorderProjects('a', 'a')).toBe(true) // 自移
-    expect(await store.reorderProjects('c', 'a')).toBe(true) // 后一位即目标 → 无位移
+    // 末项再拖到默认项目上 → 已在末位，无位移不写；自拖自落 / 未知 id 幂等或拒绝
+    expect(await store.reorderProjects('a', DEFAULT_PROJECT_ID)).toBe(true)
+    expect(await store.reorderProjects('a', 'a')).toBe(true)
     expect(await store.reorderProjects('ghost', 'a')).toBe(false)
     expect(await store.reorderProjects('a', 'ghost')).toBe(false)
     await flush()
-    expect(harness.setCalls).toHaveLength(3)
+    expect(harness.setCalls).toHaveLength(5)
   })
 
   it('assignSession：整字段写 assignments；归默认 = 删键；幂等与未知项目不写', async () => {
@@ -358,6 +382,44 @@ describe('写入被拒 / 失败：重试一次后四段式上报，会话内不�
     expect(await store.assignSession('s1', store.getState().projects[0]!.id)).toBe(true)
     expect(store.getLastError()).toBeUndefined()
   })
+
+  it('deleteProject：projects 写失败（两试皆拒）即跳过 assignments 写——持久层残留退化为「完全未删」自洽态，不产半应用状态', async () => {
+    const harness = createHarness({
+      section: {
+        projects: [{ id: 'pa', name: '甲' }, { id: 'pb', name: '乙' }],
+        assignments: { s1: 'pa', s3: 'pb' },
+      },
+      writeResults: [false, false],
+    })
+    const store = new ProjectStore(harness.host)
+    expect(await store.deleteProject('pa')).toBe(false)
+    await flush()
+    // 只试了 projects 两次（重读后重试一次），assignments 一次都没写
+    expect(harness.setCalls.map((call) => call.field)).toEqual(['projects', 'projects'])
+    expect(harness.reports).toHaveLength(1)
+    expect(harness.reports[0]).toContain('projects')
+    // 会话内乐观值不回滚（删除与映射剥离仍在内存生效，与「会话内意图优先」同哲学）
+    expect(store.getState()).toEqual({
+      projects: [{ id: 'pb', name: '乙' }],
+      assignments: { s3: 'pb' },
+    })
+  })
+
+  it('deleteProject：projects 写成功而 assignments 写失败 → 剥离映射的写仍尝试（残留悬空映射，派生层视为未映射）', async () => {
+    const harness = createHarness({
+      section: {
+        projects: [{ id: 'pa', name: '甲' }, { id: 'pb', name: '乙' }],
+        assignments: { s1: 'pa', s3: 'pb' },
+      },
+      writeResults: [true, false, false],
+    })
+    const store = new ProjectStore(harness.host)
+    expect(await store.deleteProject('pa')).toBe(false)
+    await flush()
+    expect(harness.setCalls.map((call) => call.field)).toEqual(['projects', 'assignments', 'assignments'])
+    expect(harness.reports).toHaveLength(1)
+    expect(harness.reports[0]).toContain('assignments')
+  })
 })
 
 describe('外部快照采纳与在途写入防护', () => {
@@ -412,6 +474,88 @@ describe('外部快照采纳与在途写入防护', () => {
     harness.answerMirror({ projects: [{ id: 'py', name: '外部2' }], assignments: {} })
     expect(store.getState().projects).toEqual([{ id: 'py', name: '外部2' }])
     expect(notified).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('组展开态（expanded）：整组写与持久化', () => {
+  it('缺省与脏数据：字段缺席 / 类型不符 → 空数组；非 string 过滤、重复去重（首现序）、\'\' 合法、悬空 id 保留', () => {
+    const harness = createHarness({
+      section: {
+        projects: [{ id: 'pa', name: '甲' }],
+        assignments: {},
+        expanded: ['pa', 42, '', 'pa', null, 'ghost', ''],
+      },
+    })
+    const store = new ProjectStore(harness.host)
+    expect(store.getExpanded()).toEqual(['pa', '', 'ghost']) // 'ghost' 悬空：惰性容忍（消费侧视为未展开）
+    // 引用稳定：未变更时多次调用同一引用（useSyncExternalStore 的「值不变则引用不变」纪律）
+    expect(store.getExpanded()).toBe(store.getExpanded())
+
+    const bare = new ProjectStore(createHarness({ section: { projects: [], assignments: {}, expanded: 'oops' } }).host)
+    expect(bare.getExpanded()).toEqual([])
+  })
+
+  it('setExpanded：乐观 notify 先于持久化；整字段写 sanitize 后内容（\'\' 成员原样持久）', async () => {
+    const harness = createHarness({ section: { projects: [{ id: 'pa', name: '甲' }], assignments: {} }, gated: true })
+    const store = new ProjectStore(harness.host)
+    let notified = 0
+    store.subscribe(() => { notified += 1 })
+    const pending = store.setExpanded(['pa', '', 'pa'])
+    expect(store.getExpanded()).toEqual(['pa', '']) // 乐观已生效，写入尚未结算
+    expect(notified).toBe(1)
+    harness.releaseGate(true)
+    expect(await pending).toBe(true)
+    expect(harness.setCalls).toEqual([{ field: 'expanded', value: ['pa', ''] }])
+  })
+
+  it('no-op：值未变（含重复成员 sanitize 后恰好相等）返回 true、不写、不换引用', async () => {
+    const harness = createHarness({ section: { projects: [{ id: 'pa', name: '甲' }], assignments: {}, expanded: ['pa'] } })
+    const store = new ProjectStore(harness.host)
+    const before = store.getExpanded()
+    expect(await store.setExpanded(['pa'])).toBe(true) // 原值相等
+    expect(await store.setExpanded(['pa', 'pa', 'pa'])).toBe(true) // 去重后相等
+    expect(store.getExpanded()).toBe(before)
+    await flush()
+    expect(harness.setCalls).toEqual([])
+  })
+
+  it('两次被拒 → 重读重试一次仍拒 → 四段式上报含字段名，乐观值不回滚；成功写入清错误', async () => {
+    const harness = createHarness({ section: { projects: [], assignments: {} }, writeResults: [false, false] })
+    const store = new ProjectStore(harness.host)
+    expect(await store.setExpanded(['pa'])).toBe(false)
+    await flush()
+    expect(harness.setCalls).toHaveLength(2)
+    expect(harness.setCalls.every((call) => call.field === 'expanded')).toBe(true)
+    expect(harness.reports).toHaveLength(1)
+    expect(harness.reports[0]).toContain(PLUGIN_ENTRY_ID)
+    expect(harness.reports[0]).toContain('expanded')
+    expect(harness.reports[0]).toContain('重读一次后重试仍被拒绝')
+    expect(store.getExpanded()).toEqual(['pa']) // 会话内不回滚
+    expect(store.getLastError()).toBe(harness.reports[0])
+    harness.queueResults(true)
+    expect(await store.setExpanded(['pb'])).toBe(true)
+    expect(store.getLastError()).toBeUndefined()
+  })
+
+  it('外部快照采纳含 expanded：镜像外部变更覆盖内存并通知（脏数据同走 sanitize）；同值重复通知不打扰', () => {
+    const harness = createHarness({ section: { projects: [{ id: 'pa', name: '甲' }], assignments: {}, expanded: ['pa'] } })
+    const store = new ProjectStore(harness.host)
+    let notified = 0
+    store.subscribe(() => { notified += 1 })
+    harness.answerMirror({ projects: [{ id: 'pa', name: '甲' }], assignments: {}, expanded: ['', 'px', 42, 'px'] })
+    expect(store.getExpanded()).toEqual(['', 'px'])
+    expect(notified).toBe(1)
+    harness.answerMirror({ projects: [{ id: 'pa', name: '甲' }], assignments: {}, expanded: ['', 'px'] })
+    expect(notified).toBe(1) // 值未变不通知
+  })
+
+  it('dispose 后 setExpanded 拒绝且不写', async () => {
+    const harness = createHarness({ section: { projects: [], assignments: {} } })
+    const store = new ProjectStore(harness.host)
+    store.dispose()
+    expect(await store.setExpanded(['pa'])).toBe(false)
+    await flush()
+    expect(harness.setCalls).toEqual([])
   })
 })
 

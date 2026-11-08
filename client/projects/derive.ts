@@ -97,6 +97,8 @@ export interface SessionRowModel {
   title: string
   updatedAtMs: number
   cwd?: string
+  /** 父会话 id（fork 来源；详情卡「父会话」行的数据源，无父不带字段）。 */
+  parentId?: string
   blank: boolean
   pinned: boolean
   /** 在宿主归档集合里（M2 隐藏；字段保留供 M3 归档视图消费）。 */
@@ -209,6 +211,7 @@ export function deriveGroups(input: {
       title: titleOf(summary),
       updatedAtMs: summary.updatedAt,
       ...(summary.cwd !== undefined && summary.cwd !== '' ? { cwd: summary.cwd } : {}),
+      ...(summary.parentId !== undefined && summary.parentId !== '' ? { parentId: summary.parentId } : {}),
       blank: summary.blank,
       pinned: pinnedIds.has(id),
       archived,

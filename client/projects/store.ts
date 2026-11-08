@@ -2,9 +2,9 @@
  * client/projects/store.ts —— ProjectStore：项目分组（Project）数据的会话内权威 + 插件 Config
  * 持久通道（设计 §1 概念模型 / §2.1 数据与持久层）。
  *
- * Project 是纯插件侧的逻辑分组实体，与 DSH 工作区正交；数据存本插件 Config 的两个 volatile
- * 字段（`projects` / `assignments`，Host 半场 index.js 声明），跨重启跨设备持久，卸载随 profile
- * 行一并消失。通道与 client/persist.ts（配色）完全同构：读 = `form.getSnapshot()`（镜像视图），
+ * Project 是纯插件侧的逻辑分组实体，与 DSH 工作区正交；数据存本插件 Config 的三个 volatile
+ * 字段（`projects` / `assignments` / `expanded`，Host 半场 index.js 声明），跨重启跨设备持久，卸载随
+ * profile 行一并消失。通道与 client/persist.ts（配色）完全同构：读 = `form.getSnapshot()`（镜像视图），
  * 写 = `form.set(field, value)`（整字段写，经 `ctx.remote.settings.mutate` 带 revision 栅栏）。
  * 本文件逐条复刻 persist.ts 的既有模式（快照三态、写入重试一次、失败四段式上报、
  * subscribe/dispose 生命周期），不另起炉灶。
@@ -57,12 +57,30 @@ export interface ProjectStoreLike {
   createProject(name: string): Promise<TaijiProject | null>
   /** 重命名。默认项目（id=''）/ 未知 id / 空名返回 false；同名幂等返回 true 且不写。 */
   renameProject(id: string, name: string): Promise<boolean>
-  /** 删除项目并剔除指向它的全部映射（会话归回默认项目 = 删映射键）。两字段顺序两次写。 */
+  /**
+   * 删除项目并剔除指向它的全部映射（会话归回默认项目 = 删映射键）。两字段顺序两次写；
+   * projects 写失败即跳过 assignments 写——持久层残留保持「完全未删」的自洽态，
+   * 不产出「项目已删 + 映射已剥离」的半应用状态。
+   */
   deleteProject(id: string): Promise<boolean>
-  /** 把 draggedId 移到 targetId 之前；targetId='' 移到末尾（默认项目恒在末位）。无位移时不写。 */
+  /**
+   * 拖动换位（taiji 方向直觉语义）：draggedId 原在 targetId 之前 → 落到其后，原在之后 →
+   * 落到其前（相邻互拖即交换）；targetId='' 移到末尾（默认项目恒在末位）。无位移时不写。
+   */
   reorderProjects(draggedId: string, targetId: string): Promise<boolean>
   /** 会话归属：projectId='' 归回默认项目（删映射键）；值未变时幂等不写。未知项目 id 拒绝。 */
   assignSession(sessionId: string, projectId: string): Promise<boolean>
+  /**
+   * 展开中的项目 id 列表（成员 '' = 默认项目展开；缺省 = 空数组）。与 getState 平级的独立
+   * 快照而非 ProjectsState 成员——项目数据被 useSyncExternalStore 以「值不变则引用不变」
+   * 消费，展开态单独演进时不得动 state 对象的引用。本方法同样引用稳定。
+   */
+  getExpanded(): readonly string[]
+  /**
+   * 整组写回展开态（sanitize：只留 string、去重，首现序）。值未变 no-op 返回 true；
+   * 乐观更新 + notify，持久化失败不回滚（与 createProject 同款语义）。
+   */
+  setExpanded(ids: readonly string[]): Promise<boolean>
   /** 反注册镜像订阅与全部监听（幂等；form 本体归 ConfigForms 服务所有，不 dispose 它）。 */
   dispose(): void
 }
@@ -75,6 +93,7 @@ export interface ProjectStoreLike {
 interface ProjectsSection extends AppearanceSection {
   projects?: unknown
   assignments?: unknown
+  expanded?: unknown
 }
 
 /** 镜像就绪度（ProjectStoreLike 契约之外的加法成员：设置页「读取中」微文案与 M2 加载态的数据源）。 */
@@ -83,8 +102,8 @@ export type ProjectStoreStatus = 'loading' | 'ready' | 'unavailable'
 /** 单次写入的结果三态（与 persist.ts 同款：把「拒绝」与「传输失败」分开，失败文案才能指对修复动作）。 */
 type WriteOutcome = 'accepted' | 'refused' | 'failed'
 
-/** 本 store 持久化的两个字段名（Config 声明见 index.js）。 */
-type ProjectsField = 'projects' | 'assignments'
+/** 本 store 持久化的三个字段名（Config 声明见 index.js）。 */
+type ProjectsField = 'projects' | 'assignments' | 'expanded'
 
 /** sanitize：过滤非对象条目、无 id / 无 name / 空 id（'' 是默认项目保留字）/ 重复 id 的条目。 */
 function sanitizeProjects(raw: unknown): TaijiProject[] {
@@ -113,6 +132,23 @@ function sanitizeAssignments(raw: unknown): Record<string, string> {
   return out
 }
 
+/**
+ * sanitize：只保留 string 成员并去重（保留首现序）。'' 合法（默认项目展开，id 即空串——
+ * 不设哨兵串的判据见 index.js 的 expanded 字段注释）；悬空 id（指向已删项目）不清理——
+ * 消费侧视为未展开，与悬空映射同一惰性容忍纪律。
+ */
+function sanitizeExpanded(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const id of raw) {
+    if (typeof id !== 'string' || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+}
+
 /** 逐项对比（序敏感）：外部快照与内存值是否已经一致，一致则不覆盖不通知。 */
 function sameProjects(left: readonly TaijiProject[], right: readonly TaijiProject[]): boolean {
   return left.length === right.length
@@ -124,6 +160,11 @@ function sameAssignments(left: Record<string, string>, right: Record<string, str
   const leftKeys = Object.keys(left)
   if (leftKeys.length !== Object.keys(right).length) return false
   return leftKeys.every((key) => left[key] === right[key])
+}
+
+/** 逐项对比（序敏感）：expanded 的等值判定（展开态无序语义，但写入序即成员序，序敏感最简且确定）。 */
+function sameExpanded(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index])
 }
 
 /**
@@ -139,6 +180,12 @@ export class ProjectStore implements ProjectStoreLike {
   private unsubscribe: (() => void) | undefined
   private state: ProjectsState = { projects: [], assignments: {} }
   private status: ProjectStoreStatus = 'loading'
+  /**
+   * 展开态的会话内权威（恒为 sanitize 后的值）。独立于 state 而非塞进 ProjectsState：
+   * state 的引用被 useSyncExternalStore 按「值不变则引用不变」消费，展开态单独演进时
+   * 不得换 state 的引用（两域变化原因不同——浏览态 vs 项目数据，拆开各自演进）。
+   */
+  private expanded: readonly string[] = []
   /** 在途写入计数（序号防护）：> 0 时镜像通知不采纳外部值，防写前旧值覆盖 / 回声抖动。 */
   private inFlight = 0
   /** 最近一次持久化失败的上报文案（undefined = 无未消错误）；成功写入时清除并通知。 */
@@ -214,10 +261,12 @@ export class ProjectStore implements ProjectStoreLike {
     }
     this.setState({ projects, assignments })
     // 两字段顺序两次写（整写整读纪律下无跨字段事务）：projects 先删、assignments 后清。
-    // 任一半程失败的残留形态都无害——assignments 残留悬空映射时派生层视为未映射（设计 §3）。
-    const projectsOk = await this.persist('projects', projects)
-    const assignmentsOk = await this.persist('assignments', assignments)
-    return projectsOk && assignmentsOk
+    // projects 写失败即放弃第二字段写：持久层残留退化为「完全未删」的自洽态（重载回到
+    // 删前数据），好过「项目已删 + 映射已剥离」的半应用态——第一字段都没写进去时继续剥
+    // 离映射，等于把用户的归属意图单向丢掉。projects 写成功而 assignments 写失败的残留
+    // 才是不得不容忍的形态：悬空映射，派生层视为未映射（设计 §3 惰性容忍）。
+    if (!(await this.persist('projects', projects))) return false
+    return this.persist('assignments', assignments)
   }
 
   /** @see {@link ProjectStoreLike.reorderProjects} */
@@ -226,18 +275,24 @@ export class ProjectStore implements ProjectStoreLike {
     const { projects } = this.state
     const from = projects.findIndex((project) => project.id === draggedId)
     if (from < 0) return false
-    // target '' = 移到末尾：默认项目恒在派生层末位，「移到默认项目之前」= 追加到数组尾。
-    const target = targetId === DEFAULT_PROJECT_ID
+    // target '' = 移到末尾：默认项目恒在派生层末位，拖到默认项目上 = 排到全部命名项目之后。
+    const to = targetId === DEFAULT_PROJECT_ID
       ? projects.length
       : projects.findIndex((project) => project.id === targetId)
-    if (target < 0) return false
-    // 原位（from===target）与前一位（from===target-1）都无位移：幂等返回，不产生写。
-    if (from === target || from === target - 1) return true
+    if (to < 0) return false
+    // 自拖自落（draggedId === targetId 时 from 与 to 同位）：幂等返回，不产生写。
+    if (from === to) return true
     const moved = projects[from]
     if (moved === undefined) return false
     const next = projects.filter((_, index) => index !== from)
-    // target 在 dragged 之后时，移除 dragged 会使 target 前移一位，插入点随之减一。
-    next.splice(target > from ? target - 1 : target, 0, moved)
+    // taiji 权威语义（stores/project.ts 的 remove+insert：splice(to, 0, ...splice(from, 1))）：
+    // 在移除 dragged 后的数组上按原 to 插入——原在 target 之前（from<to）时插入点恰在 target
+    // 之后、原在之后（from>to）时恰在 target 之前，即「下拖 = 移到其后、上拖 = 移到其前」的
+    // 方向直觉；相邻互拖（|from-to| = 1）因此成为交换。
+    next.splice(to, 0, moved)
+    // 唯一剩余的零位移形态：目标是末尾（默认项目）且 dragged 本就是末项——插入结果与原序
+    // 相同，幂等返回不写。
+    if (to === projects.length && from === projects.length - 1) return true
     this.setState({ projects: next, assignments: this.state.assignments })
     return this.persist('projects', next)
   }
@@ -261,6 +316,23 @@ export class ProjectStore implements ProjectStoreLike {
     return this.persist('assignments', assignments)
   }
 
+  /** @see {@link ProjectStoreLike.getExpanded} */
+  getExpanded(): readonly string[] {
+    return this.expanded
+  }
+
+  /** @see {@link ProjectStoreLike.setExpanded} */
+  async setExpanded(ids: readonly string[]): Promise<boolean> {
+    if (this.disposed) return false
+    const next = sanitizeExpanded(ids)
+    // 幂等：sanitize 后与内存值一致（含「重复成员收敛后恰好相等」）不产生写。
+    if (sameExpanded(next, this.expanded)) return true
+    this.expanded = next
+    this.notify()
+    // 写入传拷贝：宿主持有的值不得与内存权威同引用（防宿主侧意外改动写穿内存）。
+    return this.persist('expanded', [...next])
+  }
+
   /** @see {@link ProjectStoreLike.dispose} */
   dispose(): void {
     if (this.disposed) return
@@ -272,11 +344,22 @@ export class ProjectStore implements ProjectStoreLike {
 
   /** 生成 8 字符随机 id；与现有 id 撞车则重摇（判重只是几次比较，确定性优于概率祈祷）。 */
   private freshId(): string {
-    let id = crypto.randomUUID().slice(0, 8)
+    let id = this.randomId()
     while (this.state.projects.some((project) => project.id === id)) {
-      id = crypto.randomUUID().slice(0, 8)
+      id = this.randomId()
     }
     return id
+  }
+
+  /**
+   * 单次随机：randomUUID 只在安全上下文暴露（https / localhost），局域网 IP 访问等非安全
+   * 上下文里缺席、直接调用是 TypeError——缺席时退回 getRandomValues（任何上下文都有）拼
+   * 8 位 hex，两条路产出同格式（小写 hex 8 字符），消费方无感。
+   */
+  private randomId(): string {
+    if (typeof crypto.randomUUID === 'function') return crypto.randomUUID().slice(0, 8)
+    const bytes = crypto.getRandomValues(new Uint8Array(4))
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
   }
 
   /** 整体替换会话内权威并通知（notify 前先替换，订阅者回调里读到的即是新值）。 */
@@ -311,10 +394,13 @@ export class ProjectStore implements ProjectStoreLike {
       projects: sanitizeProjects(section?.projects),
       assignments: sanitizeAssignments(section?.assignments),
     }
+    const expanded = sanitizeExpanded(section?.expanded)
     const stateChanged = !sameProjects(next.projects, this.state.projects)
       || !sameAssignments(next.assignments, this.state.assignments)
+    const expandedChanged = !sameExpanded(expanded, this.expanded)
     this.state = next
-    if (statusChanged || stateChanged) this.notify()
+    this.expanded = expanded
+    if (statusChanged || stateChanged || expandedChanged) this.notify()
   }
 
   /**
@@ -324,7 +410,7 @@ export class ProjectStore implements ProjectStoreLike {
    * → `mirror.load()`），第二次取的是重读后的最新 revision——revision 冲突的语义是「你读的
    * 那个栅栏过期了」，必须有人用新栅栏再发一次，本层就是那个人。
    */
-  private async persist(field: ProjectsField, value: TaijiProject[] | Record<string, string>): Promise<boolean> {
+  private async persist(field: ProjectsField, value: TaijiProject[] | Record<string, string> | readonly string[]): Promise<boolean> {
     this.inFlight += 1
     try {
       const first = await this.attempt(field, value)
@@ -347,7 +433,7 @@ export class ProjectStore implements ProjectStoreLike {
   }
 
   /** 单次写入；传输异常收敛成 `failed`（不外抛——UI 不因存储故障中断，失败经上报通道）。 */
-  private async attempt(field: ProjectsField, value: TaijiProject[] | Record<string, string>): Promise<WriteOutcome> {
+  private async attempt(field: ProjectsField, value: TaijiProject[] | Record<string, string> | readonly string[]): Promise<WriteOutcome> {
     try {
       const accepted = await this.form.set(field, value)
       return accepted ? 'accepted' : 'refused'
@@ -379,7 +465,8 @@ export class ProjectStore implements ProjectStoreLike {
       + (outcome === 'failed' && this.transportError !== undefined ? ` 传输错误=${this.transportError}` : '')
     if (snapshot.status === 'unavailable') {
       return `项目变更未能写入${where}：该命名空间当前未被宿主服务（${facts}）。`
-        + '请确认本包 profile 行已激活，且 Node 半场导出的 Config 含 volatile 的 projects/assignments 字段；'
+        + '请确认本包 profile 行已激活，且 Node 半场导出的 Config 含 volatile 的'
+        + ' projects/assignments/expanded 字段；'
         + '本次会话内变更仍然生效，重载页面后回到上次成功保存的数据。'
     }
     return `项目变更未能写入${where}（重读一次后重试仍被拒绝，${facts}）。`
