@@ -1,0 +1,17 @@
+/* 侧栏品牌行图标（client/brand/mark.tsx 注册的 sidebar.brand.mark 槽渲染的 svg）：
+   taiji Brand.vue 逐值对齐——logo 28px（L35）、图标与文字栈的水平间距 9px（L34 的
+   gap-[9px]）。宿主该槽按 size:24 传参（fallback FishLogo 同 24px），这里锚容器类把
+   svg 覆盖到 28px（CSS 声明优先于 svg 的 width/height 属性，viewBox 不变等比放大）。
+   水平间距直接把宿主 .brandIdentity 的 gap 覆盖为 9px（宿主 0.2.2 gap 5px、0.1.7
+   gap 8px，两版本不同——补 margin 的写法无法同时命中 9px，覆盖 gap 一处收口）。
+   锚定方式：宿主 hash 类锚 local 名子串（先例：head/session-header.css 的
+   [class*="titleRow"]）。.brandMark/.brandIdentity 只在展开态 logoRow 渲染——折叠轨
+   （.railMark）与 hero 槽不受影响，折叠轨图标保持宿主 24px 基准。 */
+[class*='brandIdentity'] {
+  gap: 9px;
+}
+
+[class*='brandMark'] svg {
+  width: 28px;
+  height: 28px;
+}

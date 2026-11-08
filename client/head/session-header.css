@@ -155,14 +155,21 @@ header:has([data-conversation-header-leading]) [class*="tabs"]:not([role="tablis
   width: auto;
   /* 最小宽度喂给宿主 visibleViewLimit（floor((row.clientWidth - 48) / 120)）：内容宽会让
    * limit 算出 1，第二个视图（Trajectory）被折进「More conversation views」启动钮——
-   * 300px → limit 2，两枚标签直显。外轨自身无底色，多出的宽度只是行尾保留区。 */
-  min-width: 300px;
+   * 288px 恰好让 limit = 2，两枚标签直显。外轨自身无底色，多出的宽度只是不可见保留区。
+   * justify-content:flex-end 把 tablist+more 推到外轨右缘：保留区转移到左侧（corner 与
+   * 分段控件之间），行尾不再出现「more 之后一大段空白、控件悬在半空」的观感（对齐 taiji
+   * 卡头「控件贴右、间隙由标题 flex 区吸收」的布局）。0.1.7 无独立外轨（.tabs 即
+   * tablist），本规则不命中，无影响。 */
+  min-width: 288px;
+  justify-content: flex-end;
   margin: 0;
   padding: 0;
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 2px;
+  /* 外轨 gap 只作用于 tablist ↔ more 启动钮（外轨仅这两个子元素），取 taiji 卡头行 gap 8px；
+   * 0.1.7 无 more、无外轨，不经过本值。 */
+  gap: 8px;
   position: static;
   z-index: auto;
 }

@@ -1,7 +1,22 @@
-/* 品牌栈（client/brand/name.tsx）：宿主 .brandName 容器是 24px 定高的 inline-flex 行盒
-   （align-items: center、18px/600 字面），taiji 品牌区是「产品名 + 下方 mono 小字版本行」
-   两行栈（Brand.vue）。两行总高约 30px，超出容器 24px 的部分沿垂直居中对称溢出——容器
-   无 overflow 裁剪、品牌行外层（logoRow，60px）有富余高度，视觉居中不受影响。 */
+/* 品牌栈（client/brand/name.tsx）：taiji 品牌区是「产品名 + 下方 mono 小字版本行」两行栈
+   （Brand.vue L34-L48 的结构同构）。宿主 .brandIdentity/.brandName 原是 24px 定高行盒
+   （宿主单行 fallback 的布局），两行栈总高约 41px 装不下——纵向溢出会被外层
+   .brand 的 overflow:hidden 裁掉栈顶栈底。锚 local 名子串放开这两个容器的高度
+   （锚定先例：head/session-header.css 的 [class*="titleRow"]），让栈回到正常布局流；
+   min-height 24px 保底（壳信息缺席的降级形态只有单行产品名，约 24px）。
+   影响面：.brandIdentity/.brandName 只在展开态 logoRow 渲染；折叠轨是 .railMark、
+   hero 首屏是 hero 槽容器，均不含这两个类名，不受影响。 */
+[class*='brandIdentity'] {
+  height: auto;
+  min-height: 24px;
+}
+
+[class*='brandName'] {
+  height: auto;
+  min-height: 24px;
+}
+
+/* 品牌栈本体：纵向两行，min-width 0 让版本行 truncate 在窄侧栏生效。 */
 .taiji-brand-stack {
   display: inline-flex;
   flex-direction: column;
@@ -9,19 +24,27 @@
   min-width: 0;
 }
 
-/* 产品名：字号/字重继承宿主 .brandName 的 18px/600，行高压到 1 防两行栈总高超预算。 */
+/* 产品名：taiji Brand.vue L40 逐值对齐——15px（--text-md，太极侧 style.css L133）/
+   粗体（font-bold = 700）/ 行高 1.55（两行栈的呼吸感，压到 1 会让产品名与版本行
+   墨迹贴住）/ 字距 0.02em；覆盖宿主 .brandName 的 18px/600/0.04em（宿主排版面向
+   单行 fallback，两行栈按 taiji 字号体系走）。 */
 .taiji-brand-name {
-  line-height: 1;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.55;
+  letter-spacing: 0.02em;
 }
 
-/* 版本行：taiji 同款 mono 小字（font-mono 11px 档 → 本包 10.5px）、次要色、单行省略——
-   侧栏可拖窄，空间不足时版本行自己截断，不撑高品牌栈。 */
+/* 版本行：taiji Brand.vue L47 逐值对齐——11px（--text-2xs，太极侧 style.css L129）/
+   mono / 行高 1.55 / 表格数字（tabular-nums，版本号数字等宽）/ mt 1px / 次要色 /
+   单行省略——侧栏可拖窄，空间不足时版本行自己截断，不撑高品牌栈。 */
 .taiji-brand-version {
-  margin-top: 2px;
+  margin-top: 1px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 400;
-  line-height: 1.2;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
   letter-spacing: 0;
   color: var(--dsw-alias-label-secondary);
   white-space: nowrap;

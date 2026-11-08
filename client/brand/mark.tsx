@@ -76,6 +76,10 @@ export interface BrandMarkProps {
 /**
  * 渲染双鱼标。
  *
+ * 展开态侧栏品牌行的最终尺寸是 28px（taiji Brand.vue L35）：宿主按 size:24 传参，
+ * 由 mark.css 锚 [class*='brandMark'] 覆盖（只影响展开态品牌行，折叠轨与 hero 槽
+ * 仍用本组件的 size 语义）。
+ *
  * @param props - owner props（size 必给，className 可选）。
  * @returns svg 元素树（aria-hidden：品牌标是装饰性图形，可访问名字由侧栏产品名承担）。
  */

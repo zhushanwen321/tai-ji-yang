@@ -11,8 +11,9 @@
  * 文案走宿主 locale 的 `t` 标准座位（注册时声明 `locale: TAIJI_LOCALE_NS`），中英文分别
  * 取「太极」/「TaiJi」——取值抄录太极侧 `i18n/locales/{zh-CN,en-US}/app.ts` 的 `title`。
  * 字标形态 = 纯文字 span（不做 SVG 艺术字）：taiji 侧 Brand.vue 的产品名同样是文字
- * （`t('app.title')`），宿主该槽的回退 occupant 也是文字 span；宿主 `.brandName` 容器已提供
- * 18px/600 的排版，本组件不重复声明样式。
+ * （`t('app.title')`），宿主该槽的回退 occupant 也是文字 span；排版按 taiji Brand.vue
+ * 逐值对齐（15px/700/行高 1.55——宿主 `.brandName` 的 18px/600 面向单行回退文案，
+ * 与两行栈的 taiji 字号体系不同），样式声明在 name.css。
  *
  * 优先级避让与 mark.tsx 完全同构（官方标 0 / viewer -10 / 本包 -5，见 mark.tsx 头部注释）：
  * 官方构建里 OfficialBrandName 占着这个槽（priority 0），装了太极壳就应由「太极」二字
@@ -68,8 +69,9 @@ export interface BrandNameProps {
  * 渲染产品名字标（品牌栈：产品名 + 版本行）。
  *
  * taiji 的品牌区（Brand.vue）在产品名下方带一行小字版本（mono、暗色、truncate）；本组件
- * 同构——版本行来自壳信息 global，缺席时整行不渲染。宿主 `.brandName` 容器给产品名提供
- * 18px/600 排版与 24px 定高行盒，本栈纵向溢出约 3px 由品牌行的富余高度吸收（见 name.css）。
+ * 同构——版本行来自壳信息 global，缺席时整行不渲染。两行栈总高约 41px，宿主
+ * `.brandIdentity`/`.brandName` 的 24px 定高已在 name.css 锚定放开（否则纵向溢出会被
+ * 外层 `.brand` 的 overflow:hidden 裁掉栈顶栈底）。
  *
  * @param props - `t` 座位。
  * @returns 品牌栈 span（产品名 + 可选版本行）。
