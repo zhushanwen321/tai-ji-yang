@@ -1,19 +1,20 @@
 #!/usr/bin/env node
 /**
- * RL5 静态自检：浏览器半场产物 `lib/client.js` 里的 `require("…")` 字面量集合 ⊆ 宿主模块表基线。
+ * RL5 静态自检：每个包浏览器半场产物 `lib/client.js` 里的 `require("…")` 字面量集合 ⊆ 宿主
+ * 模块表基线。多包适配（设计 D10）：包清单来自 scripts/workspace-packages.mjs，逐包审计
+ * 同一基线（宿主模块表是仓级契约，各包共用）。
  *
  * 为什么需要这条断言（设计 AS7 / D1 / D3）：宿主只 seed 11 个平台模块（`PLATFORM_MODULES`）。
  * bundle 里任何超出这 11 项、又没在 `dsh.client.external` 声明并有供给方的 require，组合期直接
- * 被拒（或运行时解析失败）。本包裁决为「零 npm 运行时依赖」，因此基线就是全部合法取值。
+ * 被拒（或运行时解析失败）。本仓裁决为「零 npm 运行时依赖」，因此基线就是全部合法取值。
  *
  * 为什么用「解析产物」而不是「扫源码」：源码里的 import 会经打包器重写成别的形态（内联 / 改名 /
  * interop 包装），只有产物里的 require 才是最终向宿主发出的请求。扫产物同样能覆盖到打包器
  * 引入的间接 require（如 jsx runtime 的 interop 辅助）。
  *
  * 三种输入状态（设计缺口补丁，见 ledger D1 第二轮裁决 7）：
- *   ① 产物缺失 —— 浏览器半场入口 `client/apply.ts` 属 U3 单元，本单元时段必然缺失。
- *      此时给出可行动失败信息并**显式标注「未执行检查」**（不冒充通过）；`--strict` 或
- *      `CHECK_STRICT=1` 下以失败退出，供后续 Gate 强制。
+ *   ① 产物缺失 —— 浏览器半场源入口尚未落盘的包。此时给出可行动失败信息并**显式标注
+ *      「未执行检查」**（不冒充通过）；`--strict` 或 `CHECK_STRICT=1` 下以失败退出，供后续 Gate 强制。
  *   ② 产物存在且合规 —— exit 0。
  *   ③ 产物存在但有基线外 require / 非字面量 require —— exit 1。
  *
@@ -24,8 +25,9 @@
  * 只依赖 node 内置模块。退出码 0 = 通过（或目标缺失且非严格模式），1 = 至少一项失败。
  */
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { workspacePackages, WORKSPACE_ROOT } from './workspace-packages.mjs'
 
 /**
  * 宿主冻结模块表基线（11 项，AS7 实证：`packages/client/web/src/platform.ts` 的 PLATFORM_MODULES）。
@@ -45,11 +47,6 @@ export const BASELINE_MODULES = [
   '@deepseek-ai/dsh-client-ui-primitives',
   '@deepseek-ai/dsh-client-ui-dockkit',
 ]
-
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const BUNDLE_PATH = join(ROOT, 'lib', 'client.js')
-const ENTRY_FOR_BUNDLE = 'client/apply.ts'
-const ENTRY_UNIT = 'U3'
 
 const LITERAL_REQUIRE_RE = /require\s*\(\s*(?:"([^"\n]*)"|'([^'\n]*)')\s*\)/g
 const REQUIRE_CALL_RE = /\brequire\s*\(/g
@@ -128,20 +125,10 @@ function isStrict() {
   return process.argv.includes('--strict') || process.env.CHECK_STRICT === '1'
 }
 
-function reportMissingTarget(strict) {
-  const lines = [
-    `⚠ 未执行检查（目标缺失，本次不构成通过）: ${join('lib', 'client.js')} 不存在`,
-    `   该产物由 node scripts/build-client.mjs 生成，其入口 ${ENTRY_FOR_BUNDLE} 归属 ${ENTRY_UNIT} 单元（尚未落盘）`,
-    `   补齐路径: ${ENTRY_UNIT} 落盘 ${ENTRY_FOR_BUNDLE} → 执行 node scripts/build-client.mjs → 再跑本脚本`,
-    '   负样本自证已通过（规则本身可信），但正向断言没有被执行过——不要把这一行读成「检查通过」',
-    `   当前模式: ${strict ? 'strict（目标缺失即失败，退出码 1）' : 'lenient（默认；目标缺失时退出码 0 但显式播报缺口，供上游未落盘的时段跑自检）'}`,
-    `   结果: 0 项通过 / 1 项未执行（${join('lib', 'client.js')} 缺失）${strict ? '' : '——strict 模式下本行即失败'}`,
-  ]
-  console.warn(lines.join('\n'))
-}
-
 function main() {
   const strict = isStrict()
+  let hardFailures = 0
+  let skippedMissing = 0
 
   const failures = selfTestFailures()
   if (failures.length > 0) {
@@ -152,35 +139,55 @@ function main() {
   }
   console.log('✔ 负样本自证：基线外 require 与非字面量 require 均被拒绝，合规样本无误报')
 
-  if (!existsSync(BUNDLE_PATH)) {
-    reportMissingTarget(strict)
-    if (strict) process.exitCode = 1
-    return
-  }
-  if (!statSync(BUNDLE_PATH).isFile()) {
-    console.error(`✘ ${BUNDLE_PATH} 不是普通文件`)
-    process.exitCode = 1
-    return
-  }
-  const source = readFileSync(BUNDLE_PATH, 'utf8')
-  if (source.trim() === '') {
-    console.error(`✘ ${join('lib', 'client.js')} 为空文件，不是有效产物`)
-    process.exitCode = 1
-    return
+  for (const pkg of workspacePackages()) {
+    const pkgLabel = pkg.dir === '.' ? pkg.name : pkg.dir
+    const bundlePath = join(WORKSPACE_ROOT, pkg.dir, 'lib', 'client.js')
+
+    if (!existsSync(bundlePath)) {
+      skippedMissing += 1
+      const lines = [
+        `⚠ [${pkgLabel}] 未执行检查（目标缺失，本次不构成通过）: ${join(pkg.dir, 'lib', 'client.js')} 不存在`,
+        `   该产物由 node scripts/build-client.mjs 生成，其入口 ${pkg.clientEntry} 尚未落盘`,
+        `   补齐路径: 落盘 ${pkg.clientEntry} → 执行 node scripts/build-client.mjs → 再跑本脚本`,
+        '   负样本自证已通过（规则本身可信），但正向断言没有被执行过——不要把这一行读成「检查通过」',
+        `   当前模式: ${strict ? 'strict（目标缺失即失败，退出码 1）' : 'lenient（默认；目标缺失时退出码 0 但显式播报缺口）'}`,
+      ]
+      console.warn(lines.join('\n'))
+      if (strict) hardFailures += 1
+      continue
+    }
+    if (!statSync(bundlePath).isFile()) {
+      console.error(`✘ [${pkgLabel}] ${bundlePath} 不是普通文件`)
+      hardFailures += 1
+      continue
+    }
+    const source = readFileSync(bundlePath, 'utf8')
+    if (source.trim() === '') {
+      console.error(`✘ [${pkgLabel}] ${join(pkg.dir, 'lib', 'client.js')} 为空文件，不是有效产物`)
+      hardFailures += 1
+      continue
+    }
+
+    const result = auditBundle(source)
+    if (result.violations.length > 0) {
+      console.error(`✘ [${pkgLabel}] ${join(pkg.dir, 'lib', 'client.js')} 的 require 集合越过宿主模块基线:`)
+      for (const violation of result.violations) console.error(`  - ${violation}`)
+      console.error(`  基线: ${BASELINE_MODULES.join(', ')}`)
+      console.error('  依据: 设计 AS7 / D1 / D3——宿主只 seed 11 个平台模块，超出即需 dsh.client.external 供给方。')
+      hardFailures += 1
+      continue
+    }
+    console.log(
+      `✔ [${pkgLabel}] require 字面量全部落在宿主模块基线内（${result.literals.length} 项: ${result.literals.join(', ') || '无'}）`,
+    )
   }
 
-  const result = auditBundle(source)
-  if (result.violations.length > 0) {
-    console.error(`✘ ${join('lib', 'client.js')} 的 require 集合越过宿主模块基线:`)
-    for (const violation of result.violations) console.error(`  - ${violation}`)
-    console.error(`  基线: ${BASELINE_MODULES.join(', ')}`)
-    console.error('  依据: 设计 AS7 / D1 / D3——宿主只 seed 11 个平台模块，超出即需 dsh.client.external 供给方。')
+  if (hardFailures > 0) {
+    console.error(`\n基线检查失败 ${hardFailures} 项${strict && skippedMissing > 0 ? `（含 ${skippedMissing} 个缺失目标——strict 模式下缺失即失败）` : ''}`)
     process.exitCode = 1
     return
   }
-  console.log(
-    `✔ require 字面量全部落在宿主模块基线内（${result.literals.length} 项: ${result.literals.join(', ') || '无'}）`,
-  )
+  console.log(`\n基线检查完成（${workspacePackages().length} 个包${skippedMissing > 0 ? `，${skippedMissing} 个目标缺失已显式播报` : ''}）`)
 }
 
 const selfHref = pathToFileURL(resolve(process.argv[1] ?? '')).href

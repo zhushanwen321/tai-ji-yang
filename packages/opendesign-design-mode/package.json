@@ -1,0 +1,49 @@
+{
+  "name": "opendesign-design-mode",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./client-entry": {
+      "default": "./lib/client-entry.js"
+    },
+    "./persona": {
+      "default": "./lib/persona.js"
+    },
+    "./commands/doctor": {
+      "default": "./lib/commands/doctor.js"
+    },
+    "./serve/artifacts-route": {
+      "default": "./lib/serve/artifacts-route.js"
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "engines": {
+    "dsh": ">=0.1.7-rc.2 <0.3.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.1.0",
+    "@deepseek-ai/dsh": ">=0.1.7-rc.2 <0.3.0",
+    "@deepseek-ai/schemastery": "~3.18.4"
+  }
+}

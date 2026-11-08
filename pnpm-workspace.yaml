@@ -1,3 +1,8 @@
+# workspace 包清单：仓根是 tai-ji-yang-shell，功能型子包逐个落 packages/<name>/（各自
+# 独立 package.json / cordis.patch.yml / lib 产物）。检查与构建脚本按本清单逐包枚举。
+packages:
+  - 'packages/*'
+
 # pnpm 11 起，包级设置的家从 package.json 的 "pnpm" 字段迁到本文件。
 # esbuild 的平台二进制由 optionalDependencies 直接提供（postinstall 只是冗余校验），
 # 但 pnpm ≥10 默认拦下安装脚本并让 `pnpm install` 以非零退出——克隆本仓按 README

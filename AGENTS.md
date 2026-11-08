@@ -15,6 +15,15 @@
 
 `client/` 按职责分目录（theme / brand / head / input / locale / projects / settings / persist / testing），目录级设计见 `docs/ARCHITECTURE.md`。
 
+## 多包结构
+
+本仓是 pnpm 多包 workspace（单包仓 → 多包容器，设计 D10）：根包 = `tai-ji-yang-shell`，功能型子包逐个落 `packages/<name>/`（当前：`packages/opendesign-design-mode`——OpenDesign 设计模式插件包）。
+
+- **包清单登记处（两处、一处对账）**：`pnpm-workspace.yaml` 声明 `packages/*` 通配；`scripts/workspace-packages.mjs` 登记每包的构建声明（包名 / 目录 / 浏览器半场入口 / Node 半场产物形态），并在每次构建与检查时与 `pnpm-workspace.yaml` 的实际包目录对账——两边不同步即失败。加新包时两处同批登记。
+- **构建与检查逐包执行**：`node scripts/build-client.mjs` 逐包产出各包 `lib/`；六个 check 脚本（`check-manifest` 等）对每包跑同一套通用断言，包特有断言按包选择（断言逻辑仍单处归属各自脚本）。`pnpm check:static` / `pnpm check` 的语义不变，覆盖面 = 全部包。
+- **子包结构**（`packages/opendesign-design-mode/`）：`package.json`（双入口：main → `lib/index.js`、exports `./client` → `lib/client.js`，外加四个 preset 子插件子路径入口）、`cordis.patch.yml`（insert 本包主行 + agent-preset 行，preset 的 `config.plugins` 八项显式声明——四个 DSH 原生工具 + 四个本包子插件）、`lib/`（host 半源码与产物）、`client/`（浏览器半场源码）。子包的 preset 注册、资产定位、提示词组装与预览面板的设计依据见该包内源码注释与设计文档（opendesign-design-mode）。
+- **包边界纪律**：各包源码、产物、patch 互不越界；根包（shell 包）的 `client/`、`lib/`、`tests/` 既有文件是包级领地，子包改动不触及。
+
 ## 文档索引
 
 | 文档 | 内容 |

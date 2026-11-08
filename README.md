@@ -265,6 +265,15 @@ cd ~/.dsh/profiles/<profile> && pnpm install
 
 修完后 `node_modules/.modules.yaml` 的 `storeDir` 会指向新 store（`~/Library/pnpm/store/v11`）。旧 store `~/.pnpm-store/v10` 占数 GB，确认机器上其它项目都不再用它之后可以删除回收空间。
 
+## 多包结构
+
+本仓是 pnpm 多包 workspace：根包 = `tai-ji-yang-shell`（本 README 主体描述的包），功能型子包逐个落 `packages/<name>/`。当前子包：`packages/opendesign-design-mode`——OpenDesign 设计模式插件包（新会话选择器出现「OpenDesign 设计模式」入口，定位本机 OpenDesign 资产驱动设计会话，产物在右侧栏设计面板预览；未装 OpenDesign 时入口显式降级提示）。
+
+- **包清单**：`pnpm-workspace.yaml` 声明 `packages/*`；`scripts/workspace-packages.mjs` 登记每包构建声明并与之对账（不同步即构建/检查失败）。
+- **构建**：`pnpm build`（= `node scripts/build-client.mjs`）逐包产出各包 `lib/`；各包产物随仓库交付（与根包同一纪律：`lib/` 入库、先构建再安装）。
+- **检查**：`pnpm check:static` / `pnpm check` 对每包执行同一套静态断言（包特有断言按包选择）；任一包红灯即整体红灯。
+- **安装**：每包是独立的 DSH 插件（各自的 `cordis.patch.yml` 与 `package.json` 双字段版本门禁），可独立安装到不同 profile；根包与子包互不牵连，卸载其一不影响另一包。
+
 ## 开发约定（本包自身的边界）
 
 开发、审查与有意偏离的完整登记见 [docs/DSH-PLUGIN-RULES.md](docs/DSH-PLUGIN-RULES.md)；双半场与界面贡献的职责边界见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
@@ -300,6 +309,10 @@ pnpm build:self-test  # 12 项自证，含四条失败支证明会红
 ```
 
 全仓单测里的 `client/theme/host-font-sheet.spec.ts` 是字体复合简写的**升级护栏**：对宿主源样式表 `gradient-shadow-text.css` 逐 token 对账——复合简写名单对齐（宿主增删档即红）、字号段与字族段逐字一致（字重/行高不比对，那是本包要改的两段）。宿主升级改了字号表达式而本包 `client/theme/structure.ts` 未同步时，这条测试会红，提示同步重写表。宿主样式表定位：`DSH_FONT_SHEET` 环境变量优先；缺省探测本机 DSH 源码仓的固定路径（探测串写在 spec 文件内）；找不到时测试直接失败并在错误信息里给出设置指引，不静默跳过——在他机上跑 `check-all` 或单测前，先把 `DSH_FONT_SHEET` 指向本机 DSH 源码仓里的 `gradient-shadow-text.css`。
+
+## 真实宿主验收
+
+真实 DSH 验收使用 [.agents/skills/verify-taiji-yang](.agents/skills/verify-taiji-yang/SKILL.md) 与 `scripts/verify/run.mjs`：连接显式测试 URL，或在隔离 DSH_HOME 自启实例。覆盖品牌、会话头、主题、项目列表和卸载回落；证据包含 `verdict.json`、`summary.jsonl`、截图与控制台。该入口不读取用户浏览器 profile，不修改用户真实 DSH profile，不发送模型请求。
 
 ## License
 

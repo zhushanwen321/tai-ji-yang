@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * RL7 静态自检：package.json 的 dependencies 与 peerDependencies 键集不含 @deepseek-ai/dsh-client-*。
+ * RL7 静态自检：每个包的 dependencies 与 peerDependencies 键集不含 @deepseek-ai/dsh-client-*。
+ * 多包适配（设计 D10）：包清单来自 scripts/workspace-packages.mjs，逐包执行同一断言。
  *
  * 为什么需要这条断言（设计 §3.3.3 / D3「零 npm 运行时依赖」裁决）：npm 上 @deepseek-ai/dsh-client-*
  * 的 latest 与 DSH 当前主版本差两代（ui-slots latest = 0.0.1-rc.1，next 才是 0.2.2-rc.1），
@@ -14,19 +15,18 @@
  * 只依赖 node 内置模块。退出码 0 = 通过，1 = 至少一项失败（失败项打到 stderr）。
  */
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
+import { workspacePackages, WORKSPACE_ROOT } from './workspace-packages.mjs'
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const MANIFEST_PATH = join(ROOT, 'package.json')
 const FORBIDDEN_PREFIX = '@deepseek-ai/dsh-client-'
 const CHECKED_FIELDS = ['dependencies', 'peerDependencies']
 
 /** 读取并解析 package.json；失败即抛，交由主流程显式报错。 */
-function readManifest() {
-  if (!existsSync(MANIFEST_PATH)) throw new Error(`package.json 不存在: ${MANIFEST_PATH}`)
+function readManifest(pkgDir) {
+  const manifestPath = join(WORKSPACE_ROOT, pkgDir, 'package.json')
+  if (!existsSync(manifestPath)) throw new Error(`package.json 不存在: ${manifestPath}`)
   try {
-    return JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'))
+    return JSON.parse(readFileSync(manifestPath, 'utf8'))
   } catch (error) {
     throw new Error(`package.json 不是合法 JSON: ${error.message}`)
   }
@@ -49,19 +49,26 @@ function findForbidden(manifest) {
   return offenders
 }
 
-let offenders
-try {
-  offenders = findForbidden(readManifest())
-} catch (error) {
-  console.error(`✘ ${error.message}`)
-  process.exit(1)
+const failures = []
+for (const pkg of workspacePackages()) {
+  const pkgLabel = pkg.dir === '.' ? pkg.name : pkg.dir
+  let offenders
+  try {
+    offenders = findForbidden(readManifest(pkg.dir))
+  } catch (error) {
+    failures.push(`[${pkgLabel}] ${error.message}`)
+    continue
+  }
+  if (offenders.length > 0) {
+    failures.push(`[${pkgLabel}] ${CHECKED_FIELDS.join(' / ')} 含被禁的宿主 client 依赖: ${offenders.join(', ')}`)
+    continue
+  }
+  console.log(`✔ [${pkgLabel}] ${CHECKED_FIELDS.join(' / ')} 不含 ${FORBIDDEN_PREFIX}* 依赖`)
 }
 
-if (offenders.length > 0) {
-  console.error(`✘ ${CHECKED_FIELDS.join(' / ')} 含被禁的宿主 client 依赖:`)
-  for (const offender of offenders) console.error(`  - ${offender}`)
+if (failures.length > 0) {
+  console.error('✘ 宿主 client 依赖检查失败:')
+  for (const failure of failures) console.error(`  - ${failure}`)
   console.error('\n依据: 设计 §3.3.3（D3 零 npm 运行时依赖）——这些包由宿主模块表供给，不由插件安装。')
   process.exit(1)
 }
-
-console.log(`✔ ${CHECKED_FIELDS.join(' / ')} 不含 ${FORBIDDEN_PREFIX}* 依赖`)

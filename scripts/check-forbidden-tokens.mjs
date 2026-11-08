@@ -44,12 +44,25 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { workspacePackages, WORKSPACE_ROOT } from './workspace-packages.mjs'
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const ROOT = WORKSPACE_ROOT
 const SELF = fileURLToPath(import.meta.url)
 
-/** 默认扫描根（相对仓库根）：Node 半场入口与浏览器半场目录。 */
-const DEFAULT_TARGETS = ['index.js', 'client']
+/**
+ * 默认扫描根（相对仓库根），按包枚举（设计 D10）：每包扫「真实会被装载的源码」——
+ * 根包的 Node 半场入口与浏览器半场目录；子包为 lib/（host 半源码与产物同批入库，内容
+ * 等价）与 client/（浏览器半场源）。包清单来自 scripts/workspace-packages.mjs，新包落盘
+ * 后自动进入扫描范围，无需改本脚本。也可在命令行追加路径供人工核对。
+ */
+function defaultTargets() {
+  const targets = []
+  for (const pkg of workspacePackages()) {
+    if (pkg.dir === '.') targets.push('index.js', 'client')
+    else targets.push(join(pkg.dir, 'lib'), join(pkg.dir, 'client'))
+  }
+  return targets
+}
 const SCANNED_EXTENSIONS = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.tsx', '.jsx', '.css']
 
 /** 五类禁止：token 命名规则（按声明形态取到的 token 名再分类）。 */
@@ -352,7 +365,7 @@ function displayPath(target) {
 
 function main() {
   const extra = process.argv.slice(2).filter((arg) => !arg.startsWith('-'))
-  const targets = [...DEFAULT_TARGETS, ...extra]
+  const targets = [...defaultTargets(), ...extra]
 
   const failures = selfTestFailures()
   if (failures.length > 0) {
@@ -390,17 +403,15 @@ function main() {
     `✔ 五类禁止均未出现（扫描 ${files.length} 个文件: ${files.map(displayPath).join(', ')}）`,
   )
 
-  // 浏览器半场源码（client/）由 U2/U3/U6/U7 落盘；缺失时本脚本只能覆盖 Node 半场
-  // （index.js 写入的 CSS 同样落进页面，所以那一半本身是有意义的检查）。
-  // 这里显式播报覆盖缺口，不用「通过」冒充覆盖完整；需要强制完整覆盖时用 --strict。
-  const missingBrowserHalf = !existsSync(join(ROOT, 'client'))
-  if (missingBrowserHalf) {
+  // 浏览器半场源码（client/）随各单元落盘；某包 client/ 缺失时该包只覆盖了 host 半源码。
+  // 这里按包显式播报覆盖缺口，不用「通过」冒充覆盖完整；需要强制完整覆盖时用 --strict。
+  const missingClientPackages = workspacePackages().filter((pkg) => !existsSync(join(ROOT, pkg.dir, 'client')))
+  if (missingClientPackages.length > 0) {
     const message = [
-      '⚠ 覆盖不完整（本次不构成全部通过）: client/ 尚未落盘，本次只检查了 Node 半场 index.js',
-      '   client/ 的源码归属 U2 / U3 / U6 / U7 单元（浏览器半场）；它们落盘后本脚本自动纳入扫描，无需改动',
-      '   负样本自证已通过（六条规则本身可信），但浏览器半场源码从未被扫过——不要把这一行读成「全部通过」',
+      `⚠ 覆盖不完整（本次不构成全部通过）: 以下包的 client/ 尚未落盘，本次只检查了它们的 host 半源码: ${missingClientPackages.map((pkg) => pkg.dir).join(', ')}`,
+      '   浏览器半场源码落盘后本脚本自动纳入扫描，无需改动',
+      '   负样本自证已通过（六条规则本身可信），但这些包的浏览器半场源码从未被扫过——不要把这一行读成「全部通过」',
       '   强制要求完整覆盖（覆盖缺口即失败，退出码 1）: node scripts/check-forbidden-tokens.mjs --strict',
-      '   结果: 已扫 1 处（index.js）通过 / 未扫 client/（缺失）',
     ].join('\n')
     if (isStrict()) {
       console.error(message)

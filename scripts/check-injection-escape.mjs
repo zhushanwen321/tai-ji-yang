@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * RL6 / V10 静态自检：Node 半场推入注入表的行不含结束标签。
+ * RL6 / V10 静态自检：Node 半场推入注入表的行不含结束标签。多包适配（设计 D10）：包清单
+ * 来自 scripts/workspace-packages.mjs，逐包加载 Node 半场入口——有 index-inject 注入贡献的
+ * 包按注入行契约断言（根包形态），无注入贡献的包显式播报跳过（不冒充覆盖）。
  *
  * 为什么需要这条断言（设计 AS5 / D6）：宿主的注入行 `style` 分支把 text 原样嵌进一个 style
  * 元素（`packages/host/webserver/src/injections.ts` 的 `renderRow`），
@@ -15,15 +17,14 @@
  * 只依赖 node 内置模块。退出码 0 = 通过，1 = 至少一项失败（失败项打到 stderr）。
  */
 import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { workspacePackages, WORKSPACE_ROOT } from './workspace-packages.mjs'
 
 // 结束标签字面量按拼接构造：本文件自身不应含这两个字面量（否则扫描口径会被自己污染）。
 const STYLE_END = `</${'style'}`
 const SCRIPT_END = `</${'script'}`
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
-const ENTRY = join(ROOT, 'index.js')
 const results = []
 
 function check(label, fn) {
@@ -73,10 +74,11 @@ function assertGlobalRow(row, index) {
 
 /** 用假 ctx 触发一次注入收集，返回推入的行。
  *
- * 假 ctx 的职责只在于「让装配入口跑完并把行交出来」，因此除订阅外还给 `effect`（探针反注册器的
- * 登记口）、`get`（服务探询）与 `logger`（诊断出口）三个最小替身：缺 `effect` 会让 U8 的装载期
- * 探针在装配时抛「ctx.effect is not a function」，那是替身缺口而非被测代码缺陷。`get` 一律返回
- * `undefined`（无 webServer / 无 loader）不改变本脚本的断言范围：本脚本只核注入行，不核诊断。
+ * 假 ctx 的职责只在于「让装配入口跑完并把行交出来」，因此除订阅外还给 `effect`（装载期
+ * 探针的反注册器登记口）、`get`（服务探询）与 `logger`（诊断出口）三个最小替身：缺 `effect`
+ * 会让装载期探针在装配时抛「ctx.effect is not a function」，那是替身缺口而非被测代码缺陷。
+ * `get` 一律返回 `undefined`（无 webServer / 无 loader）不改变本脚本的断言范围：本脚本只核
+ * 注入行，不核诊断。
  */
 function collectRows(module, label) {
   const rows = []
@@ -97,77 +99,88 @@ function collectRows(module, label) {
   return rows
 }
 
-const entry = await import(pathToFileURL(ENTRY).href).catch((error) => {
-  console.error(`✘ 无法加载 Node 半场入口 ${ENTRY}: ${error.message}`)
-  process.exit(1)
-})
+const NEGATIVE_ROW = { kind: 'style', text: `body { color: red } ${STYLE_END}` }
 
-const packageJson = (() => {
-  try {
-    return JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
-  } catch (error) {
-    console.error(`✘ package.json 不可读: ${error.message}`)
-    process.exit(1)
+/** 每包一项：有 index-inject 注入贡献的包做契约断言；无贡献的包显式播报（不冒充覆盖）。 */
+for (const pkg of workspacePackages()) {
+  const pkgLabel = pkg.dir === '.' ? pkg.name : pkg.dir
+  const entryPath = join(WORKSPACE_ROOT, pkg.dir, pkg.dir === '.' ? 'index.js' : 'lib/index.js')
+  const entry = await import(pathToFileURL(entryPath).href).catch((error) => {
+    console.error(`✘ [${pkgLabel}] 无法加载 Node 半场入口 ${entryPath}: ${error.message}`)
+    results.push(false)
+    return undefined
+  })
+  if (entry === undefined) continue
+
+  const hasInjectContribution = typeof entry.apply === 'function'
+    && typeof entry.FIRST_FRAME_ROW !== 'undefined' // 注入贡献的契约标志（style 行常量导出）
+  if (!hasInjectContribution) {
+    console.log(`✔ [${pkgLabel}] 无 index-inject 注入贡献（不适用注入行契约；显式跳过，不冒充覆盖）`)
+    continue
   }
-})()
 
-check('Node 半场导出了 apply 与插件名', () => {
-  if (typeof entry.apply !== 'function') throw new Error('index.js 未导出 apply 函数')
-  if (entry.name !== packageJson.name) throw new Error(`插件名 ${String(entry.name)} 与 package.json name ${packageJson.name} 不一致`)
-})
+  const label = (text) => `[${pkgLabel}] ${text}`
 
-check('apply 订阅 webserver/index-inject 并向表推 style + global 各一行', () => {
-  const rows = collectRows(entry, '首次 emit')
-  if (rows.length !== 2) throw new Error(`一次 emit 应推 2 行（style + global），实为 ${rows.length} 行`)
-  assertRow(rows[0], 0)
-  assertGlobalRow(rows[1], 1)
-  if (rows[1].name !== entry.SHELL_INFO_GLOBAL) throw new Error(`global 行 name 应为 SHELL_INFO_GLOBAL（${String(entry.SHELL_INFO_GLOBAL)}），实为 ${String(rows[1].name)}`)
-})
+  const packageJson = pkg.manifest
 
-check('两次 emit 各自推当前两行（不是「首帧快照」语义）', () => {
-  const first = collectRows(entry, '第 1 次 emit')
-  const second = collectRows(entry, '第 2 次 emit')
-  if (first.length !== 2 || second.length !== 2) throw new Error(`两次 emit 各应为 2 行，实为 ${first.length} / ${second.length}`)
-  if (first[0].text !== second[0].text) throw new Error('两次 emit 推出的行文本不一致，注入表语义要求「推当前行」')
-  if (JSON.stringify(first[1].value) !== JSON.stringify(second[1].value)) {
-    throw new Error('两次 emit 推出的 global 行值不一致，注入表语义要求「推当前行」')
-  }
-})
+  check(label('Node 半场导出了 apply 与插件名'), () => {
+    if (typeof entry.apply !== 'function') throw new Error('Node 半场入口未导出 apply 函数')
+    if (entry.name !== packageJson.name) throw new Error(`插件名 ${String(entry.name)} 与 package.json name ${packageJson.name} 不一致`)
+  })
 
-check('推入的行与导出的 FIRST_FRAME_ROW 同一取值', () => {
-  const rows = collectRows(entry, '取值一致性')
-  const exported = entry.FIRST_FRAME_ROW
-  if (exported === undefined) throw new Error('index.js 未导出 FIRST_FRAME_ROW，无法做行与文本的一致性对拍')
-  assertRow(exported, 0)
-  if (rows[0].text !== exported.text) throw new Error('推入的行文本与导出的 FIRST_FRAME_ROW.text 不一致')
-})
+  check(label('apply 订阅 webserver/index-inject 并向表推 style + global 各一行'), () => {
+    const rows = collectRows(entry, '首次 emit')
+    if (rows.length !== 2) throw new Error(`一次 emit 应推 2 行（style + global），实为 ${rows.length} 行`)
+    assertRow(rows[0], 0)
+    assertGlobalRow(rows[1], 1)
+    if (rows[1].name !== entry.SHELL_INFO_GLOBAL) throw new Error(`global 行 name 应为 SHELL_INFO_GLOBAL（${String(entry.SHELL_INFO_GLOBAL)}），实为 ${String(rows[1].name)}`)
+  })
 
-check('负样本：含结束标签的行会被本断言拒绝（证明断言非常绿）', () => {
-  let rejected = false
-  try {
-    assertRow({ kind: 'style', text: `body { color: red } ${STYLE_END}` }, 0)
-  } catch {
-    rejected = true
-  }
-  if (!rejected) throw new Error('合成坏行未被拒绝，说明结束标签断言失效')
-})
+  check(label('两次 emit 各自推当前两行（不是「首帧快照」语义）'), () => {
+    const first = collectRows(entry, '第 1 次 emit')
+    const second = collectRows(entry, '第 2 次 emit')
+    if (first.length !== 2 || second.length !== 2) throw new Error(`两次 emit 各应为 2 行，实为 ${first.length} / ${second.length}`)
+    if (first[0].text !== second[0].text) throw new Error('两次 emit 推出的行文本不一致，注入表语义要求「推当前行」')
+    if (JSON.stringify(first[1].value) !== JSON.stringify(second[1].value)) {
+      throw new Error('两次 emit 推出的 global 行值不一致，注入表语义要求「推当前行」')
+    }
+  })
 
-check('负样本：global 行缺 name / value 不可序列化会被本断言拒绝', () => {
-  let rejectedName = false
-  try {
-    assertGlobalRow({ kind: 'global', value: { version: '0.1.0' } }, 0)
-  } catch {
-    rejectedName = true
-  }
-  if (!rejectedName) throw new Error('缺 name 的 global 行未被拒绝，说明结构断言失效')
-  let rejectedValue = false
-  try {
-    assertGlobalRow({ kind: 'global', name: 'x', value: { bad: BigInt(1) } }, 0)
-  } catch {
-    rejectedValue = true
-  }
-  if (!rejectedValue) throw new Error('value 含 BigInt 的 global 行未被拒绝，说明可序列化断言失效')
-})
+  check(label('推入的行与导出的 FIRST_FRAME_ROW 同一取值'), () => {
+    const rows = collectRows(entry, '取值一致性')
+    const exported = entry.FIRST_FRAME_ROW
+    if (exported === undefined) throw new Error('未导出 FIRST_FRAME_ROW，无法做行与文本的一致性对拍')
+    assertRow(exported, 0)
+    if (rows[0].text !== exported.text) throw new Error('推入的行文本与导出的 FIRST_FRAME_ROW.text 不一致')
+  })
+
+  check(label('负样本：含结束标签的行会被本断言拒绝（证明断言非常绿）'), () => {
+    let rejected = false
+    try {
+      assertRow(NEGATIVE_ROW, 0)
+    } catch {
+      rejected = true
+    }
+    if (!rejected) throw new Error('合成坏行未被拒绝，说明结束标签断言失效')
+  })
+
+  check(label('负样本：global 行缺 name / value 不可序列化会被本断言拒绝'), () => {
+    let rejectedName = false
+    try {
+      assertGlobalRow({ kind: 'global', value: { version: '0.1.0' } }, 0)
+    } catch {
+      rejectedName = true
+    }
+    if (!rejectedName) throw new Error('缺 name 的 global 行未被拒绝，说明结构断言失效')
+    let rejectedValue = false
+    try {
+      assertGlobalRow({ kind: 'global', name: 'x', value: { bad: BigInt(1) } }, 0)
+    } catch {
+      rejectedValue = true
+    }
+    if (!rejectedValue) throw new Error('value 含 BigInt 的 global 行未被拒绝，说明可序列化断言失效')
+  })
+}
 
 if (results.includes(false)) {
   console.error(`\n注入行自检失败 ${results.filter((ok) => !ok).length} 项`)
