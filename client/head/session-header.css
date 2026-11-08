@@ -126,6 +126,13 @@ header:has([data-conversation-header-leading]) [class*="headerActions"] [class*=
   }
 }
 
+/* corner 的 -16px 右负边距是宿主「下一元素可叠进 corner 盒子右缘」的设计：跟随者是普通
+ * ghost 钮时无感，但我们的分段控件带可见底色，会实画到 corner 按钮上——中和为 0，
+ * 后续元素从 corner 完整盒子之后起排。 */
+header:has([data-conversation-header-leading]) [class*="headerCorner"] {
+  margin-right: 0;
+}
+
 /* ── 4. More ⋯ 隐藏 ────────────────────────────────────────────────────────────
  * taiji 的三点菜单整项 DEFERRED 不渲染（PanelHeader.vue:145）。DSH More 菜单的独有项
  * （重命名 / 归档 / 打开方式子菜单）在侧栏会话行与 utilities 的「打开方式」按钮里都有
@@ -136,14 +143,35 @@ header:has([data-conversation-header-leading]) [class*="headerMenuButton"] {
 }
 
 /* ── 5. 第二行标签页 → taiji 分段控件（行尾） ────────────────────────────────────
- * 实测（隔离环境探针）：tablist 的 role 属性就挂在宿主 .tabs 轨道本体上（无独立内层容器），
- * 故分段容器样式直接锚 [role=tablist]（结构属性，不随 CSS Modules hash 漂移）；按钮为
- * 其直接子按钮（宿主 .tab / 激活 .tabActive，激活态改锚 aria-selected——宿主按钮上有）。
+ * 两版宿主结构不同（均实测探针）：0.1.7 的 role=tablist 挂在 .tabs 轨道本体（单层）；
+ * 0.2.2 是双层（.tabs 外轨 > .viewTabs[role=tablist]），且外轨带 width:100% /
+ * margin-top:10px / padding-left:8px / flex-wrap:wrap / gap:16px 20px——经 §1 的
+ * display:contents 提升后这些尺寸把标签页撑成整行宽、与 utilities/corner 同一 y 带
+ * 叠压（把「打开方式」按钮整个盖住）。故外轨尺寸必须整体中和；分段容器样式锚
+ * [role=tablist]（结构属性，不随 CSS Modules hash 漂移，两版都命中正确那层）。
  */
+header:has([data-conversation-header-leading]) [class*="tabs"]:not([role="tablist"]) {
+  flex: none;
+  width: auto;
+  /* 最小宽度喂给宿主 visibleViewLimit（floor((row.clientWidth - 48) / 120)）：内容宽会让
+   * limit 算出 1，第二个视图（Trajectory）被折进「More conversation views」启动钮——
+   * 300px → limit 2，两枚标签直显。外轨自身无底色，多出的宽度只是行尾保留区。 */
+  min-width: 300px;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 2px;
+  position: static;
+  z-index: auto;
+}
+
 header:has([data-conversation-header-leading]) [role="tablist"] {
   flex: none;
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 2px;
   box-sizing: border-box;
   height: 30px;
@@ -154,6 +182,10 @@ header:has([data-conversation-header-leading]) [role="tablist"] {
 
 header:has([data-conversation-header-leading]) [role="tablist"] > button {
   height: 26px;
+  /* 中和宿主 tab 的命中区负边距（margin: -10px -10px 0，按钮互相叠 10px）与 35px 最小高
+   * ——分段控件里按钮必须紧邻不叠、由容器 2px gap 分隔。 */
+  min-height: 0;
+  margin: 0;
   padding: 0 10px;
   border: none;
   border-radius: 4px;
@@ -163,6 +195,12 @@ header:has([data-conversation-header-leading]) [role="tablist"] > button {
   font-weight: 400;
   line-height: 1;
   cursor: pointer;
+}
+
+/* 宿主 tab 的 2px 底部指示条（:after 下划线）：taiji 分段控件的激活表达是软底 + 内描边，
+ * 下划线与软底叠加会打架，隐藏。 */
+header:has([data-conversation-header-leading]) [role="tablist"] > button::after {
+  content: none;
 }
 
 @media (hover: hover) {
