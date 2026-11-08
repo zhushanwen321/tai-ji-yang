@@ -1,0 +1,107 @@
+/*
+ * opendesign-design-mode 设计预览面板样式（U7）。
+ *
+ * 类名前缀 odp-（opendesign design panel）做包内隔离——构建器把 client/ 下全部 CSS 按
+ * 目录扫描拼成单一 <style id="opendesign-design-mode-styles"> 注入，类名前缀是唯一的
+ * 隔离手段（build-client.mjs 文件头决策 ②）。
+ *
+ * 只写结构布局与继承性外观，不写宿主领地（check-forbidden-tokens 五类禁止）：
+ * 不写 --font-* 槽位、不写 *-font-size / *-font-family 子 token、不写 --dsh-frame-* /
+ * --dsh-windows-* 几何变量；字族字号全部继承宿主，配色用 currentColor 与其透明混合，
+ * 明暗模式随宿主 token 自动成立，不注册主题（theme.register 红线）。
+ */
+
+.odp-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* iframe 视图根（面板体余量的承载者；失败态与就绪态同一根） */
+.odp-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 面板体的 iframe 承载位：iframe 占满余量，加载指示浮在内容位上 */
+.odp-frame-body {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.odp-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: none;
+  background: transparent;
+}
+
+.odp-frame-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* 提示行（加载 / 失败 / 空态 / 截断）：文本样式全部继承 */
+.odp-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  line-height: 1.5;
+}
+
+/* 兜底产物列表：纵向行列表，行高亮用 currentColor 低透明混合（明暗双模自动成立） */
+.odp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 6px;
+}
+
+.odp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.odp-row:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+/* 小号动作钮（重载 / 返回列表）：只描边填充，不写背景色主题值 */
+.odp-button {
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.odp-button:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
