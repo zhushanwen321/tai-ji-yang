@@ -1031,7 +1031,7 @@ const REAL_OD_INSTALLED = ['/Applications/Open Design.app', '/Applications/Open 
   .some((p) => fs.existsSync(p))
 
 /**
- * 场景 S4（A5/V5+RL5）：无资产环境降级 + SI3 假阳性形态区分。
+ * 场景 S5（主编排注册名「S5 V6无资产+SI3」；A5/V5+RL5 = V1 设计包 impl-plan 验收项编号）：无资产环境降级 + SI3 假阳性形态区分。
  *
  * 前置条件 = 「未安装 OpenDesign 的机器」（fixture README 的假设）。本机已装 OD 时，
  * 定位链的多候选回退（buildVersionProfile：override 候选损坏/缺席 → 落到真机渠道候选）
@@ -1111,7 +1111,7 @@ async function scenarioNoAssets() {
   return results
 }
 
-/** 场景 S5（A6/V6）：资产漂移 fixture 仍可定位 + 画像版本正确。 */
+/** 场景 S6（主编排注册名「S6 V6漂移」；A6/V6 = V1 设计包 impl-plan 验收项编号）：资产漂移 fixture 仍可定位 + 画像版本正确。 */
 async function scenarioDrift() {
   const results = []
   const workspace = makeWorkspaceDir('v6')
@@ -1140,7 +1140,7 @@ async function scenarioDrift() {
   return results
 }
 
-/** 场景 S6（A13/V9+RL7）：resume 代际重组。 */
+/** 场景 S7（主编排注册名「S7 V9+RL7 resume 代际重组+检查环不变量」；A13/V9+RL7 = V1 设计包 impl-plan 验收项编号）：resume 代际重组。 */
 async function scenarioResume() {
   const results = []
   const workspace = makeWorkspaceDir('v9')
@@ -1291,7 +1291,7 @@ async function scenarioResume() {
   return results
 }
 
-/** 场景 S7（A15/V11）：git fixture 连续三次设计会话（一次换资产）的写入形态。 */
+/** 场景 S8（主编排注册名「S8 V11 项目目录写入形态（5 管理名）」；A15/V11 = V1 设计包 impl-plan 验收项编号）：git fixture 连续三次设计会话（一次换资产）的写入形态。 */
 async function scenarioProjectWrites() {
   const results = []
   const workspace = makeWorkspaceDir('v11', { git: true })
