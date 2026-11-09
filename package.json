@@ -1,13 +1,19 @@
 {
   "name": "tai-ji-yang-shell",
   "version": "0.1.0",
-  "private": true,
+  "description": "TaiJi visual identity and project-grouped sidebar as a DeepSeek Harness (DSH) plugin bundle",
+  "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@11.7.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhushanwen321/tai-ji-yang.git"
+  },
   "scripts": {
     "build": "node scripts/build-client.mjs",
     "build:self-test": "node scripts/build-client.mjs --self-test",
     "test": "node node_modules/vitest/vitest.mjs run --exclude \".agents/workflows/tests/**\" --exclude \"packages/*/tests/e2e/**\"",
+    "test:e2e:design-mode": "node packages/opendesign-design-mode/tests/e2e/web.spec.mjs",
     "check": "node scripts/check-all.mjs",
     "check:static": "node scripts/check-all.mjs --static",
     "workflows:build": "node .agents/workflows/scripts/build-workflows.mjs",
@@ -27,9 +33,11 @@
     "lib/index.js",
     "lib/client.js",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "engines": {
+    "node": ">=18",
     "dsh": ">=0.1.7-rc.2 <0.3.0"
   },
   "dsh": {
@@ -57,6 +65,7 @@
     "@deepseek-ai/schemastery": "~3.18.4"
   },
   "devDependencies": {
+    "@changesets/cli": "^3.0.3",
     "@deepseek-ai/cordis": "~4.1.0",
     "@deepseek-ai/schemastery": "~3.18.4",
     "esbuild": "^0.25.0",

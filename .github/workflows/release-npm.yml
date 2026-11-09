@@ -1,0 +1,63 @@
+name: release-npm
+
+# npm 发布线：push `npm-*` tag 或手动 dispatch 触发。版本号与 CHANGELOG 由发版前的本地
+# `pnpm changeset version` 提交携带；本流水线只做门禁 → changeset publish → registry 探测。
+# 仓库不做 prerelease/dev dist-tag 线（.changeset/pre.json 只做阻断守卫，不使用该模式）；
+# npm 线不建 GitHub Release，包级变更说明 = 各包 CHANGELOG.md。
+on:
+  push:
+    tags: ['npm-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-npm-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # changeset publish 用 name@version tag 判定「哪些包尚未发布」，需要完整历史与 tag
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4 # pnpm 版本取根 package.json 的 packageManager
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Guard - changesets not in prerelease mode
+        run: |
+          if [ -f .changeset/pre.json ]; then
+            echo "::error::检测到 .changeset/pre.json（prerelease 模式残留）——changeset publish 会把整批发到 dev dist-tag。先本地执行 pnpm changeset pre exit 并提交，再发正式版。"
+            exit 1
+          fi
+
+      - name: Gates - static checks, per-package build, unit tests
+        run: pnpm check
+
+      - name: Guard - committed lib/ artifacts are fresh
+        run: |
+          git diff --exit-code -- lib 'packages/*/lib' || {
+            echo "::error::构建后 lib/ 产物与提交不一致（源码先改、产物未重建）。本地执行 pnpm build，产物与源码同批提交后再发版。"
+            exit 1
+          }
+
+      - name: Publish to npm
+        run: pnpm changeset publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Probe registry
+        run: node scripts/release/probe-registry.mjs

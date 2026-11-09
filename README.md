@@ -27,7 +27,7 @@
 
 ## 构建
 
-`package.json` 的 `files` 只带 `lib/`、`cordis.patch.yml` 与 `README.md`，因此安装的前提是先把产物构建出来：
+`package.json` 的 `files` 只带 `lib/`、`cordis.patch.yml`、`README.md` 与 `CHANGELOG.md`，因此安装的前提是先把产物构建出来：
 
 ```bash
 pnpm install                      # 安装 devDependencies（打包器）
@@ -60,6 +60,15 @@ dsh web: http://127.0.0.1:3080/?token=<一长串>
 ```
 
 token **每次启动都重新生成**，且只绑 127.0.0.1（本机访问）。不想自动开浏览器加 `--no-open`，然后手动粘贴那行地址。**首次进入有两道门**（点一次就没了）：先弹 “Internal Testing Notice”，点 **Continue**；再弹 “Add an API key to get started”，点 **Configure later** 可跳过，不影响看界面（要用模型功能再回来配 key）。
+
+### npm 安装
+
+两个包都发布在 npm（`tai-ji-yang-shell` 与 `opendesign-design-mode`）。npm 安装得到的目录含产物与 patch，可像本地路径一样安装：
+
+```bash
+npm install tai-ji-yang-shell
+dsh plugin --profile web add ./node_modules/tai-ji-yang-shell
+```
 
 ### git 安装
 
@@ -136,7 +145,7 @@ dsh plugin --profile web remove tai-ji-yang-shell
 本包在**两个字段**里声明同一范围（两者必须一致，`scripts/check-manifest.mjs` 有机检断言看守）：
 
 ```json
-"engines": { "dsh": ">=0.1.7-rc.2 <0.3.0" },
+"engines": { "node": ">=18", "dsh": ">=0.1.7-rc.2 <0.3.0" },
 "peerDependencies": { "@deepseek-ai/dsh": ">=0.1.7-rc.2 <0.3.0" }
 ```
 
@@ -324,6 +333,29 @@ pnpm build:self-test  # 12 项自证，含四条失败支证明会红
 
 brand/projects/lifecycle 三场景的回归命题是「新插件（opendesign-design-mode）安装进同一 profile 后，preset 注册与 UI 注入不干扰 shell 包」——只在两包共存 profile 上可证明。runner 自启形态只装本仓 shell 包，单装态结果不能登记为共存回归通过。共存前提的手工准备：对同一隔离 profile 先后执行 `dsh plugin --profile web add <本仓根>`（shell）与 `dsh plugin --profile web add packages/opendesign-design-mode`（两包共存），再以 `--dsh-home <该目录>`（lifecycle 须自启形态）或 `--url <实例认证 URL>`（brand/projects）跑 runner；该串接已由 web 版 e2e 场景 S8 自动化（`packages/opendesign-design-mode/tests/e2e/web.spec.mjs`）。
 
+## 发布（npm）
+
+发布走 GitHub Actions（`.github/workflows/release-npm.yml`），**本机一律不执行 publish**。流程（changesets）：
+
+1. **开发期写变更集**：改动涉及已发布包的行为 / 功能时，执行 `pnpm changeset`（选择包与 semver 类型，生成 `.changeset/*.md`），随改动一起提交。
+2. **发版准备（本地）**：执行 `pnpm changeset version`——消费全部待发变更集，bump 对应包的 `package.json` 版本并生成 / 更新各包 `CHANGELOG.md`；检查 diff 后提交（如 `chore(release): version packages`）。
+3. **触发**：push 一个 `npm-*` tag（建议 `npm-release-<yyyymmdd>`；须用户明确授权）：
+
+   ```bash
+   git tag npm-release-$(date +%Y%m%d)
+   git push github npm-release-<同一名字>
+   ```
+
+4. **流水线**：frozen install → 检查「`.changeset/pre.json` 不存在」（防 prerelease 模式残留把整批发到 dev dist-tag）→ `pnpm check` 门禁（静态六项 + 逐包构建 + 全仓单测；CI 无宿主源码仓，host-font-sheet 护栏显式跳过，由本地承担）→ 产物一致性检查（构建后 `lib/` 与提交逐字一致，防过期产物被打包发布）→ `pnpm changeset publish` → registry 上线探测。
+5. **验证**：探测自动查 npm 版本端点；首发新包有分钟级 CDN 传播延迟（探测只警告不判败），几分钟后人工复核 `npm view <包名> version`。
+
+要点：
+
+- **secret 配置**：GitHub 仓库 Settings → Secrets and variables → Actions → 新增 `NPM_TOKEN`（npm access token，需 publish 权限）。未配置时 publish 步骤失败。
+- **发布范围自动判定**：`changeset publish` 只发「版本相对上次 `name@version` tag 有变化」的包；新包只要不设 `private: true` 且被变更集 bump 过即自动纳入，无需改流水线。不发布的内部包保持 private 并登记进 `.changeset/config.json` 的 `ignore`。
+- **幂等边界**：流水线不回写 `name@version` tag 到远端（权限只读），对同一 tag 重复 dispatch 会对已发版本重试 publish 并被 npm 拒绝——重跑前先 `npm view <包名> version` 确认该版本未发过。
+- npm 线不建 GitHub Release；包级变更说明 = 各包 `CHANGELOG.md`（changesets 生成，随仓库交付）。
+
 ## License
 
-Private
+[MIT](LICENSE)（根包见仓库根 `LICENSE`，子包见 `packages/opendesign-design-mode/LICENSE`）
