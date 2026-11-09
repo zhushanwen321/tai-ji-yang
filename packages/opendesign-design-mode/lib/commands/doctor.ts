@@ -633,7 +633,9 @@ function renderQualityFindingsSection(sessionCwd: string | null): string[] {
     out.push(`- ⚠ ${corruptCount} 行损坏已跳过（追加式记录容忍半行写入）。`)
   }
 
-  // 监听器生命周期状态：按最后一条事件裁决当前态，累计次数随行。
+  // 监听器生命周期状态：doctor 无进程态感知，只能按 report.jsonl 最后一条生命周期记录推定当前态
+  // （resume 后新进程重组会话、宿主不发 agent-preset/selected 时无监听器——最后 started 记录不代表仍在运行，
+  // D2 裁决：如实呈现推定性质，不冒充进程态感知），累计次数随行。
   const watcherEvents = reportLines.filter((line): line is Extract<QualityReportLine, { type: 'watcher' }> => line.type === 'watcher')
   if (watcherEvents.length === 0) {
     out.push('- 监听器状态：记录中无监听器生命周期事件（检查记录由其他通道写入或插件版本较早）。')
@@ -642,8 +644,8 @@ function renderQualityFindingsSection(sessionCwd: string | null): string[] {
     const destroys = watcherEvents.filter((event) => event.event === 'destroyed').length
     const last = watcherEvents[watcherEvents.length - 1]!
     const lastText = last.event === 'started'
-      ? `运行中（最近 started ${last.at}）`
-      : `已自毁（最近 destroyed ${last.at}${typeof last.reason === 'string' && last.reason !== '' ? `；原因：${last.reason}` : ''}）`
+      ? `运行中推定（按 report.jsonl 最后一条生命周期记录：最近 started ${last.at}；进程重启后未刷新，可能已停止）`
+      : `已自毁（按 report.jsonl 最后一条生命周期记录：最近 destroyed ${last.at}${typeof last.reason === 'string' && last.reason !== '' ? `；原因：${last.reason}` : ''}）`
     out.push(`- 监听器状态：${lastText}；累计启动 ${starts} 次 / 自毁 ${destroys} 次。`)
   }
 

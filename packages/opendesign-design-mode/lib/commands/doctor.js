@@ -393,7 +393,7 @@ function renderQualityFindingsSection(sessionCwd) {
     const starts = watcherEvents.filter((event) => event.event === "started").length;
     const destroys = watcherEvents.filter((event) => event.event === "destroyed").length;
     const last = watcherEvents[watcherEvents.length - 1];
-    const lastText = last.event === "started" ? `运行中（最近 started ${last.at}）` : `已自毁（最近 destroyed ${last.at}${typeof last.reason === "string" && last.reason !== "" ? `；原因：${last.reason}` : ""}）`;
+    const lastText = last.event === "started" ? `运行中推定（按 report.jsonl 最后一条生命周期记录：最近 started ${last.at}；进程重启后未刷新，可能已停止）` : `已自毁（按 report.jsonl 最后一条生命周期记录：最近 destroyed ${last.at}${typeof last.reason === "string" && last.reason !== "" ? `；原因：${last.reason}` : ""}）`;
     out.push(`- 监听器状态：${lastText}；累计启动 ${starts} 次 / 自毁 ${destroys} 次。`);
   }
   const findings = reportLines.filter((line) => line.type === "finding");

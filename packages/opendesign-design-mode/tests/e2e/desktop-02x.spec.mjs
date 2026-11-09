@@ -422,7 +422,7 @@ try {
     assert(body.includes('源码仓 clone 探测：未登记'), '⑩ 未登记态应报「未登记」')
     assert(body.includes('无法比对'), '⑩ 未登记态应报「无法比对」')
     assert(body.includes('重新运行 /opendesign-doctor 并附 OpenDesign 源码仓 clone 路径参数'), '⑩ 缺登记路径恢复动作')
-    assert(body.includes('监听器状态：运行中'), '⑪ 设计会话应报监听器运行中（检查环桌面宿主已起监听）')
+    assert(body.includes('监听器状态：运行中推定'), '⑪ 设计会话应报监听器运行中推定（检查环桌面宿主已起监听，doctor 按最后生命周期记录推定呈现）')
     assert(body.includes('检查发现：共 0 条'), '⑪ 尚无发现时应报零发现')
   })
 

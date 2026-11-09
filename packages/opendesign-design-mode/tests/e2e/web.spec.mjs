@@ -840,7 +840,7 @@ async function scenarioPanelAndDoctor() {
       await waitForReportLine(workspaceReal, (line) => line.type === 'watcher' && line.event === 'started')
       const body = await runDoctor(page)
       assert(body.includes('【11/11】质量发现'), '缺第⑪节质量发现')
-      assert(body.includes('监听器状态：运行中'), `⑪ 应报监听器运行中：${body.slice(body.indexOf('【11/11】'), body.indexOf('【11/11】') + 600)}`)
+      assert(body.includes('监听器状态：运行中推定'), `⑪ 应报监听器运行中推定：${body.slice(body.indexOf('【11/11】'), body.indexOf('【11/11】') + 600)}`)
       assert(body.includes('累计启动 1 次'), '⑪ 监听器累计启动计数不对')
       assert(body.includes('检查发现：共 0 条'), '⑪ 应报零发现（快照内既有文件未触碰不产生记录）')
       assert(body.includes('产物写盘身份记录：0 条'), '⑪ 应报零身份记录（尚未有快照外写盘）')

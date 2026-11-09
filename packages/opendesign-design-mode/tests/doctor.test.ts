@@ -740,7 +740,7 @@ describe('第⑪节 质量发现（report.jsonl 读侧 + 无记录降级，D10�
   it('读侧呈现：监听器状态 + 分级发现汇总与回注裁决 + 产物写盘身份记录；损坏行跳过并计数', async () => {
     const sessionCwd = await makeSessionWithReport('doctor-qf-full')
     const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd })
-    expect(report).toContain('- 监听器状态：运行中（最近 started 2026-11-10T00:00:00.000Z）；累计启动 1 次 / 自毁 0 次。')
+    expect(report).toContain('- 监听器状态：运行中推定（按 report.jsonl 最后一条生命周期记录：最近 started 2026-11-10T00:00:00.000Z；进程重启后未刷新，可能已停止）；累计启动 1 次 / 自毁 0 次。')
     expect(report).toContain('- 检查发现：共 3 条（P0 1 / P1 1 / P2 1）。')
     expect(report).toContain('  - [P0] purple-gradient — src/dashboard.html（已回注送达会话）：Purple/violet gradient background detected')
     expect(report).toContain('  - [P1] accent-overuse — src/dashboard.html（P1/P2 仅记录不回注）：')
@@ -755,7 +755,7 @@ describe('第⑪节 质量发现（report.jsonl 读侧 + 无记录降级，D10�
     await appendQualityReportLine(sessionCwd, { type: 'watcher', at: '2026-11-10T01:00:00.000Z', event: 'started' })
     await appendQualityReportLine(sessionCwd, { type: 'watcher', at: '2026-11-10T01:00:05.000Z', event: 'destroyed', reason: 'watch-error' })
     const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd })
-    expect(report).toContain('- 监听器状态：已自毁（最近 destroyed 2026-11-10T01:00:05.000Z；原因：watch-error）；累计启动 1 次 / 自毁 1 次。')
+    expect(report).toContain('- 监听器状态：已自毁（按 report.jsonl 最后一条生命周期记录：最近 destroyed 2026-11-10T01:00:05.000Z；原因：watch-error）；累计启动 1 次 / 自毁 1 次。')
 
     // U5 FindingRecordReason 词表与 doctor 呈现词表逐键对账（新裁决值漏登记即红灯）。
     expect(Object.keys(FINDING_REASON_LABELS).sort()).toEqual(
