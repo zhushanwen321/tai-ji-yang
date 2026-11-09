@@ -12,7 +12,7 @@
  *   - deck-framework-file.txt：daemon device-frames.ts L121-126 组文结构同构的
  *     deck-framework.md 全文（评估值）。
  *
- * 语义权威：设计 §3.3 D7/D8/D9 + §5.1 U3 验收条款①②③；AX3 版本锚对账义务。
+ * 语义权威：opendesign-assets-quality 设计 §3.3 D7/D8/D9 + §5.1 U3 验收条款①②③；AX3 版本锚对账义务。
  */
 
 import { readFileSync } from 'node:fs'
@@ -167,7 +167,7 @@ describe('deck 渲染参数 = filesystem / text_artifact 枚举（UD6 口径）'
   })
 })
 
-describe('panel 渲染：参数化与占位槽（D8）', () => {
+describe('panel 渲染：参数化与占位槽（opendesign-assets-quality D8）', () => {
   it('缺省参数代入产物：CRITIQUE_RUN 标记、收敛规则、权重行取缺省值', () => {
     const section = renderPanelProtocolSection()
     expect(section).toContain('<CRITIQUE_RUN version="1" maxRounds="3" threshold="8" scale="10">')

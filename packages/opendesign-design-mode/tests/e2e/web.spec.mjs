@@ -8,7 +8,7 @@
  *      形状包清单段含 dashboard 条目与 zh 触发词、craft 指路块根路径、manifest 感知设计系统
  *      清单行、panel 评审团协议段、ppt 条目 deck 协议指针）+ 材质化落盘恰 5 文件（4 复制件
  *      + .od-frames/deck-framework.md，内容与 lib/materialize/copy.js renderDeckFrameworkFile
- *      派生文本逐字一致，D8+D9）。
+ *      派生文本逐字一致，V1 设计包 D8 + opendesign-assets-quality D9）。
  *   S2 V5+V8缺省态 —— doctor 十一分节齐全（前八节 V1 零回归）；⑨ 资产丰富度非降级形态
  *      （craft 3 册 / 形状包 1 / manifest 命中 1）；⑩ 协议对账未登记态（无法比对 + 登记指引
  *      + 已知信息行）；⑪ 质量发现监听器运行形态（V2 场景前置核对）。
@@ -654,7 +654,7 @@ const EMPTY_ROOT = path.join(E2E_FIXTURES, 'empty-assets')
 const SI3_ROOT = path.join(E2E_FIXTURES, 'si3-broken-manifest')
 const DRIFT_ROOT = path.join(FIXTURES, 'drift-od', 'upgraded', 'v2')
 const LEGACY_PAGE_HTML = path.join(E2E_FIXTURES, 'legacy-page', 'index.html')
-/** D8 复制件管理名清单（与 lib/materialize/copy.ts MATERIALIZED_FILE_NAMES 对账）。 */
+/** V1 设计包 D8 复制件管理名清单（与 lib/materialize/copy.ts MATERIALIZED_FILE_NAMES 对账）。 */
 const OD_FRAMES_FILES = ['android.html', 'iphone.html', 'neutral.html', 'layout.css']
 
 /** 场景 S1（V1+V3+V4 注入形态）：roster 可见性 + 注入（四新段/指针/panel 段）+ 默认会话不变 + 材质化 5 文件。 */
@@ -672,7 +672,7 @@ async function scenarioV1() {
       assert(card !== undefined, `roster 缺 opendesign 卡片：${JSON.stringify(roster.cards.map((c) => c.id))}`)
       assert(card.text.includes('OpenDesign 设计模式'), `卡片名不对：${JSON.stringify(card.text.slice(0, 80))}`)
       assert(card.text.includes('未装 OpenDesign 时入口显式降级提示'), `卡片描述不对：${JSON.stringify(card.text.slice(0, 160))}`)
-      assert(card.text.includes('演示稿带 deck 协议信号'), `卡片描述缺 deck 协议信号句（D9 文案回写）：${JSON.stringify(card.text.slice(0, 220))}`)
+      assert(card.text.includes('演示稿带 deck 协议信号'), `卡片描述缺 deck 协议信号句（opendesign-assets-quality D9 文案回写）：${JSON.stringify(card.text.slice(0, 220))}`)
       assert(card.broken === false, `卡片不应为 broken：${JSON.stringify(card.alert)}`)
     })
 
@@ -739,7 +739,7 @@ async function scenarioV1() {
       assert(entry.includes('USAGE.md'), '清单行缺深层文件指路（USAGE.md 在场探测）')
     })
 
-    await stepAsync(results, '注入文本含 panel 评审团协议段：五面板骨架与数值参数（V4 注入形态/D8）', async () => {
+    await stepAsync(results, '注入文本含 panel 评审团协议段：五面板骨架与数值参数（V4 注入形态/opendesign-assets-quality D8）', async () => {
       const { log } = await waitForSessionLog(home, (_entry, l) => l.systemMessages.some((t) => t.includes('Critique Theater')))
       const sys = log.systemMessages.find((t) => t.includes('Critique Theater')) ?? ''
       assert(sys.includes('# Critique Theater'), '缺 panel 协议段标题（五面板评审骨架）')
@@ -748,7 +748,7 @@ async function scenarioV1() {
       assert(sys.includes('<CRITIQUE_RUN'), 'panel 段缺评审 wire protocol 标记块')
     })
 
-    await stepAsync(results, '注入文本含 ppt 条目 deck 协议指针（V3/D9 指针 + 自读形态）', async () => {
+    await stepAsync(results, '注入文本含 ppt 条目 deck 协议指针（V3/opendesign-assets-quality D9 指针 + 自读形态）', async () => {
       const { log } = await waitForSessionLog(home, (_entry, l) => l.systemMessages.some((t) => t.includes('Deck protocol note')))
       const sys = log.systemMessages.find((t) => t.includes('Deck protocol note')) ?? ''
       assert(sys.includes('`.od-frames/deck-framework.md`'), 'ppt 条目缺 deck 协议文件指针（.od-frames/deck-framework.md）')
@@ -764,7 +764,7 @@ async function scenarioV1() {
       assert(!all.includes('$OD_NODE_BIN'), '注入文本含 $OD_NODE_BIN 特征串（改写器对注入文本的命令清零失效）')
     })
 
-    await stepAsync(results, '材质化：.od-frames/ 恰 5 管理名（4 复制件 + deck-framework.md）落盘且逐字节一致（D8+D9）', async () => {
+    await stepAsync(results, '材质化：.od-frames/ 恰 5 管理名（4 复制件 + deck-framework.md）落盘且逐字节一致（V1 设计包 D8 + opendesign-assets-quality D9）', async () => {
       const framesDir = path.join(workspace, '.od-frames')
       await waitForSessionLog(home, (_entry, l) => l.systemMessages.length > 0, 1000).catch(() => {})
       let frames = []
@@ -1327,13 +1327,13 @@ async function scenarioProjectWrites() {
     await runDesignSession(genA, 'session one: landing page')
     await runDesignSession(genA, 'session two: poster page')
 
-    // 换资产（模拟 OD 升级）后第三次会话：旧产物以新壳重铺（D8 显式接受的行为）
+    // 换资产（模拟 OD 升级）后第三次会话：旧产物以新壳重铺（V1 设计包 D8 显式接受的行为）
     await genA.close()
     genA = null
     genB = await launch(GEN2_ROOT)
     await runDesignSession(genB, 'session three: deck page')
 
-    step(results, 'V11：新增文件恰为 .od-frames/ 五管理名（D8 清单 4 复制件 + deck-framework.md 派生件）', () => {
+    step(results, 'V11：新增文件恰为 .od-frames/ 五管理名（V1 设计包 D8 清单 4 复制件 + deck-framework.md 派生件）', () => {
       const framesDir = path.join(workspace, '.od-frames')
       assert(fs.existsSync(framesDir), '.od-frames/ 未落盘')
       const names = fs.readdirSync(framesDir)
@@ -1343,7 +1343,7 @@ async function scenarioProjectWrites() {
       )
     })
 
-    step(results, 'V11：git status 无 tracked 变更、untracked 恰为 .od-frames/ 与 .od-quality/（反向断言 D8 ④ + D4 记录目录）', () => {
+    step(results, 'V11：git status 无 tracked 变更、untracked 恰为 .od-frames/ 与 .od-quality/（反向断言 V1 设计包 D8 ④ + opendesign-assets-quality D4 记录目录）', () => {
       const lines = gitStatus()
       const tracked = lines.filter((l) => !l.startsWith('??'))
       assert(tracked.length === 0, `既有 tracked 文件被改写：${JSON.stringify(tracked)}`)
@@ -1356,7 +1356,7 @@ async function scenarioProjectWrites() {
 
     step(results, 'V11：幂等——重复会话不堆积；升级轮（gen2 不声明壳资源）旧副本原样保留、无清单外写入', () => {
       const framesDir = path.join(workspace, '.od-frames')
-      // gen2 清单未声明设备壳资源（复制件重铺计划为空）：既有四复制件按 D8 覆盖语义原样
+      // gen2 清单未声明设备壳资源（复制件重铺计划为空）：既有四复制件按 V1 设计包 D8 覆盖语义原样
       // 保留，deck-framework.md（派生登记件）无条件重铺——不堆积新文件、不被清除，
       // 重铺波及面不变量的升级轮形态。
       const names = fs.readdirSync(framesDir)

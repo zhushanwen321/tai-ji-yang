@@ -1,5 +1,5 @@
 /**
- * 评审团协议（Critique Theater）派生文本登记（AX3 例外落点，D7/D8；U3a）。
+ * 评审团协议（Critique Theater）派生文本登记（AX3 例外落点，opendesign-assets-quality D7/D8；U3a）。
  *
  * 正源（Apache-2.0，逐字派生、参数化处除外）：OpenDesign 源码仓
  * https://github.com/nexu-io/open-design 的 apps/daemon/src/prompts/panel.ts
@@ -7,7 +7,7 @@
  * 提取版本锚（正源 commit 与提取日期、骨架 sha256）：见同目录 anchors.ts 的
  * PROTOCOL_VERSION_ANCHORS.panel（对账义务 = AX3 例外的代价，doctor ⑩ 消费）。
  *
- * DSH 形态的两处等价转换（D8 裁决，其余逐字）：
+ * DSH 形态的两处等价转换（opendesign-assets-quality D8 裁决，其余逐字）：
  *   ① 数值参数化：正源「内联字面量禁令」同构——阈值/轮数/刻度/权重/协议版本全部走
  *      params（缺省 = OD defaultCritiqueConfig 数值：阈值 8.0 / 轮数 3 / 刻度 10，即
  *      cordis.patch.yml od-persona 行 config 的缺省兜底值）；插值点以 {{token}} 标记
@@ -197,7 +197,7 @@ DON'T:
 
 /**
  * 槽位填写指引 + ship-on-write 一致性说明（DSH 等价转换的承载段，非正源文本；
- * 指引段置顶，协议骨架紧随）。一致性说明 = D8 的 AS10 相容性预留：评审轮次属
+ * 指引段置顶，协议骨架紧随）。一致性说明 = opendesign-assets-quality D8 的 AS10 相容性预留：评审轮次属
  * 交付判定（ship 前）的生成时纪律；宿主质量环回注（若到达）是宿主侧行为——
  * 两者都不解除模型禁令（AX6：提示词不得解除 ship-on-write）。
  */

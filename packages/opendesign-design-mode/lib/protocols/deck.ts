@@ -1,5 +1,5 @@
 /**
- * deck 协议派生文本登记（AX3 例外落点，D7/D9；材质化铺 <cwd>/.od-frames/deck-framework.md）。
+ * deck 协议派生文本登记（AX3 例外落点，opendesign-assets-quality D7/D9；材质化铺 <cwd>/.od-frames/deck-framework.md）。
  *
  * 正源（Apache-2.0，逐字派生、参数化处除外）：
  *   - OpenDesign 源码仓 https://github.com/nexu-io/open-design
@@ -16,7 +16,7 @@
  * 适用限定句 + Existing deck 兼容段 + New deck 规范段，join('\n\n')；handoff 固定
  * filesystem——DSH 会话有文件工具）；文件名 = 上游约定 deck-framework.md（任务档 ppt.md L216
  * fallback 引用 .od-frames/deck-framework.md 同名，自造名将使 OD 升级后 fallback 扑空）。
- * deck 协议文本含整页骨架 HTML，不进提示词注入（D9 体积分档裁决），模型经指针自读全文。
+ * deck 协议文本含整页骨架 HTML，不进提示词注入（opendesign-assets-quality D9 体积分档裁决），模型经指针自读全文。
  */
 
 /** OD Deck Protocol v1 世代标记与消息类型（正源 runtime/deck-protocol.ts 逐字）。 */

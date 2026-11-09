@@ -71,7 +71,7 @@ export function probeDiagnostic(outcome: OdProbeOutcome): string | undefined {
   return `${OD_PROBE_FAILED_MESSAGE}（探测错误：${outcome.reason}）`
 }
 
-/** od-persona 行 config 消费的键（cordis.patch.yml preset 行显式声明的两键，D8）。 */
+/** od-persona 行 config 消费的键（cordis.patch.yml preset 行显式声明的两键，opendesign-assets-quality D8）。 */
 export interface OdPersonaConfig {
   /** panel 评审团收敛阈值（compose panelParams.scoreThreshold 的 config 通道）。 */
   panelScoreThreshold?: number
@@ -84,7 +84,7 @@ export interface OdPersonaConfig {
  * 文本 = 组装器对当前资产的完整组装产物。
  *
  * @param ctx - Cordis 插件上下文（preset 组合 scope）；systemPrompt 服务经 inject 注入。
- * @param config - patch.yml od-persona 行 config（D8：panel 数值可配，缺省键由
+ * @param config - patch.yml od-persona 行 config（opendesign-assets-quality D8：panel 数值可配，缺省键由
  *   lib/protocols/panel.ts 的 PANEL_PROTOCOL_DEFAULTS 兜底；undefined 键剔除后才传——
  *   展开覆盖会把缺省冲掉）。
  */

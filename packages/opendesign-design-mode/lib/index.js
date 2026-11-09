@@ -6,7 +6,7 @@
  *     不参与）；persona 行的启动资产探测与 broken 降级在 lib/persona.ts（探测必须在 preset
  *     组合的子行内，子行失败才会被 agent-preset-registry 记为 preset 的 broken 诊断——主行
  *     失败是 profile 装配错误，不是设计内的降级形态，见 persona.ts 文件头）。
- *   - 本文件是包级生命周期的宿主侧锚点：承载跨子插件协调。本文件登记材质化触发（D8）：
+ *   - 本文件是包级生命周期的宿主侧锚点：承载跨子插件协调。本文件登记材质化触发（V1 设计包 D8）：
  *     会话选定设计 preset 的时点（宿主 `agent-preset/selected` 事件）把设备壳支撑文件
  *     无条件全量重铺进会话工作目录。同一事件（独立监听、presetId 过滤同款）登记质量环
  *     触发（U5 / D4 / D5）：起 fs.watch 递归监听（lib/quality/watcher.js）→ 写盘事件经
@@ -18,7 +18,7 @@
  * 材质化触发点的宿主契约（0.1.7-rc.2 亲读核实，U8 接线时定案）：
  *   - 事件：agent-preset-registry 对会话事件 `agent-preset/selected` 的转发
  *     （ctx.emit('agent-preset/selected', sessionId, presetId)）——preset 应答到会话的时点，
- *     覆盖「blank 会话经芯片 staged pick 应用设计 preset」与 resume 重组两条路径，即 D8 的
+ *     覆盖「blank 会话经芯片 staged pick 应用设计 preset」与 resume 重组两条路径，即 V1 设计包 D8 的
  *     「会话创建时」（doctor 文案同口径：新会话首轮前已重铺）；
  *   - cwd：resolveSessionCwdById（lib/serve/session-cwd.js，U6 检查点裁决的唯一通道）——
  *     sessions.get(sessionId) 取会话对象后 workingDirectory.get 优先（0.2.x）、header.cwd
@@ -28,7 +28,7 @@
  *     服务即抛，preview-tab 同款纪律；
  *   - 失败语义：监听器的异步拒绝被宿主 per-listener containment 记 warn（dsh-session
  *     announce 语义），会话创建不因此回滚——材质化失败时本包侧以 logger.error 带恢复动作
- *     记日志（降级 ≠ 吞错），落点状态由 /opendesign-doctor 第⑤项报告（D8 的感知通道）。
+ *     记日志（降级 ≠ 吞错），落点状态由 /opendesign-doctor 第⑤项报告（V1 设计包 D8 的感知通道）。
  *     材质化不挂 persona 激活链路：preset 挂载是 per-revision 一次的进程生命周期行为而非
  *     per-session，「抛错 → preset broken」降级只属 persona 行启动探测（见 persona.ts）；
  *     copy.ts 文件头的失败语义与本监听同口径。
@@ -78,7 +78,7 @@ export function apply(ctx) {
 }
 
 /**
- * 设计 preset 应答到会话时点的材质化（D8 无条件全量重铺；非设计会话零写入）。
+ * 设计 preset 应答到会话时点的材质化（V1 设计包 D8 无条件全量重铺；非设计会话零写入）。
  *
  * @param ctx - Cordis 插件上下文（包主行 scope）。
  * @param sessionId - 选定了 preset 的会话 id。

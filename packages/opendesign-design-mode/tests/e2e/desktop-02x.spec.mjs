@@ -12,7 +12,7 @@
  *
  * 核心组（验收计划表 A9 的 L3 段；模型行为段归 L4）：roster（选择器菜单 + 芯片选择）→
  * 注入（会话日志 system 节点特征句）→ doctor 十一分节（V5 的 0.2.2 形态，前八节零回归）→
- * 材质化恰 5 管理名（D8+D9）→ 预览面板 iframe 产物载入 + 探针（RL6/RL8 的 0.2.2 形态）→
+ * 材质化恰 5 管理名（V1 设计包 D8 + opendesign-assets-quality D9）→ 预览面板 iframe 产物载入 + 探针（RL6/RL8 的 0.2.2 形态）→
  * 检查环桌面宿主可用性（V2 的 0.2.2 形态：真机写盘 P0 产物 → 回注消息 source.kind
  * 协议信号形态断言 + report.jsonl fed-back 记录——RL1 的 0.2.2 半场）。
  *
@@ -385,7 +385,7 @@ try {
     assert(!sys.includes('$OD_BIN'), '注入文本含 $OD_BIN 特征串（RL3 命令清零失效）')
   })
 
-  await step('材质化：.od-frames/ 恰 5 管理名（4 复制件 + deck-framework.md）且派生文本一致（D8+D9 的 0.2.2 形态）', async () => {
+  await step('材质化：.od-frames/ 恰 5 管理名（4 复制件 + deck-framework.md）且派生文本一致（V1 设计包 D8 + opendesign-assets-quality D9 的 0.2.2 形态）', async () => {
     const framesDir = path.join(fs.realpathSync(workspace), '.od-frames')
     const deadline = Date.now() + 20000
     let frames = []
