@@ -1,53 +1,90 @@
 ---
 name: pr-cr-fix
 description: >-
-  PR 审查修复流程：pnpm check → verify-taiji-yang 真机验收 → review-fix-loop 多维审查修复循环
-  （四份项目 reviewer）→ 终局 pnpm check → 待推送终态披露。push 必须用户当场授权，
-  不自动 push、不建 PR。触发词："pr-cr-fix"、"review 完开 PR"、"审查并修复"、"push 前检查"。
+  PR 审查修复与交付前流程：默认由仓内 pr-lifecycle workflow 编排（检查、四维审查修复、
+  真机验收、PR 元信息），停在 awaiting-push；push 必须用户当场授权，不自动 push。
+  触发词："pr-cr-fix"、"review 完开 PR"、"审查并修复"、"push 前检查"。
 ---
 
 # PR 审查修复 Skill（tai-ji-yang-shell）
 
-本 skill 是 PR 审查修复的项目唯一入口。流程一条链，按序执行：
+本 skill 是 PR 审查修复的项目唯一入口。默认路径两条段：
 
-1. **check-all（初跑）**
-2. **verify-taiji-yang（真机验收）**
-3. **review-fix-loop（多维审查修复循环）**
-4. **final check-all（终局复跑）**
-5. **awaiting-push（终态披露 + push 当场授权）**
+1. **pr-lifecycle workflow**：编排 preflight、`pnpm check`、四维审查修复循环、final `pnpm check`、真实 DSH 验收和 PR title/body 起草。
+2. **awaiting-push**：向用户披露终态并当场请求 push 授权。
+
+手工兜底路径（workflow 不可用时）按本文第 1-5 节顺序执行。
 
 ## 前置条件
 
 - 当前 git worktree 中分支相对 main 有 commits（`git log main..HEAD` 非空）；无 commits 时无审查对象，直接告知用户。
+- 工作区全提交；workflow preflight 会对脏工作区 fail-fast。
 - `pnpm install` 已执行（报 vitest 入口缺失时先装依赖）。
-- 审查基线固定 `base=main`。
+- 审查基线默认 `base=main`。
+- `node .agents/workflows/scripts/build-workflows.mjs --check` 通过（产物与单源一致）。
 
-## 1. check-all（初跑）
+## 1. pr-lifecycle workflow（默认编排）
 
-在 worktree 根执行：
+在 worktree 根发起；两平台产物同源：
 
-```bash
-pnpm check
-```
+- **zcode**：`CreateWorkflow`，`path` = `<worktree>/.agents/workflows/pr-lifecycle.dwf.ts`
+- **pi**：workflow 工具 `action: "run"`，`name` = `<worktree>/.agents/workflows/pr-lifecycle.js`
 
-（静态断言六项 → 构建 → 全仓单测，固定顺序。）exit 0 才继续；失败按输出逐项修复（静态断言失败改对应源并同步维护断言脚本、构建失败看 build 输出、单测失败按失败用例修），修完重跑本步。全仓单测中的 `client/theme/host-font-sheet.spec.ts` 需要 `DSH_FONT_SHEET` 环境变量指向宿主源样式表，缺失时该测试显式失败并给出设置指引——按指引设置后重跑，不绕过。
+常用 args：
 
-## 2. verify-taiji-yang（真机验收）
+- `base`：默认 `main`。
+- `worktree`：目标 git worktree 绝对路径；会话 cwd 不是该 worktree 时必传。
+- `maxRounds`：审查修复循环上限，默认 5。
+- `verifyUrl` / `verifyEvidenceDir`：真实 DSH 验收二选一。`verifyUrl` 让 workflow 现跑 brand/head/theme/projects 四场景；`verifyEvidenceDir` 指向已生成的验收证据根（内含 `verdict.json`）。都不传时 workflow 终态显式标 acceptance skipped，不得对外声称已真机验收。
+- `taskId` / `executionId` / `sampleType`：阶段观测可选参数。
 
-按项目入口 verify-taiji-yang（`.agents/skills/verify-taiji-yang/`）执行真实 DSH 宿主验收（装载、明暗、槽位可见性、禁用/卸载回落）。验收不通过时修复后从第 1 步重跑（代码已改动，读数过期）。当前环境无法执行真机验收时，显式披露该步被跳过及原因，停回用户裁决是否继续——不静默跳过。
+workflow 行为：preflight（要求工作区全提交）→ `pnpm check` → 四份固定项目 reviewer 审查/聚合/分组修复循环 → final `pnpm check` → acceptance → PR title/body 起草 → `awaiting-push`。它不执行 `git push`，不创建 PR。`failed` 终态按 `error/recovery` 处置；`awaiting-push` 时向用户披露 review、acceptance、prMeta、residualFiles 和 skipped。
 
-## 3. review-fix-loop（多维审查修复循环）
+只跑审查修复循环、不进门禁不开 PR 时，用全局 saved `review-fix-loop`；`reviewers` 传四份定义的绝对路径数组（见第 3 节）。
 
-循环本体用现成 workflow，按宿主路由二选一（循环语义以 workflow 定义为准，本节只写发起参数）。四份项目 reviewer 是固定清单（路径相对仓库根，发起时解析为绝对路径传入）：
+## 3. pr-lifecycle workflow（审查修复与终局编排）
+
+完整链路由仓内单源双平台 workflow 承载；主 agent 只发起、披露终态、请求 push 授权。两平台产物同源：
+
+- **zcode**：`CreateWorkflow`，`path` = `<worktree>/.agents/workflows/pr-lifecycle.dwf.ts`
+- **pi**：workflow 工具 `action: "run"`，`name` = `<worktree>/.agents/workflows/pr-lifecycle.js`
+
+常用 args：
+
+- `base`：默认 `main`。
+- `worktree`：目标 git worktree 绝对路径；会话 cwd 不是该 worktree 时必传。
+- `maxRounds`：审查修复循环上限，默认 5。
+- `verifyUrl` / `verifyEvidenceDir`：真实 DSH 验收二选一；都不传时 workflow 会在终态把验收显式标为 skipped，不得对外声称已真机验收。
+- `taskId` / `executionId` / `sampleType`：阶段观测可选参数。
+
+workflow 行为：preflight（要求工作区全提交）→ `pnpm check` → 四份固定项目 reviewer 审查/聚合/分组修复循环 → final `pnpm check` → acceptance → PR title/body 起草 → `awaiting-push`。它不执行 `git push`，不创建 PR。`failed` 终态按 `error/recovery` 处置；`awaiting-push` 时向用户披露 review、acceptance、prMeta、residualFiles 和 skipped。
+
+只跑审查修复循环、不进门禁不开 PR 时，仍可用全局 saved `review-fix-loop`；`reviewers` 传下面四份定义的绝对路径数组。
+
+四份项目 reviewer 是固定清单（路径相对仓库根，发起时解析为绝对路径传入）：
 
 - `.agents/reviewers/review-business-logic.md`
 - `.agents/reviewers/review-dsh-contract.md`
 - `.agents/reviewers/review-dsh-lifecycle.md`
 - `.agents/reviewers/review-dsh-ui.md`
 
-**zcode 主 agent**：全局 saved workflow `review-fix-loop`，经 CreateWorkflow `saved` 发起：
+## 2. check-all 与真机验收（手工兜底的前置）
 
+workflow 不可用时先在 worktree 根执行：
+
+```bash
+pnpm check
 ```
+
+失败按输出逐项修复后重跑；`client/theme/host-font-sheet.spec.ts` 需要 `DSH_FONT_SHEET` 指向宿主源样式表，缺失时按错误信息设置，不绕过。
+
+再按 `.agents/skills/verify-taiji-yang/SKILL.md` 执行真实 DSH 验收（brand/head/theme/projects；卸载用隔离自启模式）。无法执行真机验收时显式披露原因，停回用户裁决是否继续，不静默跳过。
+
+## 3. review-fix-loop（手工兜底的审查循环）
+
+zcode 用全局 saved `review-fix-loop`：
+
+```text
 CreateWorkflow:
   saved: { name: "review-fix-loop" }
   args:
@@ -55,26 +92,22 @@ CreateWorkflow:
     reviewers: [<上列四份 .md 的绝对路径数组>]
 ```
 
-`reviewers` 必须是 .md 绝对路径数组，禁止相对路径或裸文件名。
+pi 用内置 `review-fix-loop`：`targetType=git-diff`、`target=main`、`batch1=<四份 .md 绝对路径，逗号分隔>`、`autoCommit=true`。循环 clean 判定、R2 对账和熔断语义以 workflow 定义为准；熔断终态停回用户。
 
-**pi 主 agent**：内置 `review-fix-loop`（subagent-workflow extension 的 workflow 工具，`action: "run"`），参数：`targetType: "git-diff"`、`target: "main"`、`batch1` = 上列四份 .md 绝对路径（逗号分隔，禁止相对路径/裸名）、`autoCommit: true`（修复后由循环统一 commit，与 saved 版缺省对齐）。
+## 4. final check-all（手工兜底）
 
-**循环语义要点**（两宿主同源，细节以 workflow 定义为准）：clean 判定 = mustFix 与 suggestion 同为 0；第 2 轮起逐条对账（fixed 须附亲自核实的证据；escalate 仅用于延迟条目的上下文复活）；连续 stuck、needs-redesign、max-rounds 熔断——熔断终态停回用户裁决，不自行放行。报告产物落在循环缺省目录（`~/.agents/skill-data/review-fix-loop/<project-slug>/`），无需传入。
-
-## 4. final check-all（终局复跑）
-
-循环产生了修复 commit 或工作区改动后，重跑 `pnpm check`——第 1 步的读数已过期。循环外的手工修复须显式路径 commit（message 用英文）后再复跑。不通过则修复后重跑本步；循环与 check 交替直至全绿。
+审查循环产生修复 commit 或工作区改动后，重跑 `pnpm check`；不通过则修复后重跑，循环与 check 交替直至全绿。
 
 ## 5. awaiting-push（终态披露 + push 当场授权）
 
-全绿后流程进入 awaiting-push 终态，向用户逐项披露：
+workflow 返回 `awaiting-push` 后向用户逐项披露：
 
-- 各 reviewer 维度结论（mustFix / suggestion 计数、熔断状态）
-- 修复 commit 清单
-- final check-all 结果
-- 被跳过的步骤（如真机验收不可执行）及原因
+- review 结论（rounds / terminated / mustFix / suggestion / reportDir）
+- final gate 结果
+- acceptance 结果与证据目录；skipped 时明确说明未真机验收
+- PR title/body 文件与 residualFiles
 
-**push 必须当场请求用户明确授权 [MANDATORY]**：授权后执行 `git push github HEAD:<branch>`（remote 名 = `github`，指向 `zhushanwen321/tai-ji-yang`），push 后核对远端 ref（`git rev-parse HEAD github/<branch>` 一致）。未获授权不得 push。**本流程不创建 PR**（不调用 GitHub CLI 的 PR 创建命令）；是否开 PR 由用户另行决定。
+**push 必须当场请求用户明确授权 [MANDATORY]**：授权后执行 `git push github HEAD:<branch>`（remote 名 = `github`，指向 `zhushanwen321/tai-ji-yang`），push 后核对远端 ref（`git rev-parse HEAD github/<branch>` 一致）。未获授权不得 push。是否创建 PR 由用户另行决定；创建时使用 `gh pr create/edit --repo zhushanwen321/tai-ji-yang`。
 
 ## 熔断与失败处置
 
@@ -86,9 +119,17 @@ CreateWorkflow:
 | reviewer 调用失败 | 按失败原因修复环境后重跑循环 |
 | check-all / 真机验收失败 | 按输出修复后从对应步骤重跑 |
 
-## 后续产物接入点（占位登记）
+## 产物维护
 
-后续批次计划把本流程的全链编排承载迁入仓内 pr-lifecycle workflow 产物（单源构建体系，源在 `.agents/workflows/`）。该产物当前不存在：第 3 步在其可用前按本文件现有流程执行；产物落地时在本节替换为具体发起参数，并把编排职责移交 workflow。本节只是接入点登记，不指向任何现有文件。
+pr-lifecycle 产物由单源构建：
+
+```bash
+node .agents/workflows/scripts/build-workflows.mjs
+node .agents/workflows/scripts/build-workflows.mjs --check
+node --test .agents/workflows/tests/*.test.mjs
+```
+
+改行为只改 `.agents/workflows/src/pr-lifecycle.shared.ts` 与两个平台壳，再重建；产物禁止手改。pre-commit 会在 workflow 文件 staged 时自动跑 `--check` 与 workflow 测试。
 
 ## 约束
 

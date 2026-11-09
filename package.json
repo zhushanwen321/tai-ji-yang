@@ -7,9 +7,12 @@
   "scripts": {
     "build": "node scripts/build-client.mjs",
     "build:self-test": "node scripts/build-client.mjs --self-test",
-    "test": "node node_modules/vitest/vitest.mjs run",
+    "test": "node node_modules/vitest/vitest.mjs run --exclude \".agents/workflows/tests/**\"",
     "check": "node scripts/check-all.mjs",
-    "check:static": "node scripts/check-all.mjs --static"
+    "check:static": "node scripts/check-all.mjs --static",
+    "workflows:build": "node .agents/workflows/scripts/build-workflows.mjs",
+    "workflows:check": "node .agents/workflows/scripts/build-workflows.mjs --check",
+    "workflows:test": "node --test .agents/workflows/tests/*.test.mjs"
   },
   "main": "lib/index.js",
   "exports": {
@@ -58,6 +61,7 @@
     "@deepseek-ai/schemastery": "~3.18.4",
     "esbuild": "^0.25.0",
     "playwright": "1.61.1",
+    "typescript": "^5.9.3",
     "vitest": "^3.0.0"
   }
 }

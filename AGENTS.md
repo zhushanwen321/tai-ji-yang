@@ -20,7 +20,7 @@
 本仓是 pnpm 多包 workspace（单包仓 → 多包容器，设计 D10）：根包 = `tai-ji-yang-shell`，功能型子包逐个落 `packages/<name>/`（当前：`packages/opendesign-design-mode`——OpenDesign 设计模式插件包）。
 
 - **包清单登记处（两处、一处对账）**：`pnpm-workspace.yaml` 声明 `packages/*` 通配；`scripts/workspace-packages.mjs` 登记每包的构建声明（包名 / 目录 / 浏览器半场入口 / Node 半场产物形态），并在每次构建与检查时与 `pnpm-workspace.yaml` 的实际包目录对账——两边不同步即失败。加新包时两处同批登记。
-- **构建与检查逐包执行**：`node scripts/build-client.mjs` 逐包产出各包 `lib/`；六个 check 脚本（`check-manifest` 等）对每包跑同一套通用断言，包特有断言按包选择（断言逻辑仍单处归属各自脚本）。`pnpm check:static` / `pnpm check` 的语义不变，覆盖面 = 全部包。
+- **构建与检查逐包执行**：`node scripts/build-client.mjs` 逐包产出各包 `lib/`；六个 check 脚本（`check-manifest` 等）对每包跑同一套通用断言，包特有断言按包选择（断言逻辑仍单处归属各自脚本）。`pnpm check:static` / `pnpm check` 的语义不变，覆盖范围 = 全部包。
 - **子包结构**（`packages/opendesign-design-mode/`）：`package.json`（双入口：main → `lib/index.js`、exports `./client` → `lib/client.js`，外加四个 preset 子插件子路径入口）、`cordis.patch.yml`（insert 本包主行 + agent-preset 行，preset 的 `config.plugins` 八项显式声明——四个 DSH 原生工具 + 四个本包子插件）、`lib/`（host 半源码与产物）、`client/`（浏览器半场源码）。子包的 preset 注册、资产定位、提示词组装与预览面板的设计依据见该包内源码注释与设计文档（opendesign-design-mode）。
 - **包边界纪律**：各包源码、产物、patch 互不越界；根包（shell 包）的 `client/`、`lib/`、`tests/` 既有文件是包级领地，子包改动不触及。
 
@@ -39,13 +39,16 @@
 一律在 worktree 根（本文件所在目录）执行：
 
 ```bash
-pnpm install                 # 安装 devDependencies（Cordis / Schemastery / esbuild / vitest）；esbuild 安装脚本已由 pnpm-workspace.yaml 预批放行
+pnpm install                 # 安装 devDependencies（Cordis / Schemastery / esbuild / vitest / playwright / typescript）；esbuild 安装脚本已由 pnpm-workspace.yaml 预批放行
 pnpm build                   # 产出 lib/index.js 与 lib/client.js（= node scripts/build-client.mjs）
 pnpm build:self-test         # 构建器自证（含失败支证明会红）
 pnpm test                    # 全仓 vitest 单测
 pnpm test <路径>             # 增量：只跑受影响的测试文件
 pnpm check                   # 一键自检：六个静态断言 → 构建 → 全仓单测（= node scripts/check-all.mjs）
 pnpm check:static            # 只跑六个静态断言
+pnpm workflows:build         # 从 .agents/workflows/src 单源重建双平台 workflow 产物
+pnpm workflows:check         # 校验 workflow 产物未过期
+pnpm workflows:test          # workflow 构建与双平台结构测试
 ```
 
 单项静态断言脚本（断言逻辑只此一处，归属各自产出单元）：
@@ -98,7 +101,7 @@ pnpm check:static            # 只跑六个静态断言
 | 功能实现 / 修复的开发流程 | dev-flow-wf（全局技能） |
 | 审查问题的批量修复循环 | review-fix-loop（全局 saved workflow；项目 reviewer 在 `.agents/reviewers/`） |
 | 真实 DSH 宿主验收 | verify-taiji-yang（项目入口，`.agents/`） |
-| PR 审查修复 | pr-cr-fix（项目入口，`.agents/`） |
+| PR 审查修复与交付前编排 | pr-cr-fix（项目入口，`.agents/`）；完整链路由仓内 pr-lifecycle workflow 承载 |
 
 ## 领域边界（改代码前必读）
 

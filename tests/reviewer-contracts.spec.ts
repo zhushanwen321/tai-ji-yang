@@ -192,13 +192,13 @@ describe('pr-cr-fix/SKILL.md 流程契约', () => {
     }
   })
 
-  it('流程五步齐且按序：check-all → verify-taiji-yang → review-fix-loop → final check-all → awaiting-push', () => {
+  it('流程：默认 pr-lifecycle 编排在前，手工兜底与 awaiting-push 在后', () => {
     const body = content()
     const markers = [
-      'check-all（初跑）',
-      'verify-taiji-yang（真机验收）',
-      'review-fix-loop（多维审查修复循环）',
-      'final check-all（终局复跑）',
+      'pr-lifecycle workflow（默认编排）',
+      'check-all 与真机验收（手工兜底的前置）',
+      'review-fix-loop（手工兜底的审查循环）',
+      'final check-all（手工兜底）',
       'awaiting-push（终态披露',
     ]
     let cursor = -1
@@ -210,20 +210,25 @@ describe('pr-cr-fix/SKILL.md 流程契约', () => {
     }
   })
 
-  it('push 约束：须当场授权、remote github、仓库标识正确、不建 PR', () => {
+  it('push 约束：须当场授权、remote github、仓库标识正确；workflow 本体不建 PR', () => {
     const body = content()
     expect(body.includes('git push github HEAD'), '缺 push 命令形态').toBe(true)
     expect(body.includes('当场请求用户明确授权'), '缺 push 当场授权条款').toBe(true)
     expect(body.match(/remote 名 = `github`/), '缺 remote github 声明').not.toBeNull()
     expect(body.includes('zhushanwen321/tai-ji-yang'), '缺仓库标识').toBe(true)
-    expect(body.includes('不创建 PR'), '缺不建 PR 声明').toBe(true)
-    expect(body.includes('gh pr create'), '不得出现建 PR 命令').toBe(false)
+    expect(body.includes('不自动 push'), '缺不自动 push 声明').toBe(true)
+    expect(body.includes('不执行 `git push`，不创建 PR'), '缺 workflow 不建 PR 声明').toBe(true)
+    // PR 创建只允许出现在“用户另行决定/授权后”的 skill 指引，不得写成流程自动步骤。
+    expect(body.includes('gh pr create/edit --repo zhushanwen321/tai-ji-yang'), '缺用户授权后的 PR 创建指引').toBe(true)
   })
 
-  it('默认 base=main；后续 pr-lifecycle 产物只作占位登记、无文件路径断言', () => {
+  it('默认 base=main；引用真实双平台产物与单源维护入口', () => {
     const body = content()
     expect(body.includes('base=main'), '缺默认基线声明').toBe(true)
-    expect(body.includes('占位登记'), '缺后续产物占位登记节').toBe(true)
-    expect(body.match(/pr-lifecycle\.(js|dwf\.ts)/), '不得出现 pr-lifecycle 产物文件路径（该产物尚不存在）').toBeNull()
+    expect(body.includes('pr-lifecycle.dwf.ts'), '缺 zcode 产物路径').toBe(true)
+    expect(body.includes('pr-lifecycle.js'), '缺 pi 产物路径').toBe(true)
+    expect(body.includes('build-workflows.mjs'), '缺单源构建入口').toBe(true)
+    expect(body.includes('verifyUrl'), '缺真实验收参数').toBe(true)
+    expect(body.includes('verifyEvidenceDir'), '缺证据复用参数').toBe(true)
   })
 })
