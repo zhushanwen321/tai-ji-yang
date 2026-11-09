@@ -1,0 +1,7 @@
+<!--
+  fixture 小样本：drift-od 漂移树的 ppt 任务档（消费方 U2a locate 单测）。
+  内容为清单声明存在性所需的最小正文。
+-->
+# OD Next Presentation Task Profile（drift fixture 正文）
+
+Drift-tree body for roster verification only.

@@ -1,0 +1,72 @@
+{
+  "$fixtureSource": "resume 资产变更 fixture 第二代（V9/RL7）：相对 resume-gen1 的差异恰两处——①版本号上调（manifest 3.3.7→3.3.9、core/orchestration 3.2.0→3.2.1）；②core 的句 A 替换为句 B（升级模拟句，非 OD 原文，见 assets/core-system-prompt.md 注释）。其余字段与 gen1 同源。e2e 用法见同目录 README。",
+  "specVersion": "1.0.0",
+  "name": "od-next-strategy",
+  "title": "OD Next Strategy V2",
+  "version": "3.3.9",
+  "publishedAt": "2026-09-15T10:00:00Z",
+  "description": "Bundled, inactive OD Next planning and Build strategy content.",
+  "license": "MIT",
+  "od": {
+    "kind": "scenario",
+    "taskKind": "new-generation",
+    "scenario": "od-next-strategy-v2",
+    "mode": "scenario",
+    "hidden": true,
+    "strategy": {
+      "schema": "open-design.bundled-strategy/v2",
+      "id": "od-next-strategy",
+      "promptRecipe": "od-next-plan-build-v2",
+      "assets": {
+        "core": {
+          "path": "./assets/core-system-prompt.md",
+          "version": "3.2.1"
+        },
+        "orchestration": {
+          "path": "./assets/general-orchestration.md",
+          "version": "3.2.1"
+        },
+        "taskProfiles": [
+          {
+            "taskType": "prototype",
+            "path": "./assets/task-profiles/prototype.md",
+            "version": "3.1.11",
+            "rollout": "active",
+            "projectKinds": [
+              "prototype"
+            ]
+          }
+        ]
+      }
+    },
+    "pipeline": {
+      "stages": [
+        {
+          "id": "discovery",
+          "atoms": [
+            "discovery-question-form"
+          ]
+        },
+        {
+          "id": "plan",
+          "atoms": [
+            "direction-picker",
+            "todo-write"
+          ]
+        },
+        {
+          "id": "generate",
+          "atoms": [
+            "file-write",
+            "live-artifact"
+          ]
+        }
+      ]
+    },
+    "capabilities": [
+      "prompt:inject",
+      "pipeline:*",
+      "fs:write"
+    ]
+  }
+}
