@@ -35,6 +35,16 @@ function renderContextFacts(input = {}) {
       })
     }
   ];
+  if (input.craftRoot != null && input.craftRoot.trim() !== "") {
+    blocks.push({
+      kind: "fact",
+      name: "craft",
+      body: stableJson({
+        note: "Shape templates may declare craft.requires in their SKILL.md frontmatter. After choosing a shape template, read each listed manual file from this directory with your file tools (root/<slug>.md) and follow it while producing the deliverable.",
+        root: input.craftRoot
+      })
+    });
+  }
   if (input.deckFrameworkDirective !== void 0 && input.deckFrameworkDirective.trim() !== "") {
     blocks.push({
       kind: "instruction",

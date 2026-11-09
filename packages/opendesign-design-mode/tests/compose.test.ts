@@ -1,26 +1,35 @@
 /**
- * 提示词组装器单测（U3）。
+ * 提示词组装器单测（V1 U3 + opendesign-assets-quality U2）。
  *
  * fixture：U0 共享 fixture（tests/fixtures/mini-od，默认布局形态；资产原文为 0.25.1 检出
- * 摘录）。组装链走真实管线：buildVersionProfile 定位 fixture → bundle.readRosterAsset 直读
- * → U4 改写器 → 占位符防御 → 事实块 → 路由段。
+ * 摘录）+ U1 资产目录 fixture（tests/fixtures/asset-catalog，真机形态摘录与缺失/损坏变体）。
+ * 组装链走真实管线：buildVersionProfile 定位 fixture → bundle.readRosterAsset 直读 → U4
+ * 改写器 → 占位符防御 → 事实块（含 craft 指路块）→ 路由段（含形状包清单段与 ppt 协议
+ * 指针）→ 设计系统清单段。
  *
- * 断言结构（任务书 U3 验收条款对账）：
- * 1. 拼接顺序与 OD 组装契约同构（core → orchestration → 事实块 → 路由段；逐字纪律抽查）
+ * 断言结构（两单元任务书验收条款对账）：
+ * 1. 拼接顺序与 OD 组装契约同构（core → orchestration → 事实块 → 路由段 → 设计系统段；
+ *    逐字纪律抽查）
  * 2. 占位符零残留（组装产物 + 占位符替换逻辑的白名单过滤行为——RL3 断言对象）
- * 3. 路由段含八类任务档绝对路径与设计系统清单、不含排除五档路径（D6 白名单）
+ * 3. 路由段含八类任务档绝对路径、不含排除五档路径（D6 白名单）
  * 4. media 段报缺语义在组装产物中在场（D6 ①④⑤ 抽样 + motion-design 条目级压制指令）
  * 5. 注入文本特征串全量清零（$OD_BIN / Integration 视图——RL3 的组装管线断言，
  *    fixture 含完整 D6④ 段供段锚命中；自产段由 4/5 的分组断言分别覆盖）
  * 6. 事实块形态（od-next-context 格式、结束标签转义、最小集合两字段 + deck 槽接口）
  * 7. persona 静态注册一次（found 注册 / missing 与 error 激活失败）
+ * 8.（U2）craft 指路块（D1：根路径 + 消费指引；目录缺失整体省略）
+ * 9.（U2）形状包清单段（D2：一行一包 + 根路径声明 + 中文项摘录 + ppt 条目协议指针）
+ * 10.（U2）设计系统清单段（D3：manifest 感知 name/category + 深层文件指路）
+ * 11.（U2）降级空段形态（mini-od 无三目录：craft 块省略 + 两清单段空指引，AX5）
+ * 12.（U2）注入体积断言（RL7：真机组装全文行数 ≤ N，N=1500 由真机实测校准登记 runlog）
  */
-import { cpSync, mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { composeSystemPrompt } from '../lib/compose/bundle.js'
 import { renderContextFacts } from '../lib/compose/context-facts.js'
+import { renderDesignSystemsSegment } from '../lib/compose/design-systems.js'
 import {
   SKILL_CATALOG_PLACEHOLDER,
   SKILL_ROOT_PLACEHOLDER,
@@ -36,7 +45,8 @@ import {
   probeDiagnostic,
   type PersonaContext,
 } from '../lib/persona.js'
-import { buildVersionProfile, locateOdAssets } from '../lib/locate/version-profile.js'
+import { buildAssetCatalog, buildDesignSystemCatalog, buildShapeTemplateCatalog } from '../lib/locate/asset-catalog.js'
+import { buildVersionProfile, deriveCatalogDirs, locateOdAssets } from '../lib/locate/version-profile.js'
 import {
   OD_MISSING_MESSAGE,
   OD_PROBE_FAILED_MESSAGE,
@@ -49,6 +59,8 @@ const fixturesRoot = resolve(dirname(fileURLToPath(import.meta.url)), 'fixtures'
 /** 默认布局形态的资源根（清单在 plugins/_official/scenarios/od-next-strategy/）。 */
 const miniRoot = join(fixturesRoot, 'mini-od')
 const miniScenario = join(miniRoot, 'plugins', '_official', 'scenarios', 'od-next-strategy')
+/** 资产目录 fixture（U1）：full = 三目录齐备（真机形态摘录 + 损坏/缺席变体）。 */
+const catalogFullRoot = join(fixturesRoot, 'asset-catalog', 'full')
 
 // —— persona 测试的定位链注入点：mock locateOdAssets（readRosterAsset 等其余导出保持原样）——
 vi.mock('../lib/locate/version-profile.js', async (importOriginal) => {
@@ -66,12 +78,22 @@ function fixtureProfile(): VersionProfile {
 const profile = fixtureProfile()
 const composed = composeSystemPrompt({ profile })
 const routingStart = composed.text.indexOf('## Task routing (design mode)')
-/** 路由段（本单元自产内容）——特征串清零断言的作用域。 */
-const ROUTING_TEXT = composed.text.slice(routingStart)
+const designSystemsStart = composed.text.indexOf('### Design systems installed on this machine')
+/** 路由段（本单元自产内容，U2 起不含设计系统清单节）——特征串清零断言的作用域。 */
+const ROUTING_TEXT = composed.text.slice(routingStart, designSystemsStart)
+/** 设计系统清单段（本单元自产内容，独立注入段）。 */
+const DESIGN_SYSTEMS_TEXT = composed.text.slice(designSystemsStart)
 /** 事实块段（本单元自产内容），位于注入文本与路由段之间。 */
 const FACTS_TEXT = composed.text.slice(composed.text.indexOf('<od-next-context'), routingStart)
 /** 注入文本（core + orchestration 的改写产物），位于组装产物开头与事实块之间。 */
 const INJECTED_TEXT = composed.text.slice(0, composed.text.indexOf('<od-next-context'))
+/** U1 资产目录 fixture 的完整摘要（形状包 / 设计系统清单段断言的输入）。 */
+const catalogFull = buildAssetCatalog(deriveCatalogDirs(catalogFullRoot))
+/** 真机 OD 资产根（对账锚，同 locate.test.ts；impl-plan 风险表：OD 升级后复跑对账）。 */
+const realAssetRoot = '/Applications/Open Design.app/Contents/Resources/open-design'
+const hasRealAssetRoot = existsSync(realAssetRoot)
+/** RL7 体积断言基准：真机 2.0.4 实测 1263 行（2026-11-10），+19% 余量容纳 OD 升级包数增长（runlog 登记）。 */
+const RL7_MAX_TOTAL_LINES = 1500
 
 // —— 临时树：缺档降级用例（用后清理）——
 const tempRoots: string[] = []
@@ -81,20 +103,22 @@ afterEach(() => {
   vi.mocked(locateOdAssets).mockReset()
 })
 
-describe('组装顺序与 OD 组装契约同构（core → orchestration → 事实块 → 路由段）', () => {
-  it('四段先后序正确（marker 索引单调递增）', () => {
+describe('组装顺序与 OD 组装契约同构（core → orchestration → 事实块 → 路由段 → 设计系统段）', () => {
+  it('五段先后序正确（marker 索引单调递增）', () => {
     const coreAt = composed.text.indexOf('# OD Next Core System Prompt（fixture 摘录）')
     const orchAt = composed.text.indexOf('# OD Next General Orchestration（fixture 摘录）')
     const factsAt = composed.text.indexOf('<od-next-context kind="fact" name="device-frames">')
     const routingAt = routingStart
+    const designSystemsAt = designSystemsStart
     expect(coreAt).toBeGreaterThanOrEqual(0)
     expect(orchAt).toBeGreaterThan(coreAt)
     expect(factsAt).toBeGreaterThan(orchAt)
     expect(routingAt).toBeGreaterThan(factsAt)
+    expect(designSystemsAt).toBeGreaterThan(routingAt)
   })
 
-  it('段间连接形态 = OD 组装的 sections.join 分隔（恰 3 处）', () => {
-    expect((composed.text.match(/\n\n---\n\n/g) ?? []).length).toBe(3)
+  it('段间连接形态 = OD 组装的 sections.join 分隔（恰 4 处）', () => {
+    expect((composed.text.match(/\n\n---\n\n/g) ?? []).length).toBe(4)
   })
 
   it('逐字纪律：core/orchestration 未被组装层重排（保留段原文在场）', () => {
@@ -152,15 +176,15 @@ describe('占位符零残留（RL3 断言对象）', () => {
   })
 })
 
-describe('路由段：八类路径 + 设计系统清单 + 排除五档不进清单（D6 白名单）', () => {
+describe('路由段：八类路径 + 排除五档不进清单（D6 白名单）', () => {
   it('八类任务档绝对路径齐备（逐类断言）', () => {
     for (const id of ROUTED_TASK_PROFILES) {
       expect(ROUTING_TEXT).toContain(join(miniScenario, 'assets', 'task-profiles', `${id}.md`))
     }
   })
 
-  it('设计系统目录清单在场（组装期扫描 mini-od/design-systems）', () => {
-    expect(ROUTING_TEXT).toContain('- sample-brand')
+  it('路由段不含设计系统清单节（U2 起迁移为独立段，见设计系统段组断言）', () => {
+    expect(ROUTING_TEXT).not.toContain('### Design systems installed on this machine')
   })
 
   it('排除五档路径不进清单（媒体三档 + discovery + live-artifact）', () => {
@@ -190,12 +214,10 @@ describe('路由段：八类路径 + 设计系统清单 + 排除五档不进清�
     const scenario = join(dir, 'od-next-strategy')
     cpSync(miniScenario, scenario, { recursive: true })
     rmSync(join(scenario, 'assets', 'task-profiles', 'document.md'))
-    const routing = renderRoutingSegment({ scenarioRoot: scenario, designSystemNames: [] })
+    const routing = renderRoutingSegment({ scenarioRoot: scenario, shapeTemplates: catalogFull.shapeTemplates })
     expect(routing).toContain('missing from the current OpenDesign installation')
     // 其余在场条目不受影响（仍给出读取指针）。
     expect(routing).toContain(join(scenario, 'assets', 'task-profiles', 'prototype.md'))
-    // 空设计系统清单的显式指引（不发明品牌）。
-    expect(routing).toContain('No design-system directories were found')
   })
 })
 
@@ -333,5 +355,155 @@ describe('persona 静态注册一次（found 注册 / missing 与 error 激活�
     expect(probeDiagnostic({ status: 'found', resourceRoot: '/x' })).toBeUndefined()
     expect(probeDiagnostic({ status: 'missing' })).toBe(OD_MISSING_MESSAGE)
     expect(probeDiagnostic({ status: 'error', reason: 'boom' })).toContain('boom')
+  })
+})
+
+// ── opendesign-assets-quality U2：craft 指路块 / 形状包清单段 / ppt 协议指针 / 设计系统段 ──
+
+describe('craft 指路块（D1 指路自读形态，U2）', () => {
+  it('craftRoot 传入：fact 块形态 = 根绝对路径 + craft.requires 逐册自读指引', () => {
+    const craftRoot = join(catalogFullRoot, 'craft')
+    const facts = renderContextFacts({ craftRoot })
+    expect(facts).toContain('<od-next-context kind="fact" name="craft">')
+    expect(facts).toContain(`"root":"${craftRoot}"`)
+    expect(facts).toContain('craft.requires')
+    expect(facts).toContain('root/<slug>.md')
+    expect(facts).toContain('</od-next-context>')
+  })
+
+  it('craftRoot 缺省 / null / 空串：指路块整体省略（AX5 显式降级，D1）', () => {
+    expect(renderContextFacts()).not.toContain('name="craft"')
+    expect(renderContextFacts({ craftRoot: null })).not.toContain('name="craft"')
+    expect(renderContextFacts({ craftRoot: '' })).not.toContain('name="craft"')
+  })
+
+  it('组装链降级：mini-od 无 craft/ 目录 → 组装产物不含 craft 块（验收条款②）', () => {
+    expect(FACTS_TEXT).not.toContain('name="craft"')
+  })
+})
+
+describe('形状包清单段（D2 一行一包，U2）', () => {
+  const routing = renderRoutingSegment({ scenarioRoot: miniScenario, shapeTemplates: catalogFull.shapeTemplates })
+
+  it('段首声明 design-templates 根路径与目录名映射（验收条款①根路径声明在句）', () => {
+    expect(routing).toContain('### Shape templates (design-templates)')
+    expect(routing).toContain(`root: \`${catalogFull.shapeTemplates.root}\``)
+    expect(routing).toContain('The leading directory name of each line is the package directory under')
+  })
+
+  it('一行一包：dashboard 全字段行（目录名 + od.mode + description 首句 + 中文触发词摘录）', () => {
+    expect(routing).toContain(
+      '- dashboard (mode: prototype) — Admin / analytics dashboard in a single HTML file. — zh: 后台, 管理后台',
+    )
+  })
+
+  it('字段缺席形态：od.mode 与中文 triggers 缺席的条目按字段省略渲染（U1 口径不计异常）', () => {
+    expect(routing).toContain('- web-prototype-taste-brutalist — Swiss industrial-print web prototype.')
+  })
+
+  it('解析异常降级条目：仅目录名 + unparsed 标注（U1 降级口径的消费侧形态）', () => {
+    expect(routing).toContain('- broken-skill (unparsed — match by directory name only)')
+  })
+
+  it('自读指引：brief 匹配后读 SKILL.md 全文 + example.html（无示例页跳过）', () => {
+    expect(routing).toContain('read its SKILL.md in full')
+    expect(routing).toContain('`example.html` in the same directory when present')
+    expect(routing).toContain('templates without an example page skip it')
+  })
+
+  it('空清单降级：目录缺失 → 显式空清单指引，不发明形状库（AX5）', () => {
+    const missing = buildShapeTemplateCatalog(join(catalogFullRoot, 'no-such-dir'))
+    const text = renderRoutingSegment({ scenarioRoot: miniScenario, shapeTemplates: missing })
+    expect(text).toContain('No shape-template packages were found')
+    expect(text).not.toContain('unparsed')
+  })
+
+  it('组装链降级：mini-od 无 design-templates → 组装产物为空清单指引（验收条款②）', () => {
+    expect(ROUTING_TEXT).toContain('No shape-template packages were found')
+  })
+})
+
+describe('ppt 条目 deck 协议指针（D9，U2）', () => {
+  it('ppt 条目附 .od-frames/deck-framework.md 协议文件指针（上游约定名，材质化铺文件自读）', () => {
+    expect(ROUTING_TEXT).toContain('2. Presentation (HTML slides / deck)')
+    expect(ROUTING_TEXT).toContain('.od-frames/deck-framework.md')
+    expect(ROUTING_TEXT).toContain('Read\n   it with your file tools before producing slide or deck HTML')
+  })
+
+  it('指针仅挂 ppt 条目一处（不扩散到其他任务档）', () => {
+    expect(ROUTING_TEXT.match(/deck-framework\.md/g)).toHaveLength(1)
+  })
+})
+
+describe('设计系统清单段（D3 manifest 感知，U2）', () => {
+  const dsText = renderDesignSystemsSegment(catalogFull.designSystems)
+
+  it('manifest 感知行：目录名 — name (category) — 在场深层文件指路（airbnb 三全在场）', () => {
+    expect(dsText).toContain('### Design systems installed on this machine')
+    expect(dsText).toContain(
+      '- airbnb — Airbnb (E-Commerce & Retail) — also read: USAGE.md, components.html, tailwind-v4.css',
+    )
+  })
+
+  it('深层文件缺席形态：三文件皆缺的包无 also-read 段（按包在场列出，D3）', () => {
+    expect(dsText).toContain('- plain-brand — Plain Brand (Utilities)\n')
+  })
+
+  it('解析异常降级条目：缺 category 与非法 JSON 同口径，仅目录名 + unparsed 标注（D3）', () => {
+    expect(dsText).toContain('- broken-brand (unparsed — match by directory name and read the package directory directly)')
+    expect(dsText).toContain('- partial-brand (unparsed — match by directory name and read the package directory directly)')
+    // 降级条目不出 name/品类与深层指路（「降级仅目录名」契约，U1 deepFiles 恒 false）。
+    expect(dsText).not.toContain('- broken-brand — ')
+  })
+
+  it('无 manifest 的元目录不进清单（D3：清单段分母 = 品牌包数）', () => {
+    expect(dsText).not.toContain('_schema')
+  })
+
+  it('段尾品牌读取指引维持 V1 现状（DESIGN.md / tokens.css，D3）', () => {
+    expect(dsText).toContain('`<design-systems-root>/<dirName>/DESIGN.md`,')
+    expect(dsText).toContain('`tokens.css`, and sibling files directly with your file tools')
+  })
+
+  it('空清单降级：目录缺失 → 显式空清单指引（AX5）', () => {
+    const missing = buildDesignSystemCatalog(join(catalogFullRoot, 'no-such-dir'))
+    expect(renderDesignSystemsSegment(missing)).toContain('No design-system directories were found')
+  })
+
+  it('组装链降级：mini-od/design-systems 仅有无 manifest 的 sample-brand → 空清单指引（验收条款②）', () => {
+    expect(DESIGN_SYSTEMS_TEXT).toContain('No design-system directories were found')
+    expect(DESIGN_SYSTEMS_TEXT).not.toContain('sample-brand')
+  })
+
+  it('自产段特征串清零（本单元自产内容纪律）', () => {
+    expect(DESIGN_SYSTEMS_TEXT).not.toContain('$OD_BIN')
+    expect(DESIGN_SYSTEMS_TEXT).not.toContain('$OD_NODE_BIN')
+    expect(DESIGN_SYSTEMS_TEXT).not.toContain('$OD_WORKSPACE')
+    expect(DESIGN_SYSTEMS_TEXT).not.toContain('{{')
+  })
+})
+
+describe('注入体积断言（RL7：真机实测校准，U2）', () => {
+  it('真机 2.0.4 资产：组装全文行数 ≤ 1500（N 由实测 1263 校准，runlog 登记）+ 新段真机形态实锚', () => {
+    if (!hasRealAssetRoot) {
+      // 跳过不是静默：CI / 无 OD 机器上播报说明——体积基准与行形态锚以 runlog 实测登记为准。
+      console.warn(`[skip] 真机 OD 资产根不在场（${realAssetRoot}），体积断言跳过`)
+      return
+    }
+    const result = buildVersionProfile([{ resourceRoot: realAssetRoot, channel: 'stable' }])
+    expect(result.status).toBe('found')
+    if (result.status !== 'found') throw new Error('unreachable: 真机资产画像必为 found')
+    const { text } = composeSystemPrompt({ profile: result.profile })
+    expect(text.split('\n').length).toBeLessThanOrEqual(RL7_MAX_TOTAL_LINES)
+    // 验收条款①的真机落点：中文触发词摘录 + 根路径声明 + manifest 感知行 + craft 块 + 协议指针。
+    expect(text).toContain('### Shape templates (design-templates)')
+    expect(text).toContain(
+      '- dashboard (mode: prototype) — Admin / analytics dashboard in a single HTML file. — zh: 后台, 管理后台',
+    )
+    expect(text).toContain(
+      '- airbnb — Airbnb (E-Commerce & Retail) — also read: USAGE.md, components.html, tailwind-v4.css',
+    )
+    expect(text).toContain('<od-next-context kind="fact" name="craft">')
+    expect(text).toContain('.od-frames/deck-framework.md')
   })
 })

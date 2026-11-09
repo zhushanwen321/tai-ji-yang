@@ -1,26 +1,17 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { applyRewrites } from "../rewrite/apply.js";
-import { readRosterAsset } from "../locate/version-profile.js";
+import { buildAssetCatalog } from "../locate/asset-catalog.js";
+import { deriveCatalogDirs, readRosterAsset } from "../locate/version-profile.js";
 import { renderContextFacts } from "./context-facts.js";
+import { renderDesignSystemsSegment } from "./design-systems.js";
 import { replaceInjectionPlaceholders } from "./placeholders.js";
 import { renderRoutingSegment } from "./task-routing.js";
-const DESIGN_SYSTEMS_DIR = "design-systems";
 const SECTION_SEPARATOR = "\n\n---\n\n";
 class OdComposeSourceError extends Error {
   constructor(message) {
     super(message);
     this.name = "OdComposeSourceError";
   }
-}
-function scanDesignSystemNames(resourceRoot) {
-  let entries;
-  try {
-    entries = readdirSync(join(resourceRoot, DESIGN_SYSTEMS_DIR), { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
 }
 function requiredInjectionAssetPath(manifest, manifestPath, kind) {
   const path = manifest.od.strategy?.assets?.[kind]?.path;
@@ -38,25 +29,28 @@ function composeSystemPrompt(input) {
   const orchestrationPath = requiredInjectionAssetPath(manifest, profile.manifestPath, "orchestration");
   const core = readRosterAsset(profile, corePath);
   const orchestration = readRosterAsset(profile, orchestrationPath);
-  const designSystemsRoot = join(profile.resourceRoot, DESIGN_SYSTEMS_DIR);
+  const catalogDirs = deriveCatalogDirs(profile.resourceRoot);
+  const catalog = buildAssetCatalog(catalogDirs);
   const { texts, records } = applyRewrites(
     { "core-system-prompt": core, "general-orchestration": orchestration },
-    { designSystemsRoot }
+    { designSystemsRoot: catalogDirs.designSystemsRoot }
   );
   const injected = replaceInjectionPlaceholders(
     texts["core-system-prompt"] + SECTION_SEPARATOR + texts["general-orchestration"],
     profile.scenarioRoot
   );
-  const facts = renderContextFacts();
+  const facts = renderContextFacts({
+    craftRoot: catalog.craft.present ? catalog.craft.craftRoot : void 0
+  });
   const routing = renderRoutingSegment({
     scenarioRoot: profile.scenarioRoot,
-    designSystemNames: scanDesignSystemNames(profile.resourceRoot)
+    shapeTemplates: catalog.shapeTemplates
   });
-  const text = [injected, facts, routing].join(SECTION_SEPARATOR);
+  const designSystems = renderDesignSystemsSegment(catalog.designSystems);
+  const text = [injected, facts, routing, designSystems].join(SECTION_SEPARATOR);
   return { text, rewriteRecords: records };
 }
 export {
   OdComposeSourceError,
-  composeSystemPrompt,
-  scanDesignSystemNames
+  composeSystemPrompt
 };

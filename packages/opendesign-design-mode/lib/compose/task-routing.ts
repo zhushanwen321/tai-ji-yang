@@ -15,9 +15,24 @@
  * 于注入文本，机制上触达不到自读文件。报缺措辞不含 $OD_BIN 特征串（与 RL3 断言兼容）。
  *
  * 排除五档为何不在段内出现路径：照列会把媒体档路径引入提示词，绕过 D6 的媒体排除。
+ *
+ * 形状包清单段（opendesign-assets-quality U2，D2）：任务档清单之后追加 design-templates
+ * 逐包清单——一行一包（目录名 + od.mode + description 首句 + triggers 中文触发词摘录），
+ * 段首声明 design-templates 根绝对路径与「行首目录名即包目录名」的映射。中文项摘录是
+ * 清单的路由价值所在：本机资产实测 description 纯英文、中文触发词只在 triggers 字段，
+ * 不摘录则中文 brief 无法匹配（D2 不采用项）。选定后模型按根路径自读该包 SKILL.md 全文
+ * 与 example.html（无示例页的形状跳过）——与任务档自读同构。字段缺席（od.mode/triggers）
+ * 按字段省略渲染、不计异常（U1 降级口径）；解析异常条目仅目录名 + unparsed 标注；
+ * 目录缺失整体降级为空清单指引（AX5）。
+ *
+ * ppt 条目 deck 协议指针（D9）：演示稿产物遵循 `.od-frames/deck-framework.md` 协议文件
+ * （上游约定名，OD 任务档 ppt.md:216 fallback 实名；文件由材质化器铺进会话目录，指针 +
+ * 自读省提示词——layout.css 同款先例）。
  */
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { OD_FRAMES_DIR } from '../materialize/copy.js'
+import type { ShapeTemplateCatalog, ShapeTemplateEntry } from '../locate/asset-catalog.js'
 import { ROUTED_TASK_PROFILES } from '../types.js'
 
 /** 任务档目录在场景包内的相对位置（OD 组装契约的 taskProfileRoot 锚，strategy-package.ts 同构）。 */
@@ -61,16 +76,66 @@ export function taskProfilePath(scenarioRoot: string, id: string): string {
   return join(scenarioRoot, TASK_PROFILE_DIR, `${id}.md`)
 }
 
+/** ppt 条目的 deck 协议文件指针（D9；文件名 = 上游约定 .od-frames/deck-framework.md）。 */
+const DECK_PROTOCOL_FILE = `${OD_FRAMES_DIR}/deck-framework.md`
+
+/** 一个形状包的清单行（D2：目录名 + od.mode + description 首句 + 中文触发词摘录）。 */
+function shapeTemplateLine(entry: ShapeTemplateEntry): string {
+  if (entry.degraded) {
+    // 解析异常降级条目（U1 口径）：仅目录名可用——路由线索只剩目录名本身。
+    return `- ${entry.dirName} (unparsed — match by directory name only)`
+  }
+  let line = `- ${entry.dirName}`
+  if (entry.mode !== null) line += ` (mode: ${entry.mode})`
+  if (entry.descriptionFirstSentence !== null) line += ` — ${entry.descriptionFirstSentence}`
+  if (entry.triggerKeywordsZh.length > 0) line += ` — zh: ${entry.triggerKeywordsZh.join(', ')}`
+  return line
+}
+
 /**
- * 路由指令段（注入文本的第三段，设计 §3.1 组装顺序 core→orchestration→事实块→路由段）。
+ * 形状包清单节（D2：一行一包 + 段首根路径声明 + 目录名映射 + 自读指引）。
+ * present=false 或零条目 → 显式空清单指引（AX5：不发明不存在的形状库）。
+ */
+function renderShapeTemplatesSection(catalog: ShapeTemplateCatalog): string[] {
+  const lines = [
+    '### Shape templates (design-templates)',
+    '',
+  ]
+  if (!catalog.present || catalog.entries.length === 0) {
+    lines.push(
+      'No shape-template packages were found in this installation. If the user',
+      'describes a specific screen or component shape, say no shape library is',
+      'installed locally instead of inventing one.',
+    )
+    return lines
+  }
+  lines.push(
+    `Shape-template packages installed on this machine — root: \`${catalog.root}\`.`,
+    'The leading directory name of each line is the package directory under',
+    'this root. Each line lists the frontmatter mode, the first sentence of',
+    'the description, and the Chinese trigger words (zh:) when present.',
+    '',
+    ...catalog.entries.map(shapeTemplateLine),
+    '',
+    'Match the brief against the English description and the Chinese trigger',
+    'words. When a package matches, read its SKILL.md in full with your file',
+    'tools, and read `example.html` in the same directory when present',
+    '(templates without an example page skip it).',
+  )
+  return lines
+}
+
+/**
+ * 路由指令段（注入文本的第三段，设计 §3.1 组装顺序 core→orchestration→事实块→路由段→
+ * 设计系统清单段）。
  *
  * @param input.scenarioRoot 场景包目录（任务档绝对路径的锚，VersionProfile.scenarioRoot）。
- * @param input.designSystemNames 组装期从资产根 design-systems/ 扫出的目录名清单（bundle.ts 扫描）。
+ * @param input.shapeTemplates design-templates/ 摘要（U1 buildShapeTemplateCatalog 产物）。
  * @returns 路由指令段文本（自产内容；不含 OD 资产原文，不含宿主特征串）。
  */
 export function renderRoutingSegment(input: {
   scenarioRoot: string
-  designSystemNames: readonly string[]
+  shapeTemplates: ShapeTemplateCatalog
 }): string {
   const entries = routedProfileEntries(input.scenarioRoot)
   const lines: string[] = [
@@ -129,29 +194,16 @@ export function renderRoutingSegment(input: {
         '   the source alone.',
       )
     }
+    if (entry.id === 'ppt') {
+      // D9 条目级协议指针：deck 协议文件由材质化器铺进会话目录，指针 + 自读（省提示词）。
+      lines.push(
+        `   Deck protocol note: presentation deliverables follow the deck protocol`,
+        `   file staged at \`${DECK_PROTOCOL_FILE}\` in this session directory. Read`,
+        '   it with your file tools before producing slide or deck HTML.',
+      )
+    }
   })
-  lines.push(
-    '',
-    '### Design systems installed on this machine',
-    '',
-  )
-  if (input.designSystemNames.length === 0) {
-    lines.push(
-      'No design-system directories were found in this installation. If the user',
-      'names a brand or design system, say none is installed locally instead of',
-      'inventing one.',
-    )
-  } else {
-    lines.push(
-      'Directory names under the design-systems root (each name is a brand',
-      'identifier):',
-      '',
-      ...input.designSystemNames.map((name) => `- ${name}`),
-      '',
-      'When the user names a brand, match it against this list, then read',
-      '`<design-systems-root>/<name>/DESIGN.md`, `tokens.css`, and sibling files',
-      'directly with your file tools.',
-    )
-  }
+  lines.push('')
+  lines.push(...renderShapeTemplatesSection(input.shapeTemplates))
   return lines.join('\n')
 }

@@ -13,26 +13,28 @@
  *      职责——本层只编排与过滤），段间连接形态对齐 OD 组装（sections.join('\n\n---\n\n')）；
  *   4. U4 改写器（applyRewrites，designSystemsRoot 取资产根下 design-systems/）；
  *   5. 占位符替换（OD 升级防御，渲染白名单与路由过滤共用，见 placeholders.ts）；
- *   6. 基本事实块（context-facts.ts，最小集合）；
- *   7. 路由指令段（task-routing.ts，含组装期 design-systems/ 目录名扫描）。
+ *   6. 基本事实块（context-facts.ts，最小集合 + craft 指路块，D1）；
+ *   7. 路由指令段（task-routing.ts，含形状包清单段，D2）；
+ *   8. 设计系统清单段（design-systems.ts，manifest 感知形态，D3）。
  *
  * 逐字纪律的验证口：改写按资产先行（core / orchestration 分文本各自过改写器）、拼接其后，
- * 占位符与事实块路由段都在拼接之后追加——任何一段的内部顺序都不经本层重排（改写与拼接
- * 的先后对最终文本等价：规则不跨资产匹配）。改写命中记录随产物返回（doctor 的改写命中
- * 清单数据源）。
+ * 占位符与事实块、路由段、清单段都在拼接之后追加——任何一段的内部顺序都不经本层重排
+ * （改写与拼接的先后对最终文本等价：规则不跨资产匹配）。改写命中记录随产物返回（doctor
+ * 的改写命中清单数据源）。
+ *
+ * 资产摘要扫描（U1 buildAssetCatalog）：三目录一次扫描、三个注入段共用（craft 指路块 /
+ * 形状包清单段 / 设计系统清单段）；目录缺失由各段显式降级（AX5），不阻断组装。
  */
-import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { applyRewrites, type RewriteApplyRecord } from '../rewrite/apply.js'
 import type { OdManifestShape } from '../locate/manifest-discovery.js'
-import { readRosterAsset } from '../locate/version-profile.js'
+import { buildAssetCatalog } from '../locate/asset-catalog.js'
+import { deriveCatalogDirs, readRosterAsset } from '../locate/version-profile.js'
 import type { VersionProfile } from '../types.js'
 import { renderContextFacts } from './context-facts.js'
+import { renderDesignSystemsSegment } from './design-systems.js'
 import { replaceInjectionPlaceholders } from './placeholders.js'
 import { renderRoutingSegment } from './task-routing.js'
-
-/** 资产根下设计系统目录实名（D4/D5 的直读目标根；OD 装机与 fixture 布局同实名）。 */
-const DESIGN_SYSTEMS_DIR = 'design-systems'
 
 /** 注入段之间的连接形态（OD 组装 sections.join 的同款分隔）。 */
 const SECTION_SEPARATOR = '\n\n---\n\n'
@@ -54,25 +56,6 @@ export interface ComposedBundle {
 /** 组装入参（profile = U2a 定位链的 found 产物）。 */
 export interface ComposeBundleInput {
   profile: VersionProfile
-}
-
-/**
- * 组装期扫描资产根下 design-systems/ 的目录名清单（D4：目录名即品牌标识）。
- *
- * 目录不存在（老生成代安装）返回空清单——设计系统直读是增强能力而非 roster 声明件，
- * 缺目录不是装配失败形态；路由段对空清单有显式指引（task-routing.ts）。
- */
-export function scanDesignSystemNames(resourceRoot: string): string[] {
-  let entries: ReturnType<typeof readdirSync>
-  try {
-    entries = readdirSync(join(resourceRoot, DESIGN_SYSTEMS_DIR), { withFileTypes: true })
-  } catch {
-    return []
-  }
-  return entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort()
 }
 
 /** 从清单取注入资产声明路径（core/orchestration 的 "./assets/..." 相对路径）。 */
@@ -108,21 +91,27 @@ export function composeSystemPrompt(input: ComposeBundleInput): ComposedBundle {
   const core = readRosterAsset(profile, corePath)
   const orchestration = readRosterAsset(profile, orchestrationPath)
 
-  const designSystemsRoot = join(profile.resourceRoot, DESIGN_SYSTEMS_DIR)
+  // 三目录摘要一次扫描（U1 探测层），三个自产段共用同一份 catalog——craft 指路块按
+  // 在场性传入（缺失 = 指路块整体省略，D1/AX5），形状包与设计系统清单段各自消化降级。
+  const catalogDirs = deriveCatalogDirs(profile.resourceRoot)
+  const catalog = buildAssetCatalog(catalogDirs)
   const { texts, records } = applyRewrites(
     { 'core-system-prompt': core, 'general-orchestration': orchestration },
-    { designSystemsRoot },
+    { designSystemsRoot: catalogDirs.designSystemsRoot },
   )
 
   const injected = replaceInjectionPlaceholders(
     texts['core-system-prompt'] + SECTION_SEPARATOR + texts['general-orchestration'],
     profile.scenarioRoot,
   )
-  const facts = renderContextFacts()
+  const facts = renderContextFacts({
+    craftRoot: catalog.craft.present ? catalog.craft.craftRoot : undefined,
+  })
   const routing = renderRoutingSegment({
     scenarioRoot: profile.scenarioRoot,
-    designSystemNames: scanDesignSystemNames(profile.resourceRoot),
+    shapeTemplates: catalog.shapeTemplates,
   })
-  const text = [injected, facts, routing].join(SECTION_SEPARATOR)
+  const designSystems = renderDesignSystemsSegment(catalog.designSystems)
+  const text = [injected, facts, routing, designSystems].join(SECTION_SEPARATOR)
   return { text, rewriteRecords: records }
 }

@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { OD_FRAMES_DIR } from "../materialize/copy.js";
 import { ROUTED_TASK_PROFILES } from "../types.js";
 const TASK_PROFILE_DIR = "assets/task-profiles";
 const ROUTED_PROFILE_LABELS = {
@@ -20,6 +21,45 @@ function routedProfileEntries(scenarioRoot) {
 }
 function taskProfilePath(scenarioRoot, id) {
   return join(scenarioRoot, TASK_PROFILE_DIR, `${id}.md`);
+}
+const DECK_PROTOCOL_FILE = `${OD_FRAMES_DIR}/deck-framework.md`;
+function shapeTemplateLine(entry) {
+  if (entry.degraded) {
+    return `- ${entry.dirName} (unparsed — match by directory name only)`;
+  }
+  let line = `- ${entry.dirName}`;
+  if (entry.mode !== null) line += ` (mode: ${entry.mode})`;
+  if (entry.descriptionFirstSentence !== null) line += ` — ${entry.descriptionFirstSentence}`;
+  if (entry.triggerKeywordsZh.length > 0) line += ` — zh: ${entry.triggerKeywordsZh.join(", ")}`;
+  return line;
+}
+function renderShapeTemplatesSection(catalog) {
+  const lines = [
+    "### Shape templates (design-templates)",
+    ""
+  ];
+  if (!catalog.present || catalog.entries.length === 0) {
+    lines.push(
+      "No shape-template packages were found in this installation. If the user",
+      "describes a specific screen or component shape, say no shape library is",
+      "installed locally instead of inventing one."
+    );
+    return lines;
+  }
+  lines.push(
+    `Shape-template packages installed on this machine — root: \`${catalog.root}\`.`,
+    "The leading directory name of each line is the package directory under",
+    "this root. Each line lists the frontmatter mode, the first sentence of",
+    "the description, and the Chinese trigger words (zh:) when present.",
+    "",
+    ...catalog.entries.map(shapeTemplateLine),
+    "",
+    "Match the brief against the English description and the Chinese trigger",
+    "words. When a package matches, read its SKILL.md in full with your file",
+    "tools, and read `example.html` in the same directory when present",
+    "(templates without an example page skip it)."
+  );
+  return lines;
 }
 function renderRoutingSegment(input) {
   const entries = routedProfileEntries(input.scenarioRoot);
@@ -78,30 +118,16 @@ function renderRoutingSegment(input) {
         "   the source alone."
       );
     }
+    if (entry.id === "ppt") {
+      lines.push(
+        `   Deck protocol note: presentation deliverables follow the deck protocol`,
+        `   file staged at \`${DECK_PROTOCOL_FILE}\` in this session directory. Read`,
+        "   it with your file tools before producing slide or deck HTML."
+      );
+    }
   });
-  lines.push(
-    "",
-    "### Design systems installed on this machine",
-    ""
-  );
-  if (input.designSystemNames.length === 0) {
-    lines.push(
-      "No design-system directories were found in this installation. If the user",
-      "names a brand or design system, say none is installed locally instead of",
-      "inventing one."
-    );
-  } else {
-    lines.push(
-      "Directory names under the design-systems root (each name is a brand",
-      "identifier):",
-      "",
-      ...input.designSystemNames.map((name) => `- ${name}`),
-      "",
-      "When the user names a brand, match it against this list, then read",
-      "`<design-systems-root>/<name>/DESIGN.md`, `tokens.css`, and sibling files",
-      "directly with your file tools."
-    );
-  }
+  lines.push("");
+  lines.push(...renderShapeTemplatesSection(input.shapeTemplates));
   return lines.join("\n");
 }
 export {

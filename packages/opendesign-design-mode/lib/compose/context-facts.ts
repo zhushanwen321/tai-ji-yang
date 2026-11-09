@@ -21,6 +21,12 @@
  * 「protocol 不在场」分支降级，材质化器写清单恒 4 文件），协议能力归后续版本。
  * 本模块保留注入块接口（可选入参 {@link ContextFactsInput.deckFrameworkDirective}}），
  * 作为后续版本的接入点。
+ *
+ * craft 指路块（D1 指路自读形态，opendesign-assets-quality U2）：`kind="fact" name="craft"`
+ * 事实块给 craft/ 根绝对路径 + 消费指引（读形状包 SKILL.md 的 craft.requires → 逐册自读
+ * `craft/<slug>.md` 并遵循）——选择权在模型自读，与任务档路由 / 设计系统自读同构（D1 采用
+ * 形态，插件零缓存零注入状态）。craft 目录缺失时指路块整体省略（显式降级，AX5）——由组装层
+ * （bundle.ts）按探测结果决定是否传入 craftRoot，本模块对缺席入参不渲染该块。
  */
 import { OD_FRAMES_DIR, MATERIALIZED_FILE_NAMES } from '../materialize/copy.js'
 
@@ -62,6 +68,11 @@ export interface ContextFactsInput {
    * V1 组装链路不供给——内容来源待引擎对账裁决，见文件头注释。
    */
   deckFrameworkDirective?: string
+  /**
+   * craft/ 目录绝对路径（U2 craft 指路块，D1）。undefined / null / 空串 = 指路块整体
+   * 省略（craft 目录缺失的显式降级形态，AX5）——组装层按探测结果传入。
+   */
+  craftRoot?: string | null
 }
 
 /**
@@ -89,6 +100,22 @@ export function renderContextFacts(input: ContextFactsInput = {}): string {
       }),
     },
   ]
+  if (input.craftRoot != null && input.craftRoot.trim() !== '') {
+    // craft 指路块（D1）：根绝对路径 + 消费指引，自产措辞（AX3 不约束自产文本）。
+    // 册清单不注入——craft.requires 的 slug 即文件名，手册单册缺失由模型自读报错自然跳过。
+    blocks.push({
+      kind: 'fact',
+      name: 'craft',
+      body: stableJson({
+        note:
+          'Shape templates may declare craft.requires in their SKILL.md frontmatter. '
+          + 'After choosing a shape template, read each listed manual file from this '
+          + 'directory with your file tools (root/<slug>.md) and follow it while '
+          + 'producing the deliverable.',
+        root: input.craftRoot,
+      }),
+    })
+  }
   if (input.deckFrameworkDirective !== undefined && input.deckFrameworkDirective.trim() !== '') {
     // 注指令块形态的 deck 槽（RR5）：OD 同构守卫句 + 指令文本。V1 缺省不供给（文件头注释）。
     blocks.push({
