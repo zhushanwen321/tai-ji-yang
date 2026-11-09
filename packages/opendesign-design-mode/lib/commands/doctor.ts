@@ -15,9 +15,8 @@
  * applyRewrites（与组装层同一规则集、同一编排）。D9 的止损位判据来源 = 该命中清单——
  * 报告的是「当前资产 × 当前规则集」的适配态，会话组装时点与诊断时点之间的资产升级由
  * 第⑥项代际提示覆盖。命令名依据：DSH commands registry 的名字校验为 `/^[a-z][a-z0-9_-]*$/u`
- * （0.1.7-rc.2 与 0.2.2-rc.1 双版本亲读核实，带冒号的名字注册即抛 TypeError），设计文档
- * V4 的「/opendesign:doctor」字面在 registry 上不可注册，实际注册名 = `opendesign-doctor`
- * （冲突登记见 runlog，待设计文档对账裁决）。
+ * （0.1.7-rc.2 与 0.2.2-rc.1 双版本亲读核实，带冒号的名字注册即抛 TypeError），故命令
+ * 实名 = `opendesign-doctor`（无冒号）；设计文档 D9 已按此约束登记命令名。
  *
  * 宿主契约：CommandDefinition 形态（DSH packages/interaction/commands 先例
  * @deepseek-ai/dsh-command-goal）：inject ['commands'] + ctx.commands.register；

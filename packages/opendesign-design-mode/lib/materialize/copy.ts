@@ -33,8 +33,9 @@
  * 一并适配，材质化器保持纯复制器语义不变）。
  *
  * AX2 红线：源侧只读（readFile 清单与资源文件），写侧只有调用方传入 cwd 之下 .od-frames/；
- * 源清单/源资源缺失或清单结构漂移时 fail-fast 抛错（AX5 显式降级语义——材质化位于 persona
- * 激活链路，抛错 → preset broken → 用户得到诊断与恢复动作，绝不静默产出残缺副本）。
+ * 源清单/源资源缺失或清单结构漂移时 fail-fast 抛错（AX5 显式降级语义——材质化失败抛错由
+ * lib/index.js 的 agent-preset/selected 事件监听捕获记 logger.error（不阻断会话），落点
+ * 状态由 doctor 第⑤项感知，绝不静默产出残缺副本）。
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'

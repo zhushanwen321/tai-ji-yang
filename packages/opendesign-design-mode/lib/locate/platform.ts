@@ -11,7 +11,8 @@
  * 不触碰平台无关层。
  *
  * 环境线索经 LocateEnvHints 显式传入而非直读 process：测试注入假环境树与假 env，不依赖真机
- * /Applications 状态。OD_RESOURCE_ROOT 常量归 types.ts（与 OD daemon 覆盖变量同名同语义）。
+ * /Applications 状态。OD_RESOURCE_ROOT 常量归本文件（与 OD daemon 覆盖变量同名同语义，
+ * 归属理由见 OD_RESOURCE_ROOT_ENV 定义处注释）。
  */
 import { resolve } from 'node:path'
 import type { OdAssetCandidate } from '../types.js'

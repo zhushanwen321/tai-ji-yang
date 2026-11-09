@@ -42,32 +42,6 @@ workflow 行为：preflight（要求工作区全提交）→ `pnpm check` → �
 
 只跑审查修复循环、不进门禁不开 PR 时，用全局 saved `review-fix-loop`；`reviewers` 传四份定义的绝对路径数组（见第 3 节）。
 
-## 3. pr-lifecycle workflow（审查修复与终局编排）
-
-完整链路由仓内单源双平台 workflow 承载；主 agent 只发起、披露终态、请求 push 授权。两平台产物同源：
-
-- **zcode**：`CreateWorkflow`，`path` = `<worktree>/.agents/workflows/pr-lifecycle.dwf.ts`
-- **pi**：workflow 工具 `action: "run"`，`name` = `<worktree>/.agents/workflows/pr-lifecycle.js`
-
-常用 args：
-
-- `base`：默认 `main`。
-- `worktree`：目标 git worktree 绝对路径；会话 cwd 不是该 worktree 时必传。
-- `maxRounds`：审查修复循环上限，默认 5。
-- `verifyUrl` / `verifyEvidenceDir`：真实 DSH 验收二选一；都不传时 workflow 会在终态把验收显式标为 skipped，不得对外声称已真机验收。
-- `taskId` / `executionId` / `sampleType`：阶段观测可选参数。
-
-workflow 行为：preflight（要求工作区全提交）→ `pnpm check` → 四份固定项目 reviewer 审查/聚合/分组修复循环 → final `pnpm check` → acceptance → PR title/body 起草 → `awaiting-push`。它不执行 `git push`，不创建 PR。`failed` 终态按 `error/recovery` 处置；`awaiting-push` 时向用户披露 review、acceptance、prMeta、residualFiles 和 skipped。
-
-只跑审查修复循环、不进门禁不开 PR 时，仍可用全局 saved `review-fix-loop`；`reviewers` 传下面四份定义的绝对路径数组。
-
-四份项目 reviewer 是固定清单（路径相对仓库根，发起时解析为绝对路径传入）：
-
-- `.agents/reviewers/review-business-logic.md`
-- `.agents/reviewers/review-dsh-contract.md`
-- `.agents/reviewers/review-dsh-lifecycle.md`
-- `.agents/reviewers/review-dsh-ui.md`
-
 ## 2. check-all 与真机验收（手工兜底的前置）
 
 workflow 不可用时先在 worktree 根执行：
@@ -81,6 +55,13 @@ pnpm check
 再按 `.agents/skills/verify-taiji-yang/SKILL.md` 执行真实 DSH 验收（brand/head/theme/projects；卸载用隔离自启模式）。无法执行真机验收时显式披露原因，停回用户裁决是否继续，不静默跳过。
 
 ## 3. review-fix-loop（手工兜底的审查循环）
+
+四份项目 reviewer 是固定清单（路径相对仓库根，发起时解析为绝对路径传入）：
+
+- `.agents/reviewers/review-business-logic.md`
+- `.agents/reviewers/review-dsh-contract.md`
+- `.agents/reviewers/review-dsh-lifecycle.md`
+- `.agents/reviewers/review-dsh-ui.md`
 
 zcode 用全局 saved `review-fix-loop`：
 

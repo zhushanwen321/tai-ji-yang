@@ -3,7 +3,7 @@
  *
  * 枚举语义：/Applications（或注入的枚举根）下四种渠道命名的 app 的 Contents/Resources，
  * 存在性核验（existsSync）通过的进入候选列表；环境变量 OD_RESOURCE_ROOT（与 OD daemon 的
- * 资源根覆盖变量同名同语义，见 types.ts）非空时生成 override 候选恒排最前。
+ * 资源根覆盖变量同名同语义，常量归 platform.ts）非空时生成 override 候选恒排最前。
  *
  * 返回顺序即选定优先序（version-profile.ts 按序取第一个可用候选）：
  *   override > stable（Open Design.app）> beta > prerelease > preview
