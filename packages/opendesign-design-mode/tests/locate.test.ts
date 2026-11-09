@@ -144,7 +144,7 @@ describe('平台策略接口（collectAssetCandidates）', () => {
     expect(collectAssetCandidates(hints)).toHaveLength(1)
   })
 
-  it('未注册平台（win32/linux）返回空候选——V1 接口空位（G7），不为空平台发明路径', () => {
+  it('未注册平台（win32/linux）返回空候选——V1 接口空位（V1 设计包 G7），不为空平台发明路径', () => {
     for (const platform of ['win32', 'linux'] as const) {
       expect(collectAssetCandidates({ env: {}, platform })).toEqual([])
     }
@@ -430,7 +430,7 @@ describe('一站式入口（locateOdAssets）', () => {
     expect(statSync(result.profile.manifestPath).isFile()).toBe(true)
   })
 
-  it('未注册平台 → missing（空候选 = 未装形态，走 GL5 降级）', () => {
+  it('未注册平台 → missing（空候选 = 未装形态，走 V1 设计包 GL5 降级）', () => {
     expect(locateOdAssets({ env: {}, platform: 'linux' }).status).toBe('missing')
   })
 
@@ -448,7 +448,7 @@ describe('一站式入口（locateOdAssets）', () => {
 /** 资产目录 fixture：full = 三目录齐备（真机形态摘录 + 损坏/缺席变体），missing-dirs = 目录缺失变体。 */
 const catalogFullRoot = join(fixturesRoot, 'asset-catalog', 'full')
 const catalogMissingRoot = join(fixturesRoot, 'asset-catalog', 'missing-dirs')
-/** 真机 OD 资产根（对账锚；impl-plan 风险表「包计数漂移」行与 V1 设计包 UD2 + opendesign-assets-quality AS9 登记：OD 升级后计数漂移时复跑对账更新登记）。 */
+/** 真机 OD 资产根（对账锚；impl-plan U1 验收「真机资产根三目录探测断言（114 包计数与 s2 登记点一致）」与 V1 设计包 UD2 + opendesign-assets-quality AS9 登记：OD 升级后计数漂移时复跑对账更新登记）。 */
 const realAssetRoot = '/Applications/Open Design.app/Contents/Resources/open-design'
 const hasRealAssetRoot = existsSync(realAssetRoot)
 

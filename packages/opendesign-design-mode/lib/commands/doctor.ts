@@ -1,13 +1,14 @@
 /**
- * /opendesign-doctor —— 设计模式诊断命令（U2b 八项 + opendesign-assets-quality U6 扩展
- * 三项 = 十一项报告；语义权威 = 设计 D9 八项报告 + D10⑨⑩⑪ 扩展）。
+ * /opendesign-doctor —— 设计模式诊断命令（V1 设计包 U2b 八项 + opendesign-assets-quality U6 扩展
+ * 三项 = 十一项报告；语义权威 = V1 设计包 D9 八项报告 + opendesign-assets-quality
+ * D10⑨⑩⑪ 扩展）。
  *
  * 十一项报告：① 安装形态与资源根（多候选并存列全部候选与选中依据）② 清单路径与三层版本
- * ③ roster 完整性核验（逐文件存在性）④ 改写规则命中清单（消费 U4 applyRewrites 记录，含
+ * ③ roster 完整性核验（逐文件存在性）④ 改写规则命中清单（消费 V1 设计包 U4 applyRewrites 记录，含
  * 规则脆弱度标记）⑤ 材质化状态（作用域 = 当前会话工作目录，写入落点清单 = 5 文件完整写
  * 清单；预铺后为空即异常并归入错误项）⑥ 资产代际提示（resume 旧会话时历史轮次可能与当前
  * 资产不同代）⑦ 逐项异常的恢复动作（重装 OD / 升级本插件 / 重启 DSH）⑧ stop-loss 止损位
- * 状态（对照 D9 三判据，触发即输出「建议方案级重审」警示）——以上 V1 八节零回归；
+ * 状态（对照 V1 设计包 D9 三判据，触发即输出「建议方案级重审」警示）——以上 V1 八节零回归；
  * ⑨ 资产丰富度（D10⑨：craft 册数 = 规则书口径排除两个元文件、形状包数与解析异常数、
  * 设计系统 manifest 命中数、各清单段注入行数；降级形态带恢复动作：目录缺失 → 检查资产
  * 根与 OD 安装完整性指引、解析异常 → 包清单与升级对账指引）；⑩ 协议与检查器对账（D7/
@@ -19,14 +20,14 @@
  * 「本轮会话无检查记录」+ 监听器未启动原因）。
  *
  * 输出形态：纯文本结构化报告（分节标题 + 行式条目），供会话内直接阅读与 e2e DOM 断言
- * （U8 A4 场景断言分节标题字面——分节名经 {@link DOCTOR_SECTIONS} 常量导出供测试对账）。
+ * （V1 设计包 U8 A4 场景断言分节标题字面——分节名经 {@link DOCTOR_SECTIONS} 常量导出供测试对账）。
  *
  * 改写命中清单的产生方式：命令执行时对当前资产的 core / orchestration 文本**现场重放**
- * applyRewrites（与组装层同一规则集、同一编排）。D9 的止损位判据来源 = 该命中清单——
+ * applyRewrites（与组装层同一规则集、同一编排）。V1 设计包 D9 的止损位判据来源 = 该命中清单——
  * 报告的是「当前资产 × 当前规则集」的适配态，会话组装时点与诊断时点之间的资产升级由
  * 第⑥项代际提示覆盖。命令名依据：DSH commands registry 的名字校验为 `/^[a-z][a-z0-9_-]*$/u`
  * （0.1.7-rc.2 与 0.2.2-rc.1 双版本亲读核实，带冒号的名字注册即抛 TypeError），故命令
- * 实名 = `opendesign-doctor`（无冒号）；设计文档 D9 已按此约束登记命令名。
+ * 实名 = `opendesign-doctor`（无冒号）；V1 设计包 D9 已按此约束登记命令名。
  *
  * 宿主契约：CommandDefinition 形态（DSH packages/interaction/commands 先例
  * @deepseek-ai/dsh-command-goal）：inject ['commands'] + ctx.commands.register；
@@ -74,11 +75,11 @@ export const DOCTOR_COMMAND_NAME = 'opendesign-doctor'
 /** registry 内的插件自有稳定 id（CommandDefinition.definitionId）。 */
 export const DOCTOR_DEFINITION_ID = 'opendesign-design-mode/commands/doctor'
 
-/** 报告首行标题（U8 A4 DOM 断言对账点之一）。 */
+/** 报告首行标题（V1 设计包 U8 A4 DOM 断言对账点之一）。 */
 export const DOCTOR_REPORT_TITLE = 'OpenDesign 设计模式诊断报告'
 
 /**
- * 十一个分节的标题字面（U8 A4 + U6 扩展：分节名常量导出供测试对账；行内形态 =
+ * 十一个分节的标题字面（V1 设计包 U8 A4 + opendesign-assets-quality U6 扩展：分节名常量导出供测试对账；行内形态 =
  * `【N/11】<标题>`）。顺序即报告节序，键名 = 节语义（对账时按键取字面）。
  * 前 8 键为 V1 既有节（零回归面），后 3 键为 opendesign-assets-quality U6 新增
  * （D10：⑨ 资产丰富度 / ⑩ 协议与检查器对账 / ⑪ 质量发现）。
@@ -106,7 +107,7 @@ export function doctorSectionLine(index: number, title: string): string {
 }
 
 /**
- * 标准恢复动作文案（任务书⑦三类 + U6 新增节各自的降级/漂移恢复动作；文案与 types.ts
+ * 标准恢复动作文案（任务书⑦三类 + opendesign-assets-quality U6 新增节各自的降级/漂移恢复动作；文案与 types.ts
  * 两形态诊断文案同族）。新节异常不并入第⑦节汇总（V1 ⑦ 零回归面），恢复动作随各自
  * 节内就地展示（D10「降级形态各带恢复动作」）。
  */
@@ -143,7 +144,7 @@ interface DoctorIssue {
   message: string
 }
 
-/** 止损位三判据的评估产物（D9 判据①②可由单次诊断观测，③需跨升级历史）。 */
+/** 止损位三判据的评估产物（V1 设计包 D9 判据①②可由单次诊断观测，③需跨升级历史）。 */
 export interface StopLossEvaluation {
   /** 判据①：核心段改写规则失配 ≥3 条。 */
   criterion1Triggered: boolean
@@ -158,7 +159,7 @@ export interface StopLossEvaluation {
 }
 
 /**
- * 止损位评估（D9 三判据；数据源 = 改写命中清单与读取可用性）。
+ * 止损位评估（V1 设计包 D9 三判据；数据源 = 改写命中清单与读取可用性）。
  *
  * 失配判定 = locator 为 semantic-anchor 且 hitCount 为 0 且规则在资产代际上适用的记录
  * （锚应当命中却未命中）。两类「正常零命中」不计入失配：R1（locator=regex，防御性规则，
@@ -250,9 +251,9 @@ function renderRosterSection(profile: VersionProfile, issues: DoctorIssue[]): st
 }
 
 /**
- * 第⑤节：材质化状态（作用域 = 会话工作目录；D8 ④ 覆盖语义的感知通道）。
+ * 第⑤节：材质化状态（作用域 = 会话工作目录；V1 设计包 D8 ④ 覆盖语义的感知通道）。
  * 逐文件检查 = MATERIALIZED_WRITE_LIST 完整写清单（5 文件 = 复制件 4 + deck-framework.md
- * 派生登记件，D9；U3a 移交项——写清单 4→5 后本节按完整写清单对账）。
+ * 派生登记件，opendesign-assets-quality D9；U3a 移交项——写清单 4→5 后本节按完整写清单对账）。
  */
 function renderMaterializeSection(sessionCwd: string | null, issues: DoctorIssue[]): string[] {
   if (sessionCwd === null) {
@@ -261,7 +262,7 @@ function renderMaterializeSection(sessionCwd: string | null, issues: DoctorIssue
   const targetRoot = join(sessionCwd, OD_FRAMES_DIR)
   const lines: string[] = [
     `- 会话工作目录：${sessionCwd}`,
-    `- 写入落点（D8 约定子目录）：${targetRoot}`,
+    `- 写入落点（V1 设计包 D8 约定子目录）：${targetRoot}`,
   ]
   if (!existsSync(targetRoot)) {
     lines.push('- 状态：尚未预铺（落点目录不存在；材质化在会话创建时无条件全量重铺，新会话首轮前执行本命令即此形态）。')
@@ -346,7 +347,7 @@ function renderRewriteSection(
   return { lines, records, readerUnavailable: false }
 }
 
-/** 第⑧节：止损位状态（D9 三判据逐条 + 触发警示）。 */
+/** 第⑧节：止损位状态（V1 设计包 D9 三判据逐条 + 触发警示）。 */
 function renderStopLossSection(evaluation: StopLossEvaluation): string[] {
   const lines: string[] = [
     `- 判据① 核心段改写规则失配 ≥3 条：${evaluation.criterion1Triggered ? `触发（${evaluation.misfires.length} 条失配）` : `未触发（${evaluation.misfires.length} 条失配）`}`,
@@ -355,7 +356,7 @@ function renderStopLossSection(evaluation: StopLossEvaluation): string[] {
     '- 判据③ 连续两个 OD 版本升级均需重写全部规则：不在单次诊断可观测范围（需跨升级历史记录；升级后若连续两版均见判据①触发，即按本判据处置）。',
   ]
   if (evaluation.triggered) {
-    lines.push('- ⚠ 建议方案级重审：止损位判据已触发（V2 真桥接提前或改写策略重构）。')
+    lines.push('- ⚠ 建议方案级重审：止损位判据已触发（V1 设计包 V2 真桥接提前或改写策略重构）。')
   } else {
     lines.push('- 结论：可观测判据均未触发。')
   }
@@ -800,7 +801,7 @@ function renderSection(index: number, title: string, lines: readonly string[]): 
  * 服务存在性探测必须走 try/catch 包裹的属性读取（0.1.7 实测）：cordis ctx 读未在本行
  * inject 声明的服务属性即抛（不能 declare——0.1.7 无 working-directory 行，declare 会让
  * 本行永久 pending），可选链 `?.` 拦不住 proxy getter 的抛错——「服务不在」与「服务在但
- * 调用失败」都按探测失败处理，回退 header.cwd（U8 e2e 实测修正，2026-11-09）。
+ * 调用失败」都按探测失败处理，回退 header.cwd（V1 设计包 U8 e2e 实测修正，2026-11-09）。
  */
 export function resolveSessionCwd(hostCtx: unknown, agent: unknown): string | null {
   const session = (agent as { session?: unknown } | undefined)?.session

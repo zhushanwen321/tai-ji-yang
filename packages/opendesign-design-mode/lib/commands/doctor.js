@@ -202,7 +202,7 @@ function renderStopLossSection(evaluation) {
     "- 判据③ 连续两个 OD 版本升级均需重写全部规则：不在单次诊断可观测范围（需跨升级历史记录；升级后若连续两版均见判据①触发，即按本判据处置）。"
   ];
   if (evaluation.triggered) {
-    lines.push("- ⚠ 建议方案级重审：止损位判据已触发（V2 真桥接提前或改写策略重构）。");
+    lines.push("- ⚠ 建议方案级重审：止损位判据已触发（V1 设计包 V2 真桥接提前或改写策略重构）。");
   } else {
     lines.push("- 结论：可观测判据均未触发。");
   }
