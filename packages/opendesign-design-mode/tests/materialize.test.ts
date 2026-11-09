@@ -204,7 +204,7 @@ describe('源完整性 fail-fast（AX5 显式降级语义的支撑行为）', ()
     expect((error as Error).message).toContain(missing)
   })
 
-  it('清单声明的源资源文件缺失：抛错不静默跳过（SI2：清单在 ≠ 资产完整）', async () => {
+  it('清单声明的源资源文件缺失：抛错不静默跳过（V1 设计包 SI2：清单在 ≠ 资产完整）', async () => {
     const srcDir = path.join(workspace, 'od-src-broken')
     cpSync(FIXTURE_PLUGIN_DIR, srcDir, { recursive: true })
     rmSync(path.join(srcDir, SOURCE_REL['neutral.html']))

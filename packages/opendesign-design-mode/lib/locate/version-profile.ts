@@ -7,7 +7,7 @@
  * 版本画像：对候选列表逐个做清单发现（discoverManifest），按选定规则取第一个完整可用候选：
  *   环境变量覆盖（override 恒最先）> 渠道优先级（正式 > Beta > Prerelease > Preview）> 路径序。
  * 候选不可用（not-found / broken）时顺延下一候选；全部尽墨时 missing（零候选或全 not-found）
- * 与 error（存在 broken——已装但资产损坏）两形态分开，供 persona 的 SI3 区分文案消费。
+ * 与 error（存在 broken——已装但资产损坏）两形态分开，供 persona 的 V1 设计包 SI3 区分文案消费。
  * profile.candidates 保留全部候选，doctor（V1 任务书 U2b）报告「全部候选与选中依据」的源数据。
  *
  * 默认读取器（V1 设计包 UD2：无适配器注册表骨架，直连）：readRosterAsset 读清单 roster 内声明的资产
@@ -44,7 +44,7 @@ import { collectAssetCandidates, locateEnvHints, OD_RESOURCE_ROOT_ENV, type Loca
  */
 export const VERIFIED_SPEC_VERSIONS: readonly string[] = ['1.0.0']
 
-/** 版本画像构建结局（三态语义与 persona 的 SI3 文案区分对齐）。 */
+/** 版本画像构建结局（三态语义与 persona 的 V1 设计包 SI3 文案区分对齐）。 */
 export type VersionProfileResult =
   | { status: 'found'; profile: VersionProfile }
   | { status: 'missing' }

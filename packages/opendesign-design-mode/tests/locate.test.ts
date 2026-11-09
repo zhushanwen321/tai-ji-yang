@@ -1,7 +1,7 @@
 /**
  * 资产定位器 + 清单发现 + 版本画像 + 默认读取器测试（V1 任务书 U2a）。
  *
- * fixture：U0 共享 fixture（tests/fixtures/mini-od 默认布局形态、drift-od 漂移形态）；
+ * fixture：V1 设计包 U0 共享 fixture（tests/fixtures/mini-od 默认布局形态、drift-od 漂移形态）；
  * 「roster 缺件」「超已知版本」「深层清单」「清单穿越声明」四种异常/边界形态在测试内
  * 以临时树构造（mkdtemp + 复制 drift-od 场景包改字段），不落 tests/fixtures/ 目录——
  * 它们是定位层行为用例，不是多单元共享的资产样本。例外：U1 资产目录 fixture
@@ -375,7 +375,7 @@ describe('未核实版本警告标记（V1 设计包 UD2：doctor 对未核实�
   })
 })
 
-describe('默认读取器（readRosterAsset，UD2 直连无版本分支）', () => {
+describe('默认读取器（readRosterAsset，V1 设计包 UD2 直连无版本分支）', () => {
   it('读清单声明的 roster 资产文本（core 与任务档），内容锚点正确', () => {
     const profile = expectFound(buildVersionProfile([{ resourceRoot: miniRoot, channel: 'stable' }]))
     const core = readRosterAsset(profile, './assets/core-system-prompt.md')
@@ -386,7 +386,7 @@ describe('默认读取器（readRosterAsset，UD2 直连无版本分支）', () 
 
   it('未声明路径拒绝（默认读取器只读清单声明过的资产）', () => {
     const profile = expectFound(buildVersionProfile([{ resourceRoot: miniRoot, channel: 'stable' }]))
-    // design-systems 在资源根但不在清单 roster 声明集合——不经读取器（D5 走组装期扫描直读）。
+    // design-systems 在资源根但不在清单 roster 声明集合——不经读取器（V1 设计包 D5 走组装期扫描直读）。
     expect(() => readRosterAsset(profile, './design-systems/sample-brand/DESIGN.md'))
       .toThrow(ManifestValidationError)
     expect(() => readRosterAsset(profile, '../../../outside.txt')).toThrow(ManifestValidationError)
@@ -448,7 +448,7 @@ describe('一站式入口（locateOdAssets）', () => {
 /** 资产目录 fixture：full = 三目录齐备（真机形态摘录 + 损坏/缺席变体），missing-dirs = 目录缺失变体。 */
 const catalogFullRoot = join(fixturesRoot, 'asset-catalog', 'full')
 const catalogMissingRoot = join(fixturesRoot, 'asset-catalog', 'missing-dirs')
-/** 真机 OD 资产根（对账锚；impl-plan 风险表「包计数漂移」行与设计包 UD2/AS9 登记：OD 升级后计数漂移时复跑对账更新登记）。 */
+/** 真机 OD 资产根（对账锚；impl-plan 风险表「包计数漂移」行与 V1 设计包 UD2 + opendesign-assets-quality AS9 登记：OD 升级后计数漂移时复跑对账更新登记）。 */
 const realAssetRoot = '/Applications/Open Design.app/Contents/Resources/open-design'
 const hasRealAssetRoot = existsSync(realAssetRoot)
 
