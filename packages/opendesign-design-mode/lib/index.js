@@ -141,7 +141,19 @@ function startQualityWatchForSession(ctx, sessionId, presetId, qualityWatchers) 
   startSessionWatcher({
     cwd,
     lintArtifact,
-    onFindings: (input) => feedback(input),
+    // SC7 进程级观测（回注放弃口）：放弃回注的裁决（no-agent / inject-error）各写一行——
+    // 发现已落 report.jsonl（doctor 第⑪节读侧），宿主进程日志补跨进程排障通道（D4 残存期
+    // 「report.jsonl 一行 + ctx.logger 一行」的后半句）。每事件一行、不含产物内容；级别按
+    // 分级契约：no-agent 是残存期查无活 Agent 的声明行为（debug）、inject-error 是注入
+    // 调用异常（warn 带恢复动作）。
+    onFindings: (input) => feedback(input).then((outcome) => {
+      if (outcome.action !== 'recorded-only') return
+      if (outcome.reason === 'no-agent') {
+        ctx.logger.debug(`opendesign-design-mode: 会话 ${sessionId} 质量环回注放弃（查无活 Agent；文件 ${input.relativePath}）——发现已落检查记录，经 /opendesign-doctor 第⑪节查看`)
+      } else if (outcome.reason === 'inject-error') {
+        ctx.logger.warn(`opendesign-design-mode: 会话 ${sessionId} 质量环回注放弃（注入调用失败；文件 ${input.relativePath}）——发现已落检查记录；恢复动作：运行 /opendesign-doctor 第⑪节查看发现`)
+      }
+    }),
     onDestroyed: (reason) => ctx.logger.warn(`opendesign-design-mode: 会话 ${sessionId} 质量环监听器自毁（${reason}）。恢复动作：resume 该会话重新触发监听；生命周期记录见 /opendesign-doctor 第⑪节。`),
     logger: ctx.logger,
   }).then((controller) => {
@@ -152,6 +164,9 @@ function startQualityWatchForSession(ctx, sessionId, presetId, qualityWatchers) 
       return
     }
     entry.controller = controller
+    // SC7 进程级观测（监听器启动口）：启动成功且存活一行 debug；自毁口在 onDestroyed、
+    // 换代撤销的代未存活（disposed 分支）不记启动行，避免「已启动即撤」的误导观测行。
+    ctx.logger.debug(`opendesign-design-mode: 会话 ${sessionId} 质量环监听已启动（${cwd}）`)
   }, (error) => {
     ctx.logger.error(`opendesign-design-mode: 会话 ${sessionId} 质量环监听启动异常：${error instanceof Error ? error.message : String(error)}。恢复动作：运行 /opendesign-doctor 检查会话目录状态。`)
   })

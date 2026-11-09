@@ -491,6 +491,8 @@ describe('preset 过滤零侵入（index.js 接线：非设计 preset 零监听�
     apply(host.ctx)
     host.emit('design-session', 'opendesign')
     await until(() => reportLines(cwd).some((line) => line.type === 'watcher' && line.event === 'started'))
+    // SC7 进程级观测（监听器启动口）：启动成功一行 debug（自毁口 warn 在 onDestroyed 接线）。
+    expect(host.logs.debug.some((m) => m.includes('质量环监听已启动'))).toBe(true)
     await writeFile(join(cwd, 'loop.html'), P0_HTML, 'utf8')
     await until(() => {
       const report = reportLines(cwd)
@@ -500,6 +502,28 @@ describe('preset 过滤零侵入（index.js 接线：非设计 preset 零监听�
     const report = reportLines(cwd)
     expect(report.filter((line) => line.type === 'artifact')).toHaveLength(1)
     expect(report.some((line) => line.type === 'finding' && line.id === 'purple-gradient')).toBe(true)
+    // SC7 进程级观测（回注放弃口）：no-agent 放弃一行 debug——agents 缺席 → 查无活 Agent。
+    expect(host.logs.debug.some((m) => m.includes('回注放弃（查无活 Agent'))).toBe(true)
+    host.disposeAll()
+  })
+
+  it('SC7 回注放弃口分级：注入调用抛错（inject-error）记 warn 一行，发现仍落记录', async () => {
+    const cwd = await makeCwd()
+    const host = makeHostStub(cwd, 'inject-error-session')
+    // 注入 agents 服务：Agent 在册且 running，steer 调用抛错 → deliverFeedback 归 inject-error。
+    const ctxWithAgents = host.ctx as { get?: (name: string) => unknown }
+    ctxWithAgents.get = () => ({
+      get: () => ({ status: 'running', steer: () => { throw new Error('boom') } }),
+    })
+    apply(host.ctx)
+    host.emit('inject-error-session', 'opendesign')
+    await until(() => reportLines(cwd).some((line) => line.type === 'watcher' && line.event === 'started'))
+    await writeFile(join(cwd, 'err.html'), P0_HTML, 'utf8')
+    await until(() =>
+      reportLines(cwd).some((line) => line.type === 'finding' && line.path === 'err.html' && line.reason === 'inject-error'),
+    )
+    expect(host.logs.warn.some((m) => m.includes('回注放弃（注入调用失败'))).toBe(true)
+    expect(host.logs.debug.some((m) => m.includes('回注放弃（查无活 Agent'))).toBe(false)
     host.disposeAll()
   })
 
