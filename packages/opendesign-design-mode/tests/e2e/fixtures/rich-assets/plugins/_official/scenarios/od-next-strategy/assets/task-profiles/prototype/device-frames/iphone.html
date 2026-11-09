@@ -1,0 +1,53 @@
+<!doctype html>
+<!--
+  fixture 语义等价样本：OD 仓 plugins/_official/scenarios/od-next-strategy/assets/task-profiles/prototype/device-frames/iphone.html
+  （0.25.1 检出，2026-11-09）。真实文件约 8.7K（完整手机壳 chrome），本样本按任务书
+  「取真实文件或语义等价样本」取语义等价形态：保留壳文件的三要素——来源注释、
+  .phone-content 应用内容槽（原型产物注入点）、无应用排版的约束——省略完整视觉 chrome。
+  材质化断言（U5）只比较 fixture 源与副本逐字节一致，内容本身可为等价样本。
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>iPhone mobile prototype</title>
+  <style>
+    :root {
+      --phone-screen-width: 393px;
+      --phone-screen-height: 852px;
+      --phone-screen-bg: #f7f7f8;
+      --phone-stage-bg: #e9ebee;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      min-height: 100dvh;
+      display: grid;
+      place-items: center;
+      padding: 32px;
+      background: var(--phone-stage-bg, #e9ebee);
+    }
+    /* 壳只提供 handset 外形；不设应用排版（typography/palette/spacing/navigation 由产物自带）。 */
+    .phone {
+      width: calc(var(--phone-screen-width) + 24px);
+      border-radius: 60px;
+      padding: 12px;
+      background: #111214;
+    }
+    .phone-content {
+      width: var(--phone-screen-width);
+      height: var(--phone-screen-height);
+      border-radius: 48px;
+      overflow: auto;
+      background: var(--phone-screen-bg, #f7f7f8);
+    }
+  </style>
+</head>
+<body>
+  <section class="phone" aria-label="iPhone shell">
+    <div class="phone-content">
+      <!-- APP CONTENT SLOT：原型产物内容注入此槽 -->
+    </div>
+  </section>
+</body>
+</html>

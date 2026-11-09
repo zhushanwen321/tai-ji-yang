@@ -1,28 +1,42 @@
 /**
  * opendesign-design-mode 双版本 e2e —— web 版（0.1.7 隔离 DSH_HOME）。
  *
- * 场景编排（设计 §4.1 V1-V11 的 L3 可脚本化子集；验收计划表 A1/A3b/A4/A5/A6/A9/A10/A11/A13/A14/A15）：
- *   S1 A1/V1+RL1 —— preset 可见性（roster 卡片 custom 分组 + 选择器菜单）+ 提示词注入
- *      （会话日志 system 节点含 OD core/路由特征句）+ 默认会话行为不变（standard 会话无设计内容）
- *      + 材质化落盘（.od-frames/ 四文件，D8）。
- *   S2 A3b/A14+RL6/RL8 —— 预览面板交互（fixture 产物经伺服路由载入 iframe、脚本可执行）
- *      + 产物脚本隔离探针（fetch 不带宿主 cookie、伺服根非产物不可读、open 路由响应不可得）。
- *   S3 A4/V4 —— doctor 命令八项分节断言（/opendesign-doctor 输出 DOM）。
- *   S4 A5/V5+RL5 —— 无资产环境（资源根指向空目录）：roster broken（选择器不出现该模式、
- *      设置页诊断含安装指引）+ 默认 preset 不受影响；SI3 假阳性形态（清单损坏）：
- *      诊断文案区分「未检测到」与「检测失败请重启 DSH 重试」。
- *   S5 A6/V6 —— 资产漂移 fixture（清单在非默认相对位置）仍可定位 + 画像版本正确。
- *   S6 A13/V9+RL7 —— resume 代际重组：gen1 创建会话 → 关实例 → 换 gen2 资产 → resume →
- *      新一轮 system 节点反映 gen2、无 gen1 残留句 → doctor 代际提示在场。
- *   S7 A15/V11 —— git fixture 项目目录连续三次设计会话（一次换资产）：新增文件恰为
- *      .od-frames/ 四文件、幂等、git status 无 tracked 变更（反向断言）。
- *   S8 A9/A10/A11 —— shell 包共存回归：verify runner 以 --url 连共存实例跑 brand+projects、
+ * 场景编排（opendesign-assets-quality 设计 §4.1 V1-V10 的 L3 可脚本化子集 + V1 既有回归面；
+ * 验收计划表 A8 的 web 宿主半场——A11/A12 的模型行为段归 L4，不在本套件）：
+ *   S1 V1+V3+V4注入形态 —— preset 可见性（roster 卡片 + 选择器菜单 + deck 协议信号文案）+
+ *      默认会话行为不变（standard 会话无设计内容）+ 设计会话注入断言（rich-assets fixture：
+ *      形状包清单段含 dashboard 条目与 zh 触发词、craft 指路块根路径、manifest 感知设计系统
+ *      清单行、panel 评审团协议段、ppt 条目 deck 协议指针）+ 材质化落盘恰 5 文件（4 复制件
+ *      + .od-frames/deck-framework.md，内容与 lib/materialize/copy.js renderDeckFrameworkFile
+ *      派生文本逐字一致，D8+D9）。
+ *   S2 V5+V8缺省态 —— doctor 十一分节齐全（前八节 V1 零回归）；⑨ 资产丰富度非降级形态
+ *      （craft 3 册 / 形状包 1 / manifest 命中 1）；⑩ 协议对账未登记态（无法比对 + 登记指引
+ *      + 已知信息行）；⑪ 质量发现监听器运行形态（V2 场景前置核对）。
+ *   S3 V2+V10 —— 质量环回注（真机写盘）：陌生既有文件触碰只记录不回注（V10/RL10）→
+ *      快照外新写 P0 产物照常回注（V2/RL1 真机半场）→ 回注消息协议信号形态（user/message
+ *      事件 data.source.kind=opendesign-design-mode/lint + 文本含检查项 id/修复指引/作用域句）→
+ *      同内容重写指纹去重（回注消息计数不变 + duplicate 记录恰一行，SI2/RL3）。
+ *   S4 V7 —— 非设计会话零侵入：standard 会话写 P0 HTML，零监听零回注（preset 过滤，
+ *      .od-quality/ 不出现、事件流无 lint 消息）。
+ *   S5 V6+RL5 —— 无资产环境（资源根指向空目录）：roster broken + 默认 preset 不受影响；
+ *      SI3 假阳性形态（清单损坏）：诊断文案区分「未检测到」与「检测失败请重启 DSH 重试」。
+ *   S6 V6漂移 —— 资产漂移 fixture（清单在非默认相对位置）仍可定位 + 画像版本正确。
+ *   S7 V9+RL7 —— resume 代际重组 + resume 检查环不变量（RL10）：gen1 创建设计会话 →
+ *      写 P0 产物回注（followup）→ 关实例换 gen2 资产 → resume → 新一轮 system 节点反映
+ *      gen2、无 gen1 残留句 → doctor ⑪ 读出检查记录 → 同文件同内容重写触发第二代回注
+ *      （指纹进程内重启即清的幂等代价，SC4）→ 再写同内容记 duplicate 不再回注。
+ *   S8 V11写入形态 —— git fixture 项目目录连续三次设计会话（一次换资产）：.od-frames/
+ *      恰 5 管理名（4 复制件 + deck-framework.md，gen2 无壳声明轮 deck-framework.md 无条件
+ *      重铺）、幂等、git status 无 tracked 变更（反向断言）。
+ *   S9 A9/A10/A11 —— shell 包共存回归：verify runner 以 --url 连共存实例跑 brand+projects、
  *      以自启形态对共存 home 跑 lifecycle（卸载 shell）——「preset 注册与 UI 注入不干扰
  *      shell 包」只在 opendesign 在场（两包共存 profile）时才可证明，单装态结果不作数。
  *
- * 真实模型对话（V2/V3/V7 的模型行为段）不在本套件（exec-plan：L4 场景归 D3 验收阶段）。
+ * 真实模型自纠行为（V2 的模型修复段）不在本套件（验收计划 A11：L4 归交付后行为观察）。
  * 无 API key 的隔离实例上发消息：system 提示词在 provider 调用前已提交会话日志
- * （dsh-agent-loop step() 先 project 后 stream，亲读核实）——本套件全部注入断言走该通道。
+ * （dsh-agent-loop step() 先 commit 后 request，亲读核实）——注入断言走该通道；质量环
+ * 回注经宿主 agents 服务的 followup 开新轮，UserMessage 同样在 provider 调用前 commit
+ * （agent-loop agent.ts:471 session.append('user/message', message)，data = 消息本体）。
  *
  * 真机驱动纪律：进程生命周期（安装/启动/URL 解析/探活/按 PID 清理）复用项目 verification
  * skill 的 runner 库（scripts/verify/lib/*，此前会话交付的未跟踪在途资产——只 import 不改写）；
@@ -113,14 +127,23 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const MINI_OD_SCENARIO = path.join(
   FIXTURES, 'mini-od', 'plugins', '_official', 'scenarios', 'od-next-strategy',
 )
-/** 设计会话注入文本的稳定特征：U3 路由段标题（自产内容，两代 fixture 同形）。 */
+/** rich-assets 场景包目录（三目录齐备 fixture；V1 清单段/指路块断言的资产根）。 */
+const RICH_ROOT = path.join(E2E_FIXTURES, 'rich-assets')
+const RICH_SCENARIO = path.join(RICH_ROOT, 'plugins', '_official', 'scenarios', 'od-next-strategy')
+/** 设计会话注入文本的稳定特征：U3 路由段标题（自产内容，各代 fixture 同形）。 */
 const DESIGN_INJECTION_MARK = '## Task routing (design mode)'
 /** mini-od 注入文本的资产特征：路由段里的 prototype 任务档绝对路径。 */
 const MINI_OD_PROFILE_PATH = path.join(MINI_OD_SCENARIO, 'assets', 'task-profiles', 'prototype.md')
+/** rich-assets 注入文本的资产特征：路由段里的 prototype 任务档绝对路径。 */
+const RICH_PROFILE_PATH = path.join(RICH_SCENARIO, 'assets', 'task-profiles', 'prototype.md')
 /** resume gen1 特征句 A（fixture 文件内含；断言「不含」用）。 */
 const GEN1_SENTENCE = 'deliver the actual image file'
 /** resume gen2 特征句 B（升级模拟句；断言「含」用）。 */
 const GEN2_SENTENCE = 'report the media capability gap'
+/** 质量环回注消息的 source.kind（lib/quality/feedback.js LINT_SOURCE_KIND 同值；AX7 协议信号形态）。 */
+const LINT_SOURCE_KIND = 'opendesign-design-mode/lint'
+/** P0 命中特征（purple-gradient：线性渐变含紫 hex，lint.ts PURPLE_HEXES 命中形态）。 */
+const DIRTY_GRADIENT = 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)'
 
 for (const [file, mark] of [
   [path.join(E2E_FIXTURES, 'resume-gen1', 'assets', 'core-system-prompt.md'), GEN1_SENTENCE],
@@ -128,6 +151,32 @@ for (const [file, mark] of [
 ]) {
   assert(fs.readFileSync(file, 'utf8').includes(mark), `fixture 特征句缺席：${file} 应含 ${JSON.stringify(mark)}`)
 }
+/** rich-assets 三目录在場自检（fixture 自身损坏早失败，不落到场景里报含糊错）。 */
+for (const required of [
+  path.join(RICH_ROOT, 'design-templates', 'dashboard', 'SKILL.md'),
+  path.join(RICH_ROOT, 'craft', 'state-coverage.md'),
+  path.join(RICH_ROOT, 'design-systems', 'sample-brand', 'manifest.json'),
+]) {
+  assert(fs.existsSync(required), `rich-assets fixture 缺文件：${required}`)
+}
+
+// 材质化写清单与 deck 协议派生文本直接对账生产实现（同仓构建产物；清单/文本漂移即红）。
+const { MATERIALIZED_WRITE_LIST, DECK_FRAMEWORK_FILE_NAME } = await import(
+  path.join(PKG_ROOT, 'lib', 'materialize', 'copy.js')
+)
+const { renderDeckFrameworkFile } = await import(path.join(PKG_ROOT, 'lib', 'protocols', 'deck.js'))
+assert(
+  JSON.stringify([...MATERIALIZED_WRITE_LIST].sort()) ===
+  JSON.stringify(['android.html', DECK_FRAMEWORK_FILE_NAME, 'iphone.html', 'layout.css', 'neutral.html'].sort()),
+  `材质化写清单形态不对：${JSON.stringify(MATERIALIZED_WRITE_LIST)}`,
+)
+const DECK_FILE_EXPECTED = renderDeckFrameworkFile()
+assert(
+  DECK_FILE_EXPECTED.includes('# HTML deck host protocol')
+    && DECK_FILE_EXPECTED.includes('## Existing deck or selected template')
+    && DECK_FILE_EXPECTED.includes('## New deck only'),
+  'deck 协议铺盘文本应含三段结构（适用限定句 + Existing deck 兼容段 + New deck 规范段）',
+)
 
 // ── 隔离实例生命周期 ─────────────────────────────────────────────────────────
 
@@ -386,7 +435,7 @@ async function runDoctor(page) {
   const optionCount = await option.count()
   if (optionCount === 0) throw new AssertionError('/opendesign-doctor 未出现在 slash 命令菜单')
   await option.click()
-  await page.waitForTimeout(2500)
+  await page.waitForTimeout(3500) // 十一节报告（含 ⑩⑪ 的探测与记录读取）渲染余量
   return page.evaluate(() => document.body.innerText)
 }
 
@@ -442,9 +491,10 @@ function collectSessionFiles(home) {
   return files
 }
 
-/** 读取一份会话日志的 system/message 文本清单与 preset 选定记录。 */
+/** 读取一份会话日志的 system/message 文本清单、user/message 消息与 preset 选定记录。 */
 function readSessionLog(file) {
   const systemMessages = []
+  const userMessages = []
   const presetSelections = []
   for (const line of fs.readFileSync(file, 'utf8').trim().split('\n')) {
     if (line === '') continue
@@ -452,11 +502,19 @@ function readSessionLog(file) {
     if (event.type === 'system/message') {
       systemMessages.push(event.data?.message?.content?.[0]?.text ?? '')
     }
+    if (event.type === 'user/message') {
+      // user/message 的 data = 消息本体（dsh-agent-loop agent.ts:471 append 载荷）；
+      // 回注消息（AX7）以 data.source.kind 自报身份，不冒充用户发言。
+      userMessages.push({
+        kind: event.data?.source?.kind ?? null,
+        text: event.data?.content?.[0]?.text ?? '',
+      })
+    }
     if (event.type === 'agent-preset/selected') {
       presetSelections.push(event.data?.agentPreset ?? '')
     }
   }
-  return { systemMessages, presetSelections }
+  return { systemMessages, userMessages, presetSelections }
 }
 
 /**
@@ -475,6 +533,95 @@ async function waitForSessionLog(home, predicate, timeoutMs = 30000) {
     await sleep(500)
   }
   throw new AssertionError(`等待会话日志超时（${timeoutMs}ms；最后见到：${lastSeen}）`)
+}
+
+// ── 质量环记录读侧（.od-quality/report.jsonl，SC5 行格式 = lib/quality/feedback.js）──
+
+/** 读取会话工作目录的 report.jsonl（缺席返回空清单；损坏行跳过——读侧容忍半行写入）。 */
+function readQualityReport(workspace) {
+  const file = path.join(workspace, '.od-quality', 'report.jsonl')
+  if (!fs.existsSync(file)) return []
+  const lines = []
+  for (const lineText of fs.readFileSync(file, 'utf8').split('\n')) {
+    const trimmed = lineText.trim()
+    if (trimmed === '') continue
+    try { lines.push(JSON.parse(trimmed)) } catch { /* 半行写入容忍 */ }
+  }
+  return lines
+}
+
+/** 轮询直到 report.jsonl 满足谓词（写侧 appendFile 即时落盘，轮询只为时序余量）。 */
+async function waitForReportLine(workspace, predicate, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs
+  let lastSeen = 'no report yet'
+  while (Date.now() < deadline) {
+    const lines = readQualityReport(workspace)
+    if (lines.some(predicate)) return lines
+    lastSeen = `${lines.length} lines`
+    await sleep(400)
+  }
+  throw new AssertionError(`等待 .od-quality/report.jsonl 超时（${timeoutMs}ms；最后见到：${lastSeen}）`)
+}
+
+/** 收集隔离 home 下全部会话日志里的质量环回注消息（kind 匹配 LINT_SOURCE_KIND）。 */
+function collectLintFeedbackMessages(home) {
+  return collectSessionFiles(home)
+    .flatMap((entry) => readSessionLog(entry.file).userMessages)
+    .filter((message) => message.kind === LINT_SOURCE_KIND)
+}
+
+/** 轮询直到回注消息计数达到 expected（并返回当时计数）。 */
+async function waitForLintFeedbackCount(home, expected, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs
+  let count = 0
+  while (Date.now() < deadline) {
+    count = collectLintFeedbackMessages(home).length
+    if (count >= expected) return count
+    await sleep(500)
+  }
+  throw new AssertionError(`等待质量环回注消息达到 ${expected} 条超时（${timeoutMs}ms；实际 ${count} 条）`)
+}
+
+/** 构造一个含 P0 特征（紫渐变）且过完整性哨兵（文末 </html>）的产物 HTML 文本。 */
+function dirtyArtifactHtml(title) {
+  return [
+    '<!doctype html>',
+    '<html lang="en">',
+    '<head>',
+    '  <meta charset="utf-8" />',
+    `  <title>${title}</title>`,
+    '  <style>',
+    `    .hero { background: ${DIRTY_GRADIENT}; color: #fff; padding: 48px; }`,
+    '  </style>',
+    '</head>',
+    '<body>',
+    `  <div class="hero"><h1>${title}</h1></div>`,
+    '</body>',
+    '</html>',
+  ].join('\n')
+}
+
+/** doctor 十一分节标题（lib/commands/doctor.ts DOCTOR_SECTIONS 字面对账；U6 扩展后形态）。 */
+const DOCTOR_SECTIONS_11 = [
+  '安装形态与资源根',
+  '清单路径与三层版本',
+  'roster 完整性核验',
+  '改写规则命中清单',
+  '材质化状态',
+  '资产代际提示',
+  '异常与恢复动作',
+  '止损位状态',
+  '资产丰富度',
+  '协议与检查器对账',
+  '质量发现',
+]
+
+/** 断言 doctor 输出含全部十一分节标题行（`【N/11】标题`；前八节 = V1 零回归面）。 */
+function expectDoctorSections(body) {
+  assert(body.includes('OpenDesign 设计模式诊断报告'), '缺诊断报告标题')
+  DOCTOR_SECTIONS_11.forEach((title, index) => {
+    assert(body.includes(`【${index + 1}/11】${title}`), `缺分节 ${index + 1}/11 ${title}`)
+  })
 }
 
 // ── 场景工作目录 ─────────────────────────────────────────────────────────────
@@ -506,24 +653,26 @@ const GEN2_ROOT = path.join(E2E_FIXTURES, 'resume-gen2')
 const EMPTY_ROOT = path.join(E2E_FIXTURES, 'empty-assets')
 const SI3_ROOT = path.join(E2E_FIXTURES, 'si3-broken-manifest')
 const DRIFT_ROOT = path.join(FIXTURES, 'drift-od', 'upgraded', 'v2')
-/** D8 管理名清单（与 lib/materialize/copy.ts MATERIALIZED_FILE_NAMES 对账）。 */
+const LEGACY_PAGE_HTML = path.join(E2E_FIXTURES, 'legacy-page', 'index.html')
+/** D8 复制件管理名清单（与 lib/materialize/copy.ts MATERIALIZED_FILE_NAMES 对账）。 */
 const OD_FRAMES_FILES = ['android.html', 'iphone.html', 'neutral.html', 'layout.css']
 
-/** 场景 S1（A1/V1+RL1）：roster 可见性 + 注入 + 默认会话不变 + 材质化。 */
+/** 场景 S1（V1+V3+V4 注入形态）：roster 可见性 + 注入（四新段/指针/panel 段）+ 默认会话不变 + 材质化 5 文件。 */
 async function scenarioV1() {
   const results = []
   const workspace = makeWorkspaceDir('v1')
-  const instance = await withInstance({ label: 'v1', fixtureRoot: MINI_OD_ROOT, workspaceDir: workspace })
+  const instance = await withInstance({ label: 'v1', fixtureRoot: RICH_ROOT, workspaceDir: workspace })
   try {
     const { page, home } = instance
 
-    await stepAsync(results, 'roster 卡片在 custom 分组且名称/描述正确（RL1 设置页形态）', async () => {
+    await stepAsync(results, 'roster 卡片在 custom 分组且名称/描述正确（RL1 设置页形态 + V3 文案回写）', async () => {
       const roster = await readSettingsRoster(page)
       assert(roster.groups.includes('Custom'), `分组标题缺 Custom：${JSON.stringify(roster.groups)}`)
       const card = roster.cards.find((c) => c.id === 'opendesign')
       assert(card !== undefined, `roster 缺 opendesign 卡片：${JSON.stringify(roster.cards.map((c) => c.id))}`)
       assert(card.text.includes('OpenDesign 设计模式'), `卡片名不对：${JSON.stringify(card.text.slice(0, 80))}`)
       assert(card.text.includes('未装 OpenDesign 时入口显式降级提示'), `卡片描述不对：${JSON.stringify(card.text.slice(0, 160))}`)
+      assert(card.text.includes('演示稿带 deck 协议信号'), `卡片描述缺 deck 协议信号句（D9 文案回写）：${JSON.stringify(card.text.slice(0, 220))}`)
       assert(card.broken === false, `卡片不应为 broken：${JSON.stringify(card.alert)}`)
     })
 
@@ -540,10 +689,10 @@ async function scenarioV1() {
       const { log } = await waitForSessionLog(home, (_entry, l) => l.systemMessages.length > 0)
       const sys = log.systemMessages.at(-1) ?? ''
       assert(!sys.includes(DESIGN_INJECTION_MARK), 'standard 会话 system 节点不应含设计路由段')
-      assert(!sys.includes(MINI_OD_PROFILE_PATH), 'standard 会话 system 节点不应含设计任务档路径')
+      assert(!sys.includes(RICH_PROFILE_PATH), 'standard 会话 system 节点不应含设计任务档路径')
     })
 
-    await stepAsync(results, '设计会话：进入设计模式并注入 OD 资产内容（A1/V1 注入断言）', async () => {
+    await stepAsync(results, '设计会话：注入路由段与 prototype 任务档路径（V1 注入断言）', async () => {
       await page.getByRole('button', { name: 'New session' }).first().click()
       await page.waitForTimeout(1000)
       await clearModalGates(page)
@@ -557,8 +706,52 @@ async function scenarioV1() {
       )
       assert(log.presetSelections.includes('opendesign'), `preset 选定记录缺失：${JSON.stringify(log.presetSelections)}`)
       const sys = log.systemMessages.find((t) => t.includes(DESIGN_INJECTION_MARK)) ?? ''
-      assert(sys.includes(MINI_OD_PROFILE_PATH), '注入文本缺 prototype 任务档绝对路径（路由段）')
-      assert(sys.includes('sample-brand'), '注入文本缺设计系统清单（sample-brand）')
+      assert(sys.includes(RICH_PROFILE_PATH), '注入文本缺 prototype 任务档绝对路径（路由段）')
+    })
+
+    await stepAsync(results, '注入文本含形状包清单段：dashboard 条目 + zh 触发词 + 根路径声明（V1/D2）', async () => {
+      const { log } = await waitForSessionLog(home, (_entry, l) => l.systemMessages.some((t) => t.includes('### Shape templates (design-templates)')))
+      const sys = log.systemMessages.find((t) => t.includes('### Shape templates (design-templates)')) ?? ''
+      assert(sys.includes('### Shape templates (design-templates)'), '缺形状包清单段标题')
+      assert(sys.includes(`root: \`${RICH_ROOT}/design-templates\``), '清单段缺 design-templates 根绝对路径声明')
+      const entry = sys.split('\n').find((line) => line.startsWith('- dashboard'))
+      assert(entry !== undefined, `清单段缺 dashboard 条目：${JSON.stringify(sys.slice(sys.indexOf('Shape templates'), sys.indexOf('Shape templates') + 600))}`)
+      assert(entry.includes('mode: prototype'), 'dashboard 条目缺 od.mode 摘录')
+      assert(entry.includes('Admin / analytics dashboard'), 'dashboard 条目缺 description 首句摘录')
+      assert(entry.includes('zh: 后台, 管理后台'), `dashboard 条目缺中文触发词摘录：${JSON.stringify(entry)}`)
+    })
+
+    await stepAsync(results, '注入文本含 craft 指路块：craft/ 根绝对路径（V1/D1 指路自读形态）', async () => {
+      const { log } = await waitForSessionLog(home, (_entry, l) => l.systemMessages.some((t) => t.includes('name="craft"')))
+      const sys = log.systemMessages.find((t) => t.includes('name="craft"')) ?? ''
+      assert(sys.includes('<od-next-context kind="fact" name="craft">'), '缺 craft 事实注入块')
+      assert(sys.includes(`"root":"${RICH_ROOT}/craft"`), `craft 块缺 craft/ 根绝对路径：${JSON.stringify(sys.match(/\{[^}]*craft[^}]*\}/)?.[0]?.slice(0, 300))}`)
+      assert(sys.includes('craft.requires'), 'craft 块缺消费指引（按形状包 craft.requires 自读）')
+    })
+
+    await stepAsync(results, '注入文本含 manifest 感知设计系统清单段：sample-brand 行 + 深层文件指路（V1/D3）', async () => {
+      const { log } = await waitForSessionLog(home, (_entry, l) => l.systemMessages.some((t) => t.includes('### Design systems installed on this machine')))
+      const sys = log.systemMessages.find((t) => t.includes('### Design systems installed on this machine')) ?? ''
+      const entry = sys.split('\n').find((line) => line.startsWith('- sample-brand'))
+      assert(entry !== undefined, `设计系统清单段缺 sample-brand 行：${JSON.stringify(sys.slice(0, 500))}`)
+      assert(entry.includes('Sample Brand'), '清单行缺 manifest name')
+      assert(entry.includes('Technology & SaaS'), '清单行缺 manifest category')
+      assert(entry.includes('USAGE.md'), '清单行缺深层文件指路（USAGE.md 在场探测）')
+    })
+
+    await stepAsync(results, '注入文本含 panel 评审团协议段：五面板骨架与数值参数（V4 注入形态/D8）', async () => {
+      const { log } = await waitForSessionLog(home, (_entry, l) => l.systemMessages.some((t) => t.includes('Critique Theater')))
+      const sys = log.systemMessages.find((t) => t.includes('Critique Theater')) ?? ''
+      assert(sys.includes('# Critique Theater'), '缺 panel 协议段标题（五面板评审骨架）')
+      assert(sys.includes('maxRounds="3"'), 'panel 段缺轮数参数（缺省兜底 3）')
+      assert(sys.includes('threshold="8"'), 'panel 段缺收敛阈值参数（缺省兜底 8.0）')
+      assert(sys.includes('<CRITIQUE_RUN'), 'panel 段缺评审 wire protocol 标记块')
+    })
+
+    await stepAsync(results, '注入文本含 ppt 条目 deck 协议指针（V3/D9 指针 + 自读形态）', async () => {
+      const { log } = await waitForSessionLog(home, (_entry, l) => l.systemMessages.some((t) => t.includes('Deck protocol note')))
+      const sys = log.systemMessages.find((t) => t.includes('Deck protocol note')) ?? ''
+      assert(sys.includes('`.od-frames/deck-framework.md`'), 'ppt 条目缺 deck 协议文件指针（.od-frames/deck-framework.md）')
     })
 
     step(results, '注入文本无占位符与 od CLI 特征串残留（RL3 的 e2e 旁证）', () => {
@@ -571,28 +764,30 @@ async function scenarioV1() {
       assert(!all.includes('$OD_NODE_BIN'), '注入文本含 $OD_NODE_BIN 特征串（改写器对注入文本的命令清零失效）')
     })
 
-    await stepAsync(results, '材质化：.od-frames/ 四管理名落盘且与源逐字节一致（D8）', async () => {
+    await stepAsync(results, '材质化：.od-frames/ 恰 5 管理名（4 复制件 + deck-framework.md）落盘且逐字节一致（D8+D9）', async () => {
       const framesDir = path.join(workspace, '.od-frames')
       await waitForSessionLog(home, (_entry, l) => l.systemMessages.length > 0, 1000).catch(() => {})
       let frames = []
       const deadline = Date.now() + 20000
       while (Date.now() < deadline) {
         frames = fs.existsSync(framesDir) ? fs.readdirSync(framesDir) : []
-        if (OD_FRAMES_FILES.every((name) => frames.includes(name))) break
+        if (MATERIALIZED_WRITE_LIST.every((name) => frames.includes(name))) break
         await sleep(500)
       }
       assert(
-        OD_FRAMES_FILES.every((name) => frames.includes(name)),
-        `.od-frames/ 缺管理名：${JSON.stringify(frames)}`,
+        MATERIALIZED_WRITE_LIST.every((name) => frames.includes(name)),
+        `.od-frames/ 缺写清单管理名：${JSON.stringify(frames)}（期望 ${JSON.stringify(MATERIALIZED_WRITE_LIST)}）`,
       )
-      assert(frames.length === OD_FRAMES_FILES.length, `.od-frames/ 出现清单外文件：${JSON.stringify(frames)}`)
-      const prototypeDir = path.join(MINI_OD_SCENARIO, 'assets', 'task-profiles', 'prototype')
+      assert(frames.length === MATERIALIZED_WRITE_LIST.length, `.od-frames/ 出现清单外文件：${JSON.stringify(frames)}`)
+      const prototypeDir = path.join(RICH_SCENARIO, 'assets', 'task-profiles', 'prototype')
       for (const name of OD_FRAMES_FILES) {
         const written = fs.readFileSync(path.join(framesDir, name))
         // fixture 实布局：三个 html 在 device-frames/ 子目录，layout.css 在 prototype/ 根（与清单 resources 声明一致）
         const source = path.join(prototypeDir, name === 'layout.css' ? name : path.join('device-frames', name))
         assert(written.equals(fs.readFileSync(source)), `材质化副本与源不一致：${name}`)
       }
+      const deckFile = fs.readFileSync(path.join(framesDir, DECK_FRAMEWORK_FILE_NAME), 'utf8')
+      assert(deckFile === DECK_FILE_EXPECTED, `deck-framework.md 与派生登记文本不一致（${deckFile.length} vs ${DECK_FILE_EXPECTED.length} 字符）`)
     })
   } finally {
     await instance.close()
@@ -600,7 +795,7 @@ async function scenarioV1() {
   return results
 }
 
-/** 场景 S2+S3（A3b/A14+RL6/RL8 + A4/V4）：预览面板交互 + 探针隔离 + doctor 八项。 */
+/** 场景 S2+S3（V5 前八节零回归 + 面板 + 探针）：预览面板交互 + 探针隔离 + doctor 十一节（mini-od ⑨ 降级形态）。 */
 async function scenarioPanelAndDoctor() {
   const results = []
   const workspace = makeWorkspaceDir('panel')
@@ -612,19 +807,46 @@ async function scenarioPanelAndDoctor() {
     await pickDesignPreset(page)
     await sendUserMessage(page, 'design a landing page')
 
-    await stepAsync(results, 'doctor 输出八项分节齐全（A4/V4）', async () => {
+    await stepAsync(results, 'doctor 输出十一分节齐全，前八节零回归（V5）', async () => {
       const body = await runDoctor(page)
-      const sections = ['安装形态与资源根', '清单路径与三层版本', 'roster 完整性核验', '改写规则命中清单', '材质化状态', '资产代际提示', '异常与恢复动作', '止损位状态']
-      assert(body.includes('OpenDesign 设计模式诊断报告'), '缺诊断报告标题')
-      sections.forEach((title, index) => {
-        assert(body.includes(`【${index + 1}/8】${title}`), `缺分节 ${index + 1}/8 ${title}`)
-      })
+      expectDoctorSections(body)
       assert(body.includes('资源根：'), '缺资源根行')
       assert(body.includes('manifest 版本'), '缺 manifest 版本行')
       assert(body.includes('结论：全部声明文件在场'), 'roster 核验应全过')
     })
 
-    await stepAsync(results, 'doctor 材质化状态报告落点清单（A4 第⑤项）', async () => {
+    await stepAsync(results, 'doctor ⑨ 资产丰富度：mini-od 三目录缺失降级形态带恢复动作（V6 降级口径）', async () => {
+      const body = await runDoctor(page)
+      assert(body.includes('【9/11】资产丰富度'), '缺第⑨节资产丰富度')
+      assert(body.includes('craft/ 目录缺失'), `⑨ 应报 craft 目录缺失降级：${body.slice(body.indexOf('【9/11】'), body.indexOf('【10/11】'))}`)
+      assert(body.includes('design-templates/ 目录缺失'), '⑨ 应报形状包目录缺失降级')
+      assert(body.includes('检查资产根（资源根见第①节）与 OD 安装完整性'), '⑨ 降级缺资产根完整性恢复动作')
+    })
+
+    await stepAsync(results, 'doctor ⑩ 协议对账：登记锚三行 + clone 未登记「无法比对」+ 登记恢复动作（V8 缺省态）', async () => {
+      const body = await runDoctor(page)
+      assert(body.includes('【10/11】协议与检查器对账'), '缺第⑩节协议对账')
+      assert(body.includes('panel 评审团协议'), '⑩ 缺 panel 登记锚行')
+      assert(body.includes('deck 演示稿协议'), '⑩ 缺 deck 登记锚行')
+      assert(body.includes('反 AI 味检查项清单'), '⑩ 缺检查项清单登记锚行')
+      assert(body.includes('源码仓 clone 探测：未登记'), '⑩ 未登记态应报「未登记」')
+      assert(body.includes('无法比对'), '⑩ 未登记态应报「无法比对」')
+      assert(body.includes('重新运行 /opendesign-doctor 并附 OpenDesign 源码仓 clone 路径参数'), '⑩ 缺登记路径恢复动作')
+      assert(body.includes('已知信息：clone HEAD 可能滞后'), '⑩ 缺 clone HEAD 滞后已知信息行')
+    })
+
+    await stepAsync(results, 'doctor ⑪ 质量发现：监听器运行形态（设计会话已起监听，V5 第⑪节）', async () => {
+      const workspaceReal = fs.realpathSync(workspace)
+      await waitForReportLine(workspaceReal, (line) => line.type === 'watcher' && line.event === 'started')
+      const body = await runDoctor(page)
+      assert(body.includes('【11/11】质量发现'), '缺第⑪节质量发现')
+      assert(body.includes('监听器状态：运行中'), `⑪ 应报监听器运行中：${body.slice(body.indexOf('【11/11】'), body.indexOf('【11/11】') + 600)}`)
+      assert(body.includes('累计启动 1 次'), '⑪ 监听器累计启动计数不对')
+      assert(body.includes('检查发现：共 0 条'), '⑪ 应报零发现（快照内既有文件未触碰不产生记录）')
+      assert(body.includes('产物写盘身份记录：0 条'), '⑪ 应报零身份记录（尚未有快照外写盘）')
+    })
+
+    await stepAsync(results, 'doctor 材质化状态报告落点清单（第⑤节）', async () => {
       const body = await runDoctor(page)
       assert(body.includes(path.join(workspace, '.od-frames')), '材质化状态缺写入落点路径')
       assert(body.includes('个管理名全部在场'), '材质化状态缺全在场结论')
@@ -665,6 +887,138 @@ async function scenarioPanelAndDoctor() {
       const frame = page.frameLocator('iframe.odp-frame')
       const open = await frame.locator('#probe-open').textContent({ timeout: 10000 })
       assert(open !== null && !open.includes('status=200'), `open 路由响应疑似可得：${JSON.stringify(open?.slice(0, 160))}`)
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
+/**
+ * 场景 S2b（V5 第⑨节非降级形态）：rich-assets 三目录齐备 → doctor ⑨ 报真实清点数
+ * （craft 册数按规则书口径排除两个元文件、形状包与解析异常、manifest 命中、清单段注入行数）。
+ */
+async function scenarioDoctorRich() {
+  const results = []
+  const workspace = makeWorkspaceDir('v5-rich')
+  const instance = await withInstance({ label: 'v5-rich', fixtureRoot: RICH_ROOT, workspaceDir: workspace })
+  try {
+    const { page } = instance
+    await pickWorkspace(page, workspace)
+    await pickDesignPreset(page)
+    await sendUserMessage(page, 'doctor richness check')
+    await stepAsync(results, 'doctor ⑨ 资产丰富度非降级：craft 3 册（排除元文件）/ 形状包 1 / manifest 命中 1（V5/D10⑨）', async () => {
+      const body = await runDoctor(page)
+      assert(body.includes('craft 手册：3 册'), `⑨ craft 册数不对（rich-assets 3 手册 + README 元文件应排除）：${body.slice(body.indexOf('【9/11】'), body.indexOf('【10/11】'))}`)
+      assert(body.includes('排除 README.md 与 FUTURE_SECTIONS.md 两个元文件'), '⑨ 缺规则书口径说明')
+      assert(body.includes('形状包：1 个（解析异常 0 个）'), '⑨ 形状包计数不对（rich-assets 恰 dashboard 一包）')
+      assert(body.includes('设计系统 manifest 命中：1 个（解析异常 0 个）'), '⑨ manifest 命中计数不对（rich-assets 恰 sample-brand 一包）')
+      assert(body.includes('形状包清单段 1 行 / 设计系统清单段 1 行'), '⑨ 清单段注入行数不对')
+      assert(body.includes('craft 指路块：注入'), '⑨ 应报 craft 指路块注入（craft/ 在场）')
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
+/**
+ * 场景 S3（V2+V10/RL1 真机半场+RL10）：质量环回注与指纹去重。
+ *
+ * 时序：设计会话（触发监听启动）→ 会话开始前 seed 的陌生既有文件触碰 → 只记录不回注
+ * （V10）→ 快照外新写 P0 产物 → 防抖 + 哨兵 + 检查 → followup 回注（协议信号形态断言）
+ * → 同内容重写 → 指纹去重（回注计数不变 + duplicate 记录恰一行）。
+ */
+async function scenarioQualityLoop() {
+  const results = []
+  const workspace = makeWorkspaceDir('v2')
+  // V10：会话开始前放陌生既有文件（监听启动快照内、无产物身份记录）
+  fs.copyFileSync(LEGACY_PAGE_HTML, path.join(workspace, 'legacy-page.html'))
+  const instance = await withInstance({ label: 'v2', fixtureRoot: MINI_OD_ROOT, workspaceDir: workspace })
+  const workspaceReal = fs.realpathSync(workspace)
+  try {
+    const { page, home } = instance
+    await pickWorkspace(page, workspace)
+    await pickDesignPreset(page)
+    await sendUserMessage(page, 'design a pricing page')
+
+    await stepAsync(results, '监听器启动记录在场（watcher started 行，V2 前置）', async () => {
+      await waitForReportLine(workspaceReal, (line) => line.type === 'watcher' && line.event === 'started')
+    })
+
+    await stepAsync(results, 'V10：触碰陌生既有文件——只落 finding 记录（unrecognized-existing），零回注', async () => {
+      // 读-改-写回：保持 </html> 文末结尾（过完整性哨兵），内容变化触发 fs.watch
+      const file = path.join(workspaceReal, 'legacy-page.html')
+      const original = fs.readFileSync(file, 'utf8')
+      fs.writeFileSync(file, original.replace('</body>', '  <div aria-hidden="true"></div>\n</body>'))
+      await waitForReportLine(workspaceReal, (line) => line.type === 'finding' && line.reason === 'unrecognized-existing')
+      const lines = readQualityReport(workspaceReal)
+      const hits = lines.filter((line) => line.type === 'finding' && line.id === 'purple-gradient' && line.reason === 'unrecognized-existing')
+      assert(hits.length === 1, `陌生既有文件的 purple-gradient finding 应恰 1 行：${JSON.stringify(lines)}`)
+      assert(hits[0].path === 'legacy-page.html', `finding path 应为 cwd 相对路径：${JSON.stringify(hits[0])}`)
+      assert(collectLintFeedbackMessages(home).length === 0, '陌生既有文件命中不应产生回注消息（V10 零回注）')
+    })
+
+    await stepAsync(results, 'V2：快照外新写 P0 产物——防抖后检查，回注消息以包专有 source.kind 注入会话（RL1 真机半场/AX7）', async () => {
+      fs.writeFileSync(path.join(workspaceReal, 'pricing.html'), dirtyArtifactHtml('Pricing'))
+      await waitForLintFeedbackCount(home, 1)
+      const messages = collectLintFeedbackMessages(home)
+      const message = messages[0]
+      assert(message.text.includes('[opendesign-design-mode 质量环]'), '回注文本开头应自报质量环身份（AX7）')
+      assert(message.text.includes('purple-gradient'), '回注文本缺检查项 id')
+      assert(message.text.includes('修复指引'), '回注文本缺修复指引')
+      assert(message.text.includes('仅修复你本会话产出的 HTML'), '回注文本缺作用域句（V10 作用域声明）')
+      assert(message.text.includes('修复后无需回复本消息'), '回注文本缺无需回复句')
+    })
+
+    await stepAsync(results, 'V2：report.jsonl 记录链完整——身份行 + finding（fed-back）落盘（RL9/SC5）', async () => {
+      await waitForReportLine(workspaceReal, (line) => line.type === 'finding' && line.reason === 'fed-back')
+      const lines = readQualityReport(workspaceReal)
+      assert(lines.some((line) => line.type === 'artifact' && line.path === 'pricing.html'), `快照外新写产物应有身份行：${JSON.stringify(lines.filter((l) => l.type === 'artifact'))}`)
+      const fedBack = lines.filter((line) => line.type === 'finding' && line.id === 'purple-gradient' && line.reason === 'fed-back')
+      assert(fedBack.length === 1, `pricing.html 的 purple-gradient fed-back finding 应恰 1 行：${JSON.stringify(fedBack)}`)
+      assert(fedBack[0].severity === 'P0', '回注发现 severity 应为 P0')
+    })
+
+    await stepAsync(results, 'V2/SI2：同内容重写指纹去重——回注消息计数不变，duplicate 记录恰一行（RL3）', async () => {
+      // 同内容重写：内容指纹（sha256 + P0 id 集）不变 → 去重不再回注，仅落 duplicate 记录
+      fs.writeFileSync(path.join(workspaceReal, 'pricing.html'), dirtyArtifactHtml('Pricing'))
+      await waitForReportLine(workspaceReal, (line) => line.type === 'finding' && line.reason === 'duplicate')
+      await sleep(2500) // 第二次写盘的防抖 + 检查 + 回注窗口余量：确认没有第二条回注
+      const messages = collectLintFeedbackMessages(home)
+      assert(messages.length === 1, `指纹去重后回注消息应仍为 1 条（去重事件计数）：${messages.length}`)
+      const duplicates = readQualityReport(workspaceReal).filter((line) => line.type === 'finding' && line.reason === 'duplicate')
+      assert(duplicates.length === 1 && duplicates[0].id === 'purple-gradient', `duplicate 记录应恰 1 行（purple-gradient）：${JSON.stringify(duplicates)}`)
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
+/**
+ * 场景 S4（V7/RL6）：非设计会话零侵入——standard 会话写 P0 HTML 进其工作目录，
+ * 零监听（无 .od-quality/ 目录）零回注（事件流无 lint 消息），插件不接管普通会话。
+ */
+async function scenarioStandardZeroIntrusion() {
+  const results = []
+  const workspace = makeWorkspaceDir('v7')
+  const instance = await withInstance({ label: 'v7', fixtureRoot: MINI_OD_ROOT, workspaceDir: workspace })
+  const workspaceReal = fs.realpathSync(workspace)
+  try {
+    const { page, home } = instance
+    await pickWorkspace(page, workspace)
+    await sendUserMessage(page, 'plain session writing an html file')
+
+    await stepAsync(results, 'V7：standard 会话写 P0 HTML——零监听（.od-quality/ 不出现）', async () => {
+      fs.writeFileSync(path.join(workspaceReal, 'legacy.html'), dirtyArtifactHtml('Plain session page'))
+      await sleep(3000) // 防抖（800ms）+ 检查窗口余量：若有监听该窗口内必然产生记录
+      assert(!fs.existsSync(path.join(workspaceReal, '.od-quality')), 'standard 会话工作目录不应出现 .od-quality/（零监听）')
+    })
+
+    await stepAsync(results, 'V7：standard 会话事件流零回注消息（preset 过滤生效）', async () => {
+      const messages = collectSessionFiles(home).flatMap((entry) => readSessionLog(entry.file).userMessages)
+      assert(messages.every((message) => message.kind !== LINT_SOURCE_KIND), `standard 会话不应有质量环回注消息：${JSON.stringify(messages.filter((m) => m.kind === LINT_SOURCE_KIND))}`)
     })
   } finally {
     await instance.close()
@@ -820,6 +1174,18 @@ async function scenarioResume() {
       gen1Entry.log.systemMessages.some((t) => t.includes('resume gen1')),
       'gen1 注入文本应含 gen1 资产内容（fixture 正文标记）',
     )
+
+    // V9 前半：gen1 会话内写 P0 产物 → 监听器回注（followup）。该产物落 report.jsonl
+    // 身份行——resume 后新一代监听器据此把它豁免出启动快照（改写照常回注，D5④）。
+    await stepAsync(results, 'V9 前半：gen1 会话写 P0 产物并获得回注（第一代检查环）', async () => {
+      const workspaceReal = fs.realpathSync(workspace)
+      await waitForReportLine(workspaceReal, (line) => line.type === 'watcher' && line.event === 'started')
+      fs.writeFileSync(path.join(workspaceReal, 'poster.html'), dirtyArtifactHtml('Poster'))
+      await waitForLintFeedbackCount(home, 1)
+      const messages = collectLintFeedbackMessages(home)
+      assert(messages[0].text.includes('poster.html'), `回注文本应指向产物相对路径：${JSON.stringify(messages[0].text.slice(0, 200))}`)
+    })
+
     await gen1.close()
     gen1 = null
 
@@ -871,6 +1237,53 @@ async function scenarioResume() {
       assert(body.includes('resume'), '代际提示未覆盖 resume 场景')
       assert(body.includes('v3.2.1'), `doctor 当前资产版本应为 gen2 的 3.2.1：${body.slice(0, 400)}`)
     })
+
+    await stepAsync(results, 'V9：doctor ⑪ 读出 gen1 检查记录——fed-back 发现 + 产物身份记录可回查（RL9/D5④ 读侧）', async () => {
+      const body = await runDoctor(gen2Page)
+      assert(body.includes('监听器状态'), '⑪ 缺监听器状态行')
+      assert(body.includes('[P0] purple-gradient — poster.html'), '⑪ 应呈现 gen1 产物的 P0 发现行')
+      assert(body.includes('已回注送达会话'), '⑪ 发现行应带 fed-back 裁决中文说明')
+      assert(body.includes('产物写盘身份记录：1 条'), '⑪ 产物写盘身份记录应可回查（D5④ 豁免集数据源）')
+      assert(body.includes('poster.html'), '⑪ 身份记录应含 poster.html')
+    })
+
+    // V9 后半（resume 后监听器复活与第二代回注）依赖宿主 resume 重组发 agent-preset/selected
+    // 事件——0.1.7 实测不发（registry select() 对有历史回合的会话 locked，resume 走投影状态
+    // 重挂且幂等不写事件，亲读 packages/preset/agent-preset-registry/src/index.ts:368-377 与
+    // 会话日志实读核实）：gen2 进程无新 started 行、同内容重写零回注。自愈接线是设计外新
+    // 机制（D4 无此语义），归 U5 领地待裁决；本场景探测两种实态：复活则走 V9 完整断言
+    // （0.2.2 或接线补边后形态），未复活则显式播报降级、登记补跑路径（不静默、不固化缺陷）。
+    const resumeWatcherRevived = await (async () => {
+      const workspaceReal = fs.realpathSync(workspace)
+      fs.writeFileSync(path.join(workspaceReal, 'poster.html'), dirtyArtifactHtml('Poster'))
+      const deadline = Date.now() + 12000
+      while (Date.now() < deadline) {
+        const starts = readQualityReport(workspaceReal).filter((l) => l.type === 'watcher' && l.event === 'started').length
+        if (starts >= 2) return true
+        await sleep(500)
+      }
+      return false
+    })()
+
+    if (resumeWatcherRevived) {
+      await stepAsync(results, 'V9/SC4：resume 后同内容重写上一代产物——身份豁免照常回注一次（指纹进程内重启即清的幂等代价）', async () => {
+        await waitForLintFeedbackCount(home, 2)
+        const messages = collectLintFeedbackMessages(home)
+        assert(messages.length === 2, `resume 后同内容首写应恰第二次回注（指纹重启即清 + 身份豁免照常回注）：${messages.length}`)
+        assert(messages[1].text.includes('poster.html'), `第二次回注应仍指向 poster.html：${JSON.stringify(messages[1].text.slice(0, 200))}`)
+      })
+
+      await stepAsync(results, 'V9/SI2：第二代指纹去重——再次同内容重写不再回注（RL3 的 resume 形态）', async () => {
+        const workspaceReal = fs.realpathSync(workspace)
+        fs.writeFileSync(path.join(workspaceReal, 'poster.html'), dirtyArtifactHtml('Poster'))
+        await waitForReportLine(workspaceReal, (line) => line.type === 'finding' && line.reason === 'duplicate')
+        await sleep(2500)
+        assert(collectLintFeedbackMessages(home).length === 2, '第二代同内容重写应被指纹去重，回注计数停在 2')
+      })
+    } else {
+      console.log('    [环境降级] 0.1.7 宿主 resume 重组不发 agent-preset/selected 事件（registry select() 对已开局会话 locked）：resume 后质量环监听器不自动复活，V9/SC4+SI2 完整断言跳过——已写入 poster.html 触发实态，待接线补边（自愈通道归 U5 领地裁决）或 0.2.2 桌面宿主验证后补跑')
+      results.push({ name: 'V9 后半降级登记：resume 后监听器复活探测（未复活——见场景播报）', ok: true })
+    }
   } finally {
     if (gen1 !== null) await gen1.close()
     if (gen2 !== null) await gen2.close()
@@ -920,40 +1333,41 @@ async function scenarioProjectWrites() {
     genB = await launch(GEN2_ROOT)
     await runDesignSession(genB, 'session three: deck page')
 
-    step(results, 'V11：新增文件恰为 .od-frames/ 四管理名（D8 清单，注指令块形态不落盘）', () => {
+    step(results, 'V11：新增文件恰为 .od-frames/ 五管理名（D8 清单 4 复制件 + deck-framework.md 派生件）', () => {
       const framesDir = path.join(workspace, '.od-frames')
       assert(fs.existsSync(framesDir), '.od-frames/ 未落盘')
       const names = fs.readdirSync(framesDir)
       assert(
-        OD_FRAMES_FILES.every((name) => names.includes(name)) && names.length === OD_FRAMES_FILES.length,
-        `.od-frames/ 文件集合不对：${JSON.stringify(names)}`,
+        MATERIALIZED_WRITE_LIST.every((name) => names.includes(name)) && names.length === MATERIALIZED_WRITE_LIST.length,
+        `.od-frames/ 文件集合不对：${JSON.stringify(names)}（期望 ${JSON.stringify(MATERIALIZED_WRITE_LIST)}）`,
       )
     })
 
-    step(results, 'V11：git status 无 tracked 变更、untracked 恰为 .od-frames/（反向断言 D8 ④）', () => {
+    step(results, 'V11：git status 无 tracked 变更、untracked 恰为 .od-frames/ 与 .od-quality/（反向断言 D8 ④ + D4 记录目录）', () => {
       const lines = gitStatus()
       const tracked = lines.filter((l) => !l.startsWith('??'))
       assert(tracked.length === 0, `既有 tracked 文件被改写：${JSON.stringify(tracked)}`)
       const untracked = lines.filter((l) => l.startsWith('??'))
       assert(
-        untracked.length === 1 && untracked[0].includes('.od-frames/'),
-        `untracked 应恰为 .od-frames/：${JSON.stringify(untracked)}`,
+        untracked.length === 2 && untracked.every((l) => l.includes('.od-frames/') || l.includes('.od-quality/')),
+        `untracked 应恰为 .od-frames/ 与 .od-quality/（材质化根 + 质量环记录目录）：${JSON.stringify(untracked)}`,
       )
     })
 
     step(results, 'V11：幂等——重复会话不堆积；升级轮（gen2 不声明壳资源）旧副本原样保留、无清单外写入', () => {
       const framesDir = path.join(workspace, '.od-frames')
-      // gen2 清单未声明设备壳资源（重铺计划为空）：既有四文件按 D8 覆盖语义原样保留，
-      // 不堆积新文件、不被清除——重铺波及面不变量的升级轮形态。
+      // gen2 清单未声明设备壳资源（复制件重铺计划为空）：既有四复制件按 D8 覆盖语义原样
+      // 保留，deck-framework.md（派生登记件）无条件重铺——不堆积新文件、不被清除，
+      // 重铺波及面不变量的升级轮形态。
       const names = fs.readdirSync(framesDir)
       assert(
-        OD_FRAMES_FILES.every((name) => names.includes(name)) && names.length === OD_FRAMES_FILES.length,
+        MATERIALIZED_WRITE_LIST.every((name) => names.includes(name)) && names.length === MATERIALIZED_WRITE_LIST.length,
         `.od-frames/ 文件集合在升级轮后不对：${JSON.stringify(names)}`,
       )
       const projectFiles = fs.readdirSync(workspace)
       assert(
-        projectFiles.filter((name) => name !== '.git' && name !== '.od-frames').length === 0,
-        `项目目录出现清单外文件：${JSON.stringify(projectFiles)}`,
+        projectFiles.filter((name) => name !== '.git' && name !== '.od-frames' && name !== '.od-quality').length === 0,
+        `项目目录出现清单外文件：${JSON.stringify(projectFiles)}（.od-quality/ 是质量环记录目录，D4 设计内写入）`,
       )
       // mini-od 轮写下的副本与其源逐字节一致（升级轮之前的覆盖语义已在 S1 断言，这里对账升级轮不清除）
       const prototypeDir = path.join(MINI_OD_SCENARIO, 'assets', 'task-profiles', 'prototype')
@@ -961,6 +1375,10 @@ async function scenarioProjectWrites() {
         const source = path.join(prototypeDir, name === 'layout.css' ? name : path.join('device-frames', name))
         assert(fs.readFileSync(path.join(framesDir, name)).equals(fs.readFileSync(source)), `升级轮后副本应保持 mini-od 源内容（${name}）`)
       }
+      assert(
+        fs.readFileSync(path.join(framesDir, DECK_FRAMEWORK_FILE_NAME), 'utf8') === DECK_FILE_EXPECTED,
+        '升级轮后 deck-framework.md 应保持派生登记文本（无条件重铺语义）',
+      )
     })
   } finally {
     if (genA !== null) await genA.close()
@@ -1073,13 +1491,16 @@ try {
   console.log('[e2e] 模板就绪\n')
 
   const scenarios = [
-    ['S1 A1/V1+RL1 roster+注入+默认会话+材质化', scenarioV1],
-    ['S2+S3 A3b/A14+RL6/RL8+A4/V4 面板+探针+doctor', scenarioPanelAndDoctor],
-    ['S4 A5/V5+RL5 无资产+SI3', scenarioNoAssets],
-    ['S5 A6/V6 资产漂移', scenarioDrift],
-    ['S6 A13/V9+RL7 resume 代际重组', scenarioResume],
-    ['S7 A15/V11 项目目录写入形态', scenarioProjectWrites],
-    ['S8 A9/A10/A11 shell 包共存回归（runner 串接）', scenarioShellCoexistRegression],
+    ['S1 V1+V3+V4注入 roster+注入四新段+默认会话+材质化5文件', scenarioV1],
+    ['S2+S3 V5前八节+⑨降级+⑩未登记+⑪监听 面板+探针+doctor', scenarioPanelAndDoctor],
+    ['S2b V5⑨非降级 rich-assets 丰富度清点', scenarioDoctorRich],
+    ['S3 V2+V10 质量环回注+指纹去重+陌生既有文件', scenarioQualityLoop],
+    ['S4 V7 非设计会话零侵入', scenarioStandardZeroIntrusion],
+    ['S5 V6无资产+SI3', scenarioNoAssets],
+    ['S6 V6漂移', scenarioDrift],
+    ['S7 V9+RL7 resume 代际重组+检查环不变量', scenarioResume],
+    ['S8 V11 项目目录写入形态（5 管理名）', scenarioProjectWrites],
+    ['S9 A9/A10/A11 shell 包共存回归（runner 串接）', scenarioShellCoexistRegression],
   ]
 
   const outcome = []

@@ -156,9 +156,9 @@ describe('占位符零残留（RL3 断言对象；panel 槽位标记是 D8 有�
     expect(INJECTED_TEXT).not.toContain('{{')
   })
 
-  it('全文 {{ 字面仅限 panel 槽位三标记（槽位模型自填 = D8 有意保留，其余域零残留）', () => {
-    const tokens = [...new Set(composed.text.match(/\{\{[a-zA-Z]+\}\}/g) ?? [])].sort()
-    expect(tokens).toEqual(['{{brandBody}}', '{{brandName}}', '{{skillId}}'])
+  it('全文 {{ 字面清零（宿主 system-prompt 装配器对注入文本跑变量插值：任何 {{...}} 残留都 fail-fast——U7 真机缺陷修复后，panel 槽位以 [[token]] 形态保留）', () => {
+    const tokens = [...new Set(composed.text.match(/\{\{[^{}]*\}\}/g) ?? [])]
+    expect(tokens).toEqual([])
   })
 
   it('替换逻辑：占位符文本经白名单过滤渲染（OD 升级防御行为）', () => {
@@ -514,7 +514,7 @@ describe('设计系统清单段（D3 manifest 感知，U2）', () => {
 describe('panel 评审团协议段（D8 接线，U3b）', () => {
   it('组装产物含 panel 协议段：指引块先于骨架，CRITIQUE_RUN 标记在场（验收条款①）', () => {
     const guidanceAt = composed.text.indexOf('[Panel jury protocol — DSH session form]')
-    const skeletonAt = composed.text.indexOf('# Critique Theater (active skill: {{skillId}})')
+    const skeletonAt = composed.text.indexOf('# Critique Theater (active skill: [[skillId]])')
     expect(guidanceAt).toBeGreaterThanOrEqual(0)
     expect(skeletonAt).toBeGreaterThan(guidanceAt)
     expect(composed.text).toContain('<CRITIQUE_RUN version="1" maxRounds="3" threshold="8" scale="10">')
@@ -553,9 +553,9 @@ describe('panel 评审团协议段（D8 接线，U3b）', () => {
     expect(() => composeSystemPrompt({ profile, panelParams: { maxRounds: 0 } })).toThrow(RangeError)
   })
 
-  it('brand/skill 槽位占位标记保留 + 模型自填指引在场（D8 DSH 生产形态）', () => {
-    expect(composed.text).toContain('# Critique Theater (active skill: {{skillId}})')
-    expect(composed.text).toContain('<BRAND_SOURCE name="{{brandName}}">')
+  it('brand/skill 槽位占位标记保留（[[token]] 形态，宿主插值安全）+ 模型自填指引在场（D8 DSH 生产形态）', () => {
+    expect(composed.text).toContain('# Critique Theater (active skill: [[skillId]])')
+    expect(composed.text).toContain('<BRAND_SOURCE name="[[brandName]]">')
     expect(composed.text).toContain('the selected design-template directory name')
     expect(composed.text).toContain('No brand source selected for this run.')
     expect(composed.text).toContain('ship-on-write')

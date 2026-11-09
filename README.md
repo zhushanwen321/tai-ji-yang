@@ -276,7 +276,7 @@ cd ~/.dsh/profiles/<profile> && pnpm install
 
 ## 多包结构
 
-本仓是 pnpm 多包 workspace：根包 = `tai-ji-yang-shell`（本 README 主体描述的包），功能型子包逐个落 `packages/<name>/`。当前子包：`packages/opendesign-design-mode`——OpenDesign 设计模式插件包（新会话选择器出现「OpenDesign 设计模式」入口，定位本机 OpenDesign 资产驱动设计会话，产物在右侧栏设计面板预览；未装 OpenDesign 时入口显式降级提示）。
+本仓是 pnpm 多包 workspace：根包 = `tai-ji-yang-shell`（本 README 主体描述的包），功能型子包逐个落 `packages/<name>/`。当前子包：`packages/opendesign-design-mode`——OpenDesign 设计模式插件包（新会话选择器出现「OpenDesign 设计模式」入口，定位本机 OpenDesign 资产驱动设计会话：资产清单注入 + 工艺手册指路 + 产物机器检查回注 + 协议级演示稿，产物在右侧栏设计面板预览；未装 OpenDesign 时入口显式降级提示）。
 
 - **包清单**：`pnpm-workspace.yaml` 声明 `packages/*`；`scripts/workspace-packages.mjs` 登记每包构建声明并与之对账（不同步即构建/检查失败）。
 - **构建**：`pnpm build`（= `node scripts/build-client.mjs`）逐包产出各包 `lib/`；各包产物随仓库交付（与根包同一纪律：`lib/` 入库、先构建再安装）。
@@ -286,9 +286,11 @@ cd ~/.dsh/profiles/<profile> && pnpm install
 ### opendesign-design-mode 的 V1 边界与交付说明
 
 - **可交付范围（V1）**：八类 HTML 文件产物——原型、演示稿（ppt）、文档、营销源码、动效源码（HTML 部分）、HyperFrames 动效源码、网页复刻、webgl。**图片/视频/音频成片生成不在 V1 范围**（依赖 OpenDesign 自身的 media 管线，纯 DSH 环境无等价物）：会话中提出此类请求时模型会如实说明并以 HTML 源码形态替代交付。live-artifact（数据看板自动刷新类产物）同样归后续版本。
-- **演示稿形态**：V1 交付为普通单文件 HTML（含模型自带的翻页/打印脚本），OpenDesign 的 deck 宿主协议级翻页与打印分页为后续版本能力。
-- **`.od-frames/` 目录**：设计会话会向会话工作目录的 `.od-frames/` 子目录写入 OpenDesign 设备壳支撑文件（4 个小文件，会话创建时全量重铺）。它是产物运行时依赖：删除会断开既有原型对手持壳的引用。建议把 `.od-frames/` 加进项目 `.gitignore`（该目录可随时删除，下次设计会话自动重建）。
-- **诊断**：会话内执行 `/opendesign-doctor` 可查看资产定位结果、OpenDesign 版本画像、改写规则命中清单、材质化状态与逐项恢复动作；改写规则出现大面积失配（核心段失配 ≥3 条 / 默认读取器不可用 / 连续两版升级全量重写）时 doctor 会输出「建议方案级重审」警示。
+- **资产注入**：设计会话系统提示词含本机资产清单——形状包清单段（一行一包：目录名 + 模式 + 描述首句 + 中文触发词摘录）、craft 工艺手册指路块（形状包 `craft.requires` 声明的手册按根路径自读并遵循）、manifest 感知设计系统清单段（品牌名 + 品类 + USAGE.md / components.html / tailwind-v4.css 深层文件指路）；任一目录缺失时对应段显式降级为空清单指引，会话仍可用。
+- **演示稿形态**：演示稿带 deck 协议信号——会话目录铺 `.od-frames/deck-framework.md` 协议文件（协议级翻页 / 打印分页 / OD Deck Protocol v1），ppt 任务档条目带指针，模型自读协议文件后按规范产出（协议级翻页与 Save-as-PDF 多页分页可用）。
+- **产物质量环**：设计会话工作目录落盘的 HTML 产物经宿主侧机器检查（反 AI 味检查项，与 OpenDesign 上游检查器同源移植）；P0 发现自动回注会话（消息自报 `opendesign-design-mode/lint` 身份，含检查项 / 片段 / 修复指引，模型自纠——用户不转发、不盯守）；P1/P2 建议仅记录进诊断可查。同内容重写按指纹去重、每文件回注上限 2 次；会话开始前已存在的陌生 HTML 只记录不回注；非设计会话零监听零回注。检查记录与会话目录 `.od-quality/report.jsonl`（可随时删除）。
+- **`.od-frames/` 目录**：设计会话会向会话工作目录的 `.od-frames/` 子目录写入 OpenDesign 设备壳支撑文件与 deck 协议文件（5 个小文件，会话创建时全量重铺）。它是产物运行时依赖：删除会断开既有原型对手持壳的引用。建议把 `.od-frames/`（与 `.od-quality/`）加进项目 `.gitignore`（两个目录都可随时删除，下次设计会话自动重建）。
+- **诊断**：会话内执行 `/opendesign-doctor` 可查看十一节报告——资产定位、清单版本、roster 完整性、改写命中、材质化状态、代际提示、异常恢复、止损位（前八节），以及资产丰富度（craft 册数 / 形状包数 / manifest 命中）、协议与检查器对账（panel / deck / 检查项清单版本锚与源码仓 clone 三态比对，clone 路径以 `/opendesign-doctor <clone 路径>` 登记）、质量发现（P0/P1/P2 记录、监听器状态、产物写盘身份）；逐项降级带恢复动作。改写规则出现大面积失配（核心段失配 ≥3 条 / 默认读取器不可用 / 连续两版升级全量重写）时 doctor 会输出「建议方案级重审」警示。
 - **资产代际**：插件按文本标记自动识别安装版 OpenDesign 的资产代际并适配（已对 2.0.4 安装资产实测锚定）；doctor 对未能识别代际的版本给出警告。
 
 ## 开发约定（本包自身的边界）

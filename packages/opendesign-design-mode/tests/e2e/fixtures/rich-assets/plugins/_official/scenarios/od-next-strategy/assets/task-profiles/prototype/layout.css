@@ -1,0 +1,18 @@
+/*
+ * fixture 语义等价样本：OD 仓 plugins/_official/scenarios/od-next-strategy/assets/task-profiles/prototype/layout.css
+ * （0.25.1 检出原文，2026-11-09）。真实文件为完整布局原语库；本样本按任务书
+ * 「语义等价样本」保留三要素：@layer od-layout 分层声明、核心布局原语类名
+ * （.od-stack/.od-row/.od-grid）、hidden 优先规则——省略全部次要原语。
+ */
+@layer od-layout {
+  [hidden]:not([hidden="until-found" i]) { display: none !important; }
+  dialog:not([open]) { display: none !important; }
+
+  :where(.od-stack, .od-row, .od-grid) > :where(*) { min-width: 0; }
+
+  /* containers */
+  .od-stack { display: flex; flex-direction: column; gap: var(--od-gap, 8px); }
+  .od-row   { display: flex; align-items: center; gap: var(--od-gap, 8px); }
+  .od-fill  { flex: 1 1 0; min-width: 0; }
+  .od-grid  { display: grid; gap: var(--od-gap, 12px); grid-template-columns: repeat(var(--od-cols, 3), minmax(0, 1fr)); }
+}

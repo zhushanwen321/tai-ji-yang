@@ -10,9 +10,11 @@
  * cordis.patch.yml} 后 pnpm install，依赖用 link: 指向仓内包目录（node_modules 留符号链接，
  * lib/ 改动即生效）。
  *
- * 核心组（验收计划表 A8 的 L3 段；模型行为段归 D3）：roster（选择器菜单 + 芯片选择）→
- * 注入（会话日志 system 节点特征句）→ doctor 八项 → 预览面板 iframe 产物载入 + 探针
- * （RL6/RL8 的 0.2.2 形态）。
+ * 核心组（验收计划表 A9 的 L3 段；模型行为段归 L4）：roster（选择器菜单 + 芯片选择）→
+ * 注入（会话日志 system 节点特征句）→ doctor 十一分节（V5 的 0.2.2 形态，前八节零回归）→
+ * 材质化恰 5 管理名（D8+D9）→ 预览面板 iframe 产物载入 + 探针（RL6/RL8 的 0.2.2 形态）→
+ * 检查环桌面宿主可用性（V2 的 0.2.2 形态：真机写盘 P0 产物 → 回注消息 source.kind
+ * 协议信号形态断言 + report.jsonl fed-back 记录——RL1 的 0.2.2 半场）。
  *
  * AS7 混合内容（桌面 dsh-app:// 嵌 http://127.0.0.1 iframe）：实测已于 U6 交付门完成并关闭
  * （RR3）：裸 iframe 与 sandbox="allow-scripts" 均触发 load、无混合内容/CSP 阻拦、产物脚本
@@ -64,6 +66,50 @@ const MINI_OD_SCENARIO = path.join(MINI_OD_ROOT, 'plugins', '_official', 'scenar
 const DESIGN_INJECTION_MARK = '## Task routing (design mode)'
 const MINI_OD_PROFILE_PATH = path.join(MINI_OD_SCENARIO, 'assets', 'task-profiles', 'prototype.md')
 const OD_FRAMES_FILES = ['android.html', 'iphone.html', 'neutral.html', 'layout.css']
+/** 质量环回注消息的 source.kind（lib/quality/feedback.js LINT_SOURCE_KIND 同值；AX7）。 */
+const LINT_SOURCE_KIND = 'opendesign-design-mode/lint'
+/** P0 命中特征（purple-gradient：线性渐变含紫 hex，lint.ts PURPLE_HEXES 命中形态）。 */
+const DIRTY_GRADIENT = 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)'
+
+// 材质化写清单与 deck 协议派生文本直接对账生产实现（同仓构建产物；清单/文本漂移即红）。
+const { MATERIALIZED_WRITE_LIST, DECK_FRAMEWORK_FILE_NAME } = await import(
+  path.join(PKG_ROOT, 'lib', 'materialize', 'copy.js')
+)
+const { renderDeckFrameworkFile } = await import(path.join(PKG_ROOT, 'lib', 'protocols', 'deck.js'))
+
+/** doctor 十一分节标题（lib/commands/doctor.ts DOCTOR_SECTIONS 字面对账；U6 扩展后形态）。 */
+const DOCTOR_SECTIONS_11 = [
+  '安装形态与资源根',
+  '清单路径与三层版本',
+  'roster 完整性核验',
+  '改写规则命中清单',
+  '材质化状态',
+  '资产代际提示',
+  '异常与恢复动作',
+  '止损位状态',
+  '资产丰富度',
+  '协议与检查器对账',
+  '质量发现',
+]
+
+/** 构造一个含 P0 特征（紫渐变）且过完整性哨兵（文末 </html>）的产物 HTML 文本。 */
+function dirtyArtifactHtml(title) {
+  return [
+    '<!doctype html>',
+    '<html lang="en">',
+    '<head>',
+    '  <meta charset="utf-8" />',
+    `  <title>${title}</title>`,
+    '  <style>',
+    `    .hero { background: ${DIRTY_GRADIENT}; color: #fff; padding: 48px; }`,
+    '  </style>',
+    '</head>',
+    '<body>',
+    `  <div class="hero"><h1>${title}</h1></div>`,
+    '</body>',
+    '</html>',
+  ].join('\n')
+}
 
 // ── 前置 ─────────────────────────────────────────────────────────────────────
 
@@ -221,6 +267,61 @@ function readSystemMessages(file) {
   return messages
 }
 
+/** 读取一份会话日志的 user/message 消息（data = 消息本体；回注消息按 source.kind 辨识）。 */
+function readUserMessages(file) {
+  const messages = []
+  for (const line of fs.readFileSync(file, 'utf8').trim().split('\n')) {
+    if (line === '') continue
+    const event = JSON.parse(line)
+    if (event.type === 'user/message') {
+      messages.push({
+        kind: event.data?.source?.kind ?? null,
+        text: event.data?.content?.[0]?.text ?? '',
+      })
+    }
+  }
+  return messages
+}
+
+/** 收集全部会话日志里的质量环回注消息（kind 匹配 LINT_SOURCE_KIND）。 */
+function collectLintFeedbackMessages() {
+  return collectSessionFiles().flatMap((entry) => readUserMessages(entry.file)).filter((m) => m.kind === LINT_SOURCE_KIND)
+}
+
+/** 读取 workspace 的 .od-quality/report.jsonl（缺席返回空清单；损坏行跳过）。 */
+function readQualityReport() {
+  const file = path.join(fs.realpathSync(workspace), '.od-quality', 'report.jsonl')
+  if (!fs.existsSync(file)) return []
+  const lines = []
+  for (const lineText of fs.readFileSync(file, 'utf8').split('\n')) {
+    const trimmed = lineText.trim()
+    if (trimmed === '') continue
+    try { lines.push(JSON.parse(trimmed)) } catch { /* 半行写入容忍 */ }
+  }
+  return lines
+}
+
+/** 轮询直到 report.jsonl 满足谓词（写侧 appendFile 即时落盘，轮询只为时序余量）。 */
+async function waitForReportLine(predicate, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const lines = readQualityReport()
+    if (lines.some(predicate)) return lines
+    await sleep(400)
+  }
+  throw new AssertionError(`等待 .od-quality/report.jsonl 超时（${timeoutMs}ms）`)
+}
+
+/** 轮询直到回注消息计数达到 expected。 */
+async function waitForLintFeedbackCount(expected, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (collectLintFeedbackMessages().length >= expected) return collectLintFeedbackMessages().length
+    await sleep(500)
+  }
+  throw new AssertionError(`等待质量环回注消息达到 ${expected} 条超时（${timeoutMs}ms；实际 ${collectLintFeedbackMessages().length} 条）`)
+}
+
 async function waitForSessionContent(predicate, timeoutMs = 30000) {
   const gateDeadline = Date.now() + timeoutMs
   while (Date.now() < gateDeadline) {
@@ -284,7 +385,26 @@ try {
     assert(!sys.includes('$OD_BIN'), '注入文本含 $OD_BIN 特征串（RL3 命令清零失效）')
   })
 
-  await step('doctor：八项分节齐全（V4 的 0.2.2 形态）', async () => {
+  await step('材质化：.od-frames/ 恰 5 管理名（4 复制件 + deck-framework.md）且派生文本一致（D8+D9 的 0.2.2 形态）', async () => {
+    const framesDir = path.join(fs.realpathSync(workspace), '.od-frames')
+    const deadline = Date.now() + 20000
+    let frames = []
+    while (Date.now() < deadline) {
+      frames = fs.existsSync(framesDir) ? fs.readdirSync(framesDir) : []
+      if (MATERIALIZED_WRITE_LIST.every((name) => frames.includes(name))) break
+      await sleep(500)
+    }
+    assert(
+      MATERIALIZED_WRITE_LIST.every((name) => frames.includes(name)) && frames.length === MATERIALIZED_WRITE_LIST.length,
+      `.od-frames/ 文件集合不对：${JSON.stringify(frames)}（期望 ${JSON.stringify(MATERIALIZED_WRITE_LIST)}）`,
+    )
+    const deckFile = fs.readFileSync(path.join(framesDir, DECK_FRAMEWORK_FILE_NAME), 'utf8')
+    const expected = renderDeckFrameworkFile()
+    assert(deckFile === expected, `deck-framework.md 与派生登记文本不一致（${deckFile.length} vs ${expected.length} 字符）`)
+    assert(expected.includes('## New deck only') && expected.includes('## Existing deck or selected template'), 'deck 铺盘文本应含三段结构')
+  })
+
+  await step('doctor：十一分节齐全（V5 的 0.2.2 形态，前八节零回归）', async () => {
     const composer = page.locator('[contenteditable="true"]').first()
     await composer.click()
     await page.keyboard.type('/opendesign-doctor')
@@ -295,10 +415,15 @@ try {
     await sleep(3000)
     const body = await page.evaluate(() => document.body.innerText)
     assert(body.includes('OpenDesign 设计模式诊断报告'), '缺诊断报告标题')
-    const sections = ['安装形态与资源根', '清单路径与三层版本', 'roster 完整性核验', '改写规则命中清单', '材质化状态', '资产代际提示', '异常与恢复动作', '止损位状态']
-    sections.forEach((title, index) => {
-      assert(body.includes(`【${index + 1}/8】${title}`), `缺分节 ${index + 1}/8 ${title}`)
+    DOCTOR_SECTIONS_11.forEach((title, index) => {
+      assert(body.includes(`【${index + 1}/11】${title}`), `缺分节 ${index + 1}/11 ${title}`)
     })
+    // ⑩ 缺省态（clone 未登记）：无法比对 + 登记恢复动作；⑪ 监听器运行形态。
+    assert(body.includes('源码仓 clone 探测：未登记'), '⑩ 未登记态应报「未登记」')
+    assert(body.includes('无法比对'), '⑩ 未登记态应报「无法比对」')
+    assert(body.includes('重新运行 /opendesign-doctor 并附 OpenDesign 源码仓 clone 路径参数'), '⑩ 缺登记路径恢复动作')
+    assert(body.includes('监听器状态：运行中'), '⑪ 设计会话应报监听器运行中（检查环桌面宿主已起监听）')
+    assert(body.includes('检查发现：共 0 条'), '⑪ 尚无发现时应报零发现')
   })
 
   await step('预览：fixture 产物载入 iframe 且探针呈隔离形态（RL6/RL8 的 0.2.2 形态）', async () => {
@@ -319,6 +444,22 @@ try {
     assert(!parsed.openRoute.includes('status=200'), `open 路由响应疑似可得：${parsed.openRoute}`)
     assert(!parsed.secretFile.includes('SECRET-NOTE-CANARY'), '非产物内容泄漏')
     assert(/^cookie: \(empty\)|^cookie: blocked SecurityError/.test(parsed.cookie), `cookie 形态不对：${parsed.cookie}`)
+  })
+
+  await step('检查环可用性：真机写盘 P0 产物 → followup 回注消息 source.kind 协议信号形态（V2/RL1 的 0.2.2 形态）', async () => {
+    const workspaceReal = fs.realpathSync(workspace)
+    await waitForReportLine((line) => line.type === 'watcher' && line.event === 'started')
+    fs.writeFileSync(path.join(workspaceReal, 'landing.html'), dirtyArtifactHtml('Landing'))
+    await waitForLintFeedbackCount(1)
+    const messages = collectLintFeedbackMessages()
+    const message = messages[0]
+    assert(message.text.includes('[opendesign-design-mode 质量环]'), '回注文本开头应自报质量环身份（AX7）')
+    assert(message.text.includes('purple-gradient'), '回注文本缺检查项 id')
+    assert(message.text.includes('修复指引'), '回注文本缺修复指引')
+    assert(message.text.includes('仅修复你本会话产出的 HTML'), '回注文本缺作用域句')
+    const fedBack = readQualityReport().filter((line) => line.type === 'finding' && line.id === 'purple-gradient' && line.reason === 'fed-back')
+    assert(fedBack.length === 1, `landing.html 的 purple-gradient fed-back finding 应恰 1 行：${JSON.stringify(fedBack)}`)
+    assert(readQualityReport().some((line) => line.type === 'artifact' && line.path === 'landing.html'), '快照外新写产物应落身份行（D5④）')
   })
 
   await step('AS7 衔接结论：asar 宿主 http 形态 iframe 隔离语义复核通过（dsh-app:// 壳层形态以 U6 交付门实测为准：无混合内容阻拦，RR3 关闭）', async () => {
