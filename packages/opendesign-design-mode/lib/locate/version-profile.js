@@ -62,6 +62,13 @@ function buildVersionProfile(candidates) {
 function locateOdAssets(hints = locateEnvHints()) {
   return buildVersionProfile(collectAssetCandidates(hints));
 }
+function deriveCatalogDirs(resourceRoot) {
+  return {
+    craftRoot: join(resourceRoot, "craft"),
+    shapeTemplatesRoot: join(resourceRoot, "design-templates"),
+    designSystemsRoot: join(resourceRoot, "design-systems")
+  };
+}
 function readRosterAsset(profile, relativePath) {
   let manifest;
   try {
@@ -91,6 +98,7 @@ function readRosterAsset(profile, relativePath) {
 export {
   VERIFIED_SPEC_VERSIONS,
   buildVersionProfile,
+  deriveCatalogDirs,
   locateOdAssets,
   readRosterAsset
 };

@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "od-design-system-project/v1",
+  "id": "partial-brand",
+  "name": "Partial Brand",
+  "description": "合法 JSON 但缺 category 键——D3 口径：字段缺席与非法 JSON 同口径计解析异常。"
+}

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "od-design-system-project/v1",
+  "id": "plain-brand",
+  "name": "Plain Brand",
+  "category": "Utilities",
+  "description": "manifest 合法齐备但包内无 USAGE.md / components.html / tailwind-v4.css——深层文件按包可选（真机 tom-modern 无 USAGE、cloudflare-kumo 无 tailwind 同族形态）。"
+}

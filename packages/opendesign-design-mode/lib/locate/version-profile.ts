@@ -123,6 +123,31 @@ export function locateOdAssets(hints: LocateEnvHints = locateEnvHints()): Versio
 }
 
 /**
+ * 资产根直系子目录三目录路径集（AS8：craft/、design-templates/、design-systems/ 与
+ * plugins/ 同根——本机安装资源树实测，V1 画像的 resourceRoot 即此根）。
+ */
+export interface AssetCatalogDirs {
+  /** craft/ 工艺手册目录绝对路径。 */
+  craftRoot: string
+  /** design-templates/ 形状包目录绝对路径。 */
+  shapeTemplatesRoot: string
+  /** design-systems/ 设计系统包目录绝对路径。 */
+  designSystemsRoot: string
+}
+
+/**
+ * 从资源根派生三目录路径（纯路径计算，不做存在性探测——目录是否在场由
+ * asset-catalog 的各扫描函数在读取时判定并降级，AX5 存在性容错）。
+ */
+export function deriveCatalogDirs(resourceRoot: string): AssetCatalogDirs {
+  return {
+    craftRoot: join(resourceRoot, 'craft'),
+    shapeTemplatesRoot: join(resourceRoot, 'design-templates'),
+    designSystemsRoot: join(resourceRoot, 'design-systems'),
+  }
+}
+
+/**
  * 默认读取器：读清单 roster 内声明的资产文本（UD2 直连，无版本分支）。
  *
  * 两道校验后直读：

@@ -28,10 +28,18 @@ import {
 } from '../lib/locate/manifest-discovery.js'
 import {
   buildVersionProfile,
+  deriveCatalogDirs,
   locateOdAssets,
   readRosterAsset,
   VERIFIED_SPEC_VERSIONS,
 } from '../lib/locate/version-profile.js'
+import {
+  buildAssetCatalog,
+  buildCraftCatalog,
+  buildDesignSystemCatalog,
+  buildShapeTemplateCatalog,
+  parseSkillFrontmatter,
+} from '../lib/locate/asset-catalog.js'
 import type { OdAssetCandidate, VersionProfile } from '../lib/types.js'
 
 const fixturesRoot = resolve(dirname(fileURLToPath(import.meta.url)), 'fixtures')
@@ -427,5 +435,205 @@ describe('一站式入口（locateOdAssets）', () => {
     if (result.status !== 'found') return
     expect(result.profile.selectedBy).toContain('OD_RESOURCE_ROOT')
     expect(result.profile.versions.manifestVersion).toBe('3.3.8')
+  })
+})
+
+// ── 三目录派生与资产摘要扫描（impl-plan U1；fixture：asset-catalog/full 真机形态摘录）──
+
+/** 资产目录 fixture：full = 三目录齐备（真机形态摘录 + 损坏/缺席变体），missing-dirs = 目录缺失变体。 */
+const catalogFullRoot = join(fixturesRoot, 'asset-catalog', 'full')
+const catalogMissingRoot = join(fixturesRoot, 'asset-catalog', 'missing-dirs')
+/** 真机 OD 资产根（对账锚；impl-plan 风险表：OD 升级后计数漂移时复跑对账更新登记）。 */
+const realAssetRoot = '/Applications/Open Design.app/Contents/Resources/open-design'
+const hasRealAssetRoot = existsSync(realAssetRoot)
+
+describe('三目录路径派生（deriveCatalogDirs，AS8 同根直系子目录）', () => {
+  it('从资源根派生 craft / design-templates / design-systems 三路径', () => {
+    expect(deriveCatalogDirs('/od-root')).toEqual({
+      craftRoot: join('/od-root', 'craft'),
+      shapeTemplatesRoot: join('/od-root', 'design-templates'),
+      designSystemsRoot: join('/od-root', 'design-systems'),
+    })
+  })
+})
+
+describe('资产摘要扫描·fixture 组（asset-catalog/full：真机形态摘录 + 缺失/损坏变体）', () => {
+  const catalog = buildAssetCatalog(deriveCatalogDirs(catalogFullRoot))
+
+  it('craft 册数口径：排除 README 与 FUTURE_SECTIONS 两个元文件（D10⑨），排序确定', () => {
+    expect(catalog.craft.present).toBe(true)
+    expect(catalog.craft.manualFiles).toEqual(['anti-ai-slop.md', 'state-coverage.md'])
+    // 目录名直查形态（doctor ⑨ 册数消费同一函数）。
+    expect(buildCraftCatalog(join(catalogFullRoot, 'craft')).manualFiles).toHaveLength(2)
+  })
+
+  it('形状包扫描：目录条目进清单、AGENTS.md 文件条目排除；dashboard 全字段摘要正确', () => {
+    const { entries } = catalog.shapeTemplates
+    // full fixture 的 design-templates 下 3 个包目录（AGENTS.md 文件被 isDirectory 过滤）。
+    expect(entries.map((entry) => entry.dirName)).toEqual([
+      'broken-skill',
+      'dashboard',
+      'web-prototype-taste-brutalist',
+    ])
+    const dashboard = entries.find((entry) => entry.dirName === 'dashboard')
+    expect(dashboard).toMatchObject({
+      degraded: false,
+      name: 'dashboard',
+      mode: 'prototype',
+      descriptionFirstSentence: 'Admin / analytics dashboard in a single HTML file.',
+      triggerKeywordsZh: ['后台', '管理后台'],
+      craftRequires: ['state-coverage', 'accessibility-baseline', 'laws-of-ux'],
+    })
+  })
+
+  it('降级三态之一·字段缺席（合法条目）：taste 变体包无 triggers / 无 od.mode，不计解析异常（AS9 口径）', () => {
+    const taste = catalog.shapeTemplates.entries.find(
+      (entry) => entry.dirName === 'web-prototype-taste-brutalist',
+    )
+    expect(taste).toMatchObject({
+      degraded: false,
+      name: 'web-prototype-taste-brutalist',
+      mode: null,
+      triggerKeywordsZh: [],
+      craftRequires: [],
+      descriptionFirstSentence: 'Swiss industrial-print web prototype.',
+    })
+    expect(catalog.shapeTemplates.parseErrorCount).toBe(1) // 仅 broken-skill 一条
+  })
+
+  it('降级三态之二·解析异常：frontmatter 损坏 → 条目降级仅目录名并计数', () => {
+    const broken = catalog.shapeTemplates.entries.find((entry) => entry.dirName === 'broken-skill')
+    expect(broken).toMatchObject({
+      degraded: true,
+      name: null,
+      mode: null,
+      descriptionFirstSentence: null,
+      triggerKeywordsZh: [],
+      craftRequires: [],
+    })
+    expect(catalog.shapeTemplates.parseErrorCount).toBe(1)
+  })
+
+  it('设计系统扫描：manifest 感知摘要 + 深层文件探测；_schema 与 README 文件排除（D3 分母口径）', () => {
+    const { entries, parseErrorCount } = catalog.designSystems
+    // 仅持 manifest.json 的品牌包进清单：_schema（无 manifest）与 README.md（文件）不进、不计异常。
+    expect(entries.map((entry) => entry.dirName)).toEqual([
+      'airbnb',
+      'broken-brand',
+      'partial-brand',
+      'plain-brand',
+    ])
+    const airbnb = entries.find((entry) => entry.dirName === 'airbnb')
+    expect(airbnb).toMatchObject({
+      degraded: false,
+      name: 'Airbnb',
+      category: 'E-Commerce & Retail',
+      deepFiles: { usage: true, components: true, tailwind: true },
+    })
+    const plain = entries.find((entry) => entry.dirName === 'plain-brand')
+    expect(plain).toMatchObject({
+      degraded: false,
+      name: 'Plain Brand',
+      category: 'Utilities',
+      deepFiles: { usage: false, components: false, tailwind: false },
+    })
+    expect(parseErrorCount).toBe(2)
+  })
+
+  it('降级三态之三·解析异常（设计系统侧 D3 同口径）：缺 category 的合法 JSON 与非法 JSON 同计解析异常', () => {
+    const { entries } = catalog.designSystems
+    expect(entries.find((entry) => entry.dirName === 'partial-brand')).toMatchObject({
+      degraded: true,
+      name: null,
+      category: null,
+      deepFiles: { usage: false, components: false, tailwind: false },
+    })
+    expect(entries.find((entry) => entry.dirName === 'broken-brand')).toMatchObject({ degraded: true })
+  })
+
+  it('降级三态之零·目录缺失：missing-dirs 变体 → 缺席目录整体降级空清单（present=false），在场目录照常扫描（AX5）', () => {
+    const missing = buildAssetCatalog(deriveCatalogDirs(catalogMissingRoot))
+    expect(missing.craft).toEqual({ craftRoot: join(catalogMissingRoot, 'craft'), present: false, manualFiles: [] })
+    expect(missing.designSystems).toEqual({
+      root: join(catalogMissingRoot, 'design-systems'),
+      present: false,
+      entries: [],
+      parseErrorCount: 0,
+    })
+    // 在场的 design-templates 照常出条目——降级只作用于缺席目录，会话不破坏。
+    expect(missing.shapeTemplates.present).toBe(true)
+    expect(missing.shapeTemplates.entries.map((entry) => entry.dirName)).toEqual(['dashboard'])
+    expect(missing.shapeTemplates.parseErrorCount).toBe(0)
+  })
+
+  it('frontmatter 解析边界：无 frontmatter → null；同名异位键不误收（od.design_system.mode ≠ od.mode）', () => {
+    expect(parseSkillFrontmatter('no frontmatter at all')).toBeNull()
+    expect(parseSkillFrontmatter('---\nname: x\n')).toBeNull() // 无闭合 ---
+    const misnested = parseSkillFrontmatter([
+      '---',
+      'name: misnested',
+      'od:',
+      '  design_system:',
+      '    mode: decoy-value',
+      '  mode: real-value',
+      '---',
+      '',
+    ].join('\n'))
+    expect(misnested?.name).toBe('misnested')
+    expect(misnested?.odMode).toBe('real-value')
+  })
+})
+
+describe('真机资产根三目录对账（impl-plan A1；锚 = 设计 s2 唯一登记点分层口径）', () => {
+  it('本机 OD 安装在场时：114 形状包 / 152 manifest 命中 / 11 craft 册，具体包摘要与实测一致（不在场显式跳过并播报）', () => {
+    if (!hasRealAssetRoot) {
+      // 跳过不是静默：CI / 无 OD 机器上播报说明——行为断言已由 fixture 组完整承载，此处是真机对账。
+      console.warn(`[skip] 真机 OD 资产根不在场（${realAssetRoot}），真机对账组跳过——fixture 组已覆盖全部行为断言`)
+      return
+    }
+    const catalog = buildAssetCatalog(deriveCatalogDirs(realAssetRoot))
+
+    // s2 唯一登记点：design-templates/ 114 个包目录（115 个 ls 条目含 AGENTS.md 文件）。
+    expect(catalog.shapeTemplates.present).toBe(true)
+    expect(catalog.shapeTemplates.entries).toHaveLength(114)
+    // 分层口径：name/description 全员在场 → 真机零解析异常；triggers 109/114、od.mode 108/114
+    // 的缺席包是字段缺席合法形态，不进该计数（AS9）。
+    expect(catalog.shapeTemplates.parseErrorCount).toBe(0)
+    const dashboard = catalog.shapeTemplates.entries.find((entry) => entry.dirName === 'dashboard')
+    expect(dashboard).toMatchObject({
+      degraded: false,
+      name: 'dashboard',
+      mode: 'prototype',
+      descriptionFirstSentence: 'Admin / analytics dashboard in a single HTML file.',
+      triggerKeywordsZh: ['后台', '管理后台'],
+      craftRequires: ['state-coverage', 'accessibility-baseline', 'laws-of-ux'],
+    })
+    // 字段缺席形态真机复断言（taste 变体包）。
+    const taste = catalog.shapeTemplates.entries.find(
+      (entry) => entry.dirName === 'web-prototype-taste-brutalist',
+    )
+    expect(taste).toMatchObject({ degraded: false, mode: null, triggerKeywordsZh: [] })
+
+    // s2 登记点：153 个目录排除 _schema → 152 个 manifest 命中品牌包（D3 分母口径）。
+    expect(catalog.designSystems.present).toBe(true)
+    expect(catalog.designSystems.entries).toHaveLength(152)
+    expect(catalog.designSystems.parseErrorCount).toBe(0)
+    const airbnb = catalog.designSystems.entries.find((entry) => entry.dirName === 'airbnb')
+    expect(airbnb).toMatchObject({
+      degraded: false,
+      name: 'Airbnb',
+      category: 'E-Commerce & Retail',
+      deepFiles: { usage: true, components: true, tailwind: true },
+    })
+    // 深层文件按包可选的真机缺席形态（实测 tom-modern 无 USAGE.md）。
+    const tom = catalog.designSystems.entries.find((entry) => entry.dirName === 'tom-modern')
+    expect(tom).toMatchObject({ degraded: false, deepFiles: { usage: false } })
+
+    // s2/D10⑨ 口径：craft/ 13 个 md = 11 册规则书 + 2 元文件。
+    expect(catalog.craft.present).toBe(true)
+    expect(catalog.craft.manualFiles).toHaveLength(11)
+    expect(catalog.craft.manualFiles).toContain('anti-ai-slop.md')
+    expect(catalog.craft.manualFiles).not.toContain('README.md')
+    expect(catalog.craft.manualFiles).not.toContain('FUTURE_SECTIONS.md')
   })
 })
