@@ -38,7 +38,10 @@ export const OPENDESIGN_TAB_KIND = 'opendesignArtifact'
 export const DESIGN_PANEL_LOCALE_NS = 'opendesign.designPanel'
 
 /**
- * 产物伺服路由前缀的 document 相对形态（iframe 与面板 fetch 的寻址形态）。
+ * 产物伺服路由前缀的 document 相对形态（iframe 与面板 fetch 的寻址形态；完整地址 =
+ * `<前缀>/<sessionId>/<产物相对路径>`，session 段由本文件的构造函数拼装——伺服根按
+ * 会话解析，D7「伺服根 = 会话 cwd」，lib/serve/artifacts-route.ts 的 parseArtifactRoute
+ * 是服务侧对偶）。
  *
  * 字面值来源 = lib/serve/artifacts-route.ts 的 `OPENDESIGN_ARTIFACTS_PREFIX_ROUTE`（U6）。
  * 不直接 import 的原因：该模块是 Node 半场入口（顶层 import node:fs/promises），浏览器
@@ -53,7 +56,7 @@ const FILE_SESSION_PREFIX = 'dsh-resource://file/session/'
 
 /** 一条可被设计面板认领的 file 地址的解析结果。 */
 interface ParsedArtifactAddress {
-  /** 地址所属会话（本次实现未消费：伺服路由 URL 只由相对路径构成）。 */
+  /** 地址所属会话（路由 URL 的 session 段——伺服根按会话解析的寻址凭据）。 */
   sessionId: string
   /** workspace 相对路径（各段已解码，`/` 连接）。 */
   path: string
@@ -122,20 +125,27 @@ function encodeArtifactRoutePath(path: string): string {
 }
 
 /**
- * 产物 tab 地址 → 伺服路由 URL（document 相对形态；web 与桌面双通的寻址形态：web 下相对
+ * 产物地址 → 伺服路由 URL（document 相对形态；web 与桌面双通的寻址形态：web 下相对
  * document base 即同源路由，桌面下 dsh-app:// 的相对路径由壳层 web-document 转发给宿主）。
- * 不可认领的地址返回 undefined——调用方以 canOpenArtifactAddress 分流后不会见到它。
+ * 地址 = `<前缀>/<sessionId>/<产物相对路径>`——session 段是伺服根解析的寻址凭据（伺服根
+ * = 该会话 cwd，D7），不可省略。不可认领的地址返回 undefined——调用方以
+ * canOpenArtifactAddress 分流后不会见到它。
  */
 export function artifactRouteUrlFor(address: string): string | undefined {
   const parsed = parseArtifactAddress(address)
-  return parsed === undefined ? undefined : `${OPENDESIGN_ARTIFACTS_ROUTE}/${encodeArtifactRoutePath(parsed.path)}`
+  if (parsed === undefined) return undefined
+  return artifactRouteUrlForSession(parsed.sessionId, parsed.path)
 }
 
 /**
- * workspace 相对路径 → 伺服路由 URL（面板内产物列表的行点击用：列表来自 workspaceFiles
- * 的目录列举，拿到的是相对路径而非地址，直接构造同一路由）。
+ * 会话 id + workspace 相对路径 → 伺服路由 URL（面板内产物列表的行点击用：列表来自
+ * workspaceFiles 的目录列举，拿到的是相对路径而非地址，用面板所在会话构造同一路由）。
  */
-export function artifactRouteUrlForPath(path: string): string {
-  const relative = path.replace(/^\.?\//, '')
-  return `${OPENDESIGN_ARTIFACTS_ROUTE}/${encodeArtifactRoutePath(relative)}`
+export function artifactRouteUrlForPath(sessionId: string, path: string): string {
+  return artifactRouteUrlForSession(sessionId, path.replace(/^\.?\//, ''))
+}
+
+/** sessionId + 相对路径 → 路由 URL 的唯一拼装点（session 段与路径段逐段编码后 / 连接）。 */
+function artifactRouteUrlForSession(sessionId: string, relative: string): string {
+  return `${OPENDESIGN_ARTIFACTS_ROUTE}/${encodeURIComponent(sessionId)}/${encodeArtifactRoutePath(relative)}`
 }

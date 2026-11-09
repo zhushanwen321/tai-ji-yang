@@ -1,7 +1,8 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve, sep } from "node:path";
+import { resolveSessionCwdById } from "./session-cwd.js";
 const name = "od-serve";
-const inject = ["webServer", "connection"];
+const inject = ["webServer", "connection", "sessions"];
 const OPENDESIGN_ARTIFACTS_PREFIX_PATH = "/opendesign/artifacts";
 const OPENDESIGN_ARTIFACTS_PREFIX_ROUTE = OPENDESIGN_ARTIFACTS_PREFIX_PATH.slice(1);
 const CONTENT_TYPES = {
@@ -30,21 +31,25 @@ function contentTypeFor(fileName) {
   if (dot <= -1) return "application/octet-stream";
   return CONTENT_TYPES[fileName.slice(dot).toLowerCase()] ?? "application/octet-stream";
 }
-function resolveServeRoot(ctx) {
-  let workingDirectory;
-  try {
-    workingDirectory = ctx?.workingDirectory;
-  } catch {
-  }
-  const directory = workingDirectory?.defaultDirectory;
-  return typeof directory === "string" && directory.length > 0 ? directory : process.cwd();
-}
-async function resolveArtifactPath(rootReal, pathname) {
+function parseArtifactRoute(pathname) {
   const stripped = pathname.slice(OPENDESIGN_ARTIFACTS_PREFIX_PATH.length).replace(/^\/+/, "");
-  if (stripped === "") return { status: "missing" };
+  if (stripped === "") return { status: "empty" };
+  const slash = stripped.indexOf("/");
+  if (slash <= -1) return { status: "empty" };
+  let sessionId;
+  try {
+    sessionId = decodeURIComponent(stripped.slice(0, slash));
+  } catch {
+    return { status: "malformed" };
+  }
+  if (sessionId === "") return { status: "empty" };
+  return { status: "route", sessionId, artifactRoute: stripped.slice(slash + 1) };
+}
+async function resolveArtifactPath(rootReal, artifactRoute) {
+  if (artifactRoute === "") return { status: "missing" };
   let relative;
   try {
-    relative = decodeURIComponent(stripped);
+    relative = decodeURIComponent(artifactRoute);
   } catch {
     return { status: "malformed" };
   }
@@ -103,12 +108,26 @@ async function serveArtifactRequest(ctx, req, res) {
     sendJson(res, 404, { code: "not-found", message: `no artifact route for ${pathname}` });
     return;
   }
-  const rootReal = await realpath(resolveServeRoot(ctx)).catch(() => void 0);
+  const parsed = parseArtifactRoute(pathname);
+  if (parsed.status === "empty") {
+    sendJson(res, 404, { code: "not-found", message: "artifact route requires a session segment" });
+    return;
+  }
+  if (parsed.status === "malformed") {
+    sendJson(res, 400, { code: "bad-request", message: "session segment contains a malformed percent-escape" });
+    return;
+  }
+  const sessionCwd = resolveSessionCwdById(ctx, parsed.sessionId);
+  if (sessionCwd === null) {
+    sendJson(res, 404, { code: "session-unknown", message: "artifact route session has no working directory" });
+    return;
+  }
+  const rootReal = await realpath(sessionCwd).catch(() => void 0);
   if (rootReal === void 0) {
     sendJson(res, 404, { code: "root-missing", message: "session working directory does not exist" });
     return;
   }
-  const resolution = await resolveArtifactPath(rootReal, pathname);
+  const resolution = await resolveArtifactPath(rootReal, parsed.artifactRoute);
   if (resolution.status === "forbidden") {
     sendJson(res, 403, { code: "forbidden", message: "path escapes the session working directory" });
     return;
@@ -151,6 +170,6 @@ export {
   contentTypeFor,
   inject,
   name,
-  resolveArtifactPath,
-  resolveServeRoot
+  parseArtifactRoute,
+  resolveArtifactPath
 };

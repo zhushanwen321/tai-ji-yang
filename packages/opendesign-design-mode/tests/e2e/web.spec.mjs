@@ -1,7 +1,7 @@
 /**
  * opendesign-design-mode 双版本 e2e —— web 版（0.1.7 隔离 DSH_HOME）。
  *
- * 场景编排（设计 §4.1 V1-V11 的 L3 可脚本化子集；验收计划表 A1/A3b/A4/A5/A6/A13/A14/A15）：
+ * 场景编排（设计 §4.1 V1-V11 的 L3 可脚本化子集；验收计划表 A1/A3b/A4/A5/A6/A9/A10/A11/A13/A14/A15）：
  *   S1 A1/V1+RL1 —— preset 可见性（roster 卡片 custom 分组 + 选择器菜单）+ 提示词注入
  *      （会话日志 system 节点含 OD core/路由特征句）+ 默认会话行为不变（standard 会话无设计内容）
  *      + 材质化落盘（.od-frames/ 四文件，D8）。
@@ -16,6 +16,9 @@
  *      新一轮 system 节点反映 gen2、无 gen1 残留句 → doctor 代际提示在场。
  *   S7 A15/V11 —— git fixture 项目目录连续三次设计会话（一次换资产）：新增文件恰为
  *      .od-frames/ 四文件、幂等、git status 无 tracked 变更（反向断言）。
+ *   S8 A9/A10/A11 —— shell 包共存回归：verify runner 以 --url 连共存实例跑 brand+projects、
+ *      以自启形态对共存 home 跑 lifecycle（卸载 shell）——「preset 注册与 UI 注入不干扰
+ *      shell 包」只在 opendesign 在场（两包共存 profile）时才可证明，单装态结果不作数。
  *
  * 真实模型对话（V2/V3/V7 的模型行为段）不在本套件（exec-plan：L4 场景归 D3 验收阶段）。
  * 无 API key 的隔离实例上发消息：system 提示词在 provider 调用前已提交会话日志
@@ -207,9 +210,10 @@ function writeSessionLogPatch(home) {
  * 自启隔离 dsh web（--patch + OD_RESOURCE_ROOT 覆盖）→ stdout 解析认证 URL → 探活 → 开页面。
  * 失败即按 PID 收场（不留孤儿）；stopInstance 按 PID 杀进程组。
  *
- * cwd = 场景工作目录：0.1.7 无 working-directory 服务，伺服根回退 process.cwd()
- * （lib/serve/artifacts-route.ts resolveServeRoot 的缺席语义）——把 dsh 进程落在工作目录，
- * 伺服根与会话 cwd（seed 工作区）对齐，这正是用户「cd 项目目录 && dsh web」的启动形态。
+ * cwd = 场景工作目录：伺服根按会话解析（lib/serve/artifacts-route.ts 按 URL session 段经
+ * resolveSessionCwdById 取会话 cwd，与材质化同一通道）——把 dsh 进程落在工作目录，会话
+ * cwd（header.cwd / workingDirectory）即 seed 工作区，伺服根、材质化落点与探针产物随之
+ * 对齐。这正是用户「cd 项目目录 && dsh web」的启动形态；进程 cwd 不再是伺服根的直接来源。
  */
 async function startInstance({ label, home, fixtureRoot, patchFile, cwd }) {
   // --patch 是 launcher 旗标，必须位于 --profile 之前（dsh CLI 实测：放在 profile 之后报 unknown option）；
@@ -557,12 +561,14 @@ async function scenarioV1() {
       assert(sys.includes('sample-brand'), '注入文本缺设计系统清单（sample-brand）')
     })
 
-    step(results, '注入文本无占位符字面残留（RL3 的 e2e 旁证）', () => {
+    step(results, '注入文本无占位符与 od CLI 特征串残留（RL3 的 e2e 旁证）', () => {
       const files = collectSessionFiles(home)
       const designLogs = files.map((f) => readSessionLog(f.file)).filter((l) => l.systemMessages.some((t) => t.includes(DESIGN_INJECTION_MARK)))
       assert(designLogs.length > 0, '找不到设计会话日志')
       const all = designLogs.flatMap((l) => l.systemMessages).join('\n')
       assert(!all.includes('{{SKILL_CATALOG}}'), '注入文本含 {{SKILL_CATALOG}} 字面（占位符防御失效）')
+      assert(!all.includes('$OD_BIN'), '注入文本含 $OD_BIN 特征串（改写器对注入文本的命令清零失效）')
+      assert(!all.includes('$OD_NODE_BIN'), '注入文本含 $OD_NODE_BIN 特征串（改写器对注入文本的命令清零失效）')
     })
 
     await stepAsync(results, '材质化：.od-frames/ 四管理名落盘且与源逐字节一致（D8）', async () => {
@@ -963,6 +969,91 @@ async function scenarioProjectWrites() {
   return results
 }
 
+// ── shell 包共存回归（A9/A10/A11；设计 §4.3 e2e 影响面第一行）───────────────
+
+/** verify runner 子进程（--json：stdout 尾部 JSON 行 = 聚合 verdict；日志走 stderr）。 */
+function runVerifyRunner(args) {
+  const proc = spawnSync(process.execPath, [
+    path.join(REPO_ROOT, 'scripts', 'verify', 'run.mjs'),
+    ...args, '--json',
+  ], {
+    encoding: 'utf8',
+    timeout: 420000,
+    maxBuffer: 32 * 1024 * 1024,
+    // opendesign preset 探测 fixture 化：runner 起的实例同样落在 mini-od 资产根上（共存态确定性，不依赖真机 OD）。
+    env: { ...process.env, OD_RESOURCE_ROOT: MINI_OD_ROOT },
+  })
+  let verdict = null
+  for (const line of (proc.stdout ?? '').split('\n').reverse()) {
+    const trimmed = line.trim()
+    if (trimmed.startsWith('{')) {
+      try { verdict = JSON.parse(trimmed); break } catch { /* 尾行非 JSON（日志混入）时继续向前找 */ }
+    }
+  }
+  return { status: proc.status, verdict, output: `${proc.stdout ?? ''}\n${proc.stderr ?? ''}` }
+}
+
+/**
+ * 场景 S8（A9/A10/A11）：shell 包既有断言场景在两包共存 profile 上的回归。
+ *
+ * 共存前提即命题：brand/projects/lifecycle 三场景的验收目的 =「新插件安装进同一 profile 后
+ * preset 注册与 UI 注入不干扰 shell 包」——只在 opendesign 在场时才可证明（verify runner
+ * 自启形态只装 shell 单包，单装态结果不能登记为 A9/A10/A11 通过）。串接形态：
+ *  - brand+projects：runner --url 连本套件的两包共存实例（runner 不装包不启实例）；
+ *  - lifecycle：runner 自启形态对克隆的共存 home（runner 幂等重 add shell——实测幂等；
+ *    opendesign 保持在场）。lifecycle 的固有 degrade（禁用回落无 CLI 通道）按 runner 登记
+ *    接受，断言 failed=0 硬性。
+ */
+async function scenarioShellCoexistRegression() {
+  const results = []
+  const workspace = makeWorkspaceDir('shell-coexist')
+  const artifactsDir = path.join(RUN_ROOT, 'verify-shell-regression')
+  fs.mkdirSync(artifactsDir, { recursive: true })
+
+  await stepAsync(results, 'A9/A10：runner --url 连共存实例，brand+projects 回归', async () => {
+    const instance = await withInstance({ label: 'shell-coexist', fixtureRoot: MINI_OD_ROOT, workspaceDir: workspace })
+    try {
+      const { page, home } = instance
+      // projects 场景的「当前会话行标记」前置 = 已有会话（缺前置显式 degrade，不假 pass）——先建 standard 会话。
+      await pickWorkspace(page, workspace)
+      await sendUserMessage(page, 'plain session for shell coexistence regression')
+      await waitForSessionLog(home, (_entry, l) => l.systemMessages.length > 0)
+      const outcome = runVerifyRunner([
+        '--url', instance.url, '--scenarios', 'brand,projects',
+        '--artifacts-dir', artifactsDir, '--run-id', `shell-web-${Date.now()}`,
+      ])
+      assert(outcome.status === 0, `runner 退出码 ${outcome.status}（预期 0）。输出尾部：${outcome.output.slice(-1500)}`)
+      assert(outcome.verdict !== null, 'runner verdict JSON 解析失败')
+      for (const id of ['brand', 'projects']) {
+        const entry = outcome.verdict.scenarios.find((s) => s.id === id)
+        assert(entry !== undefined, `runner 结果缺 ${id} 场景：${JSON.stringify(outcome.verdict.scenarios)}`)
+        assert(entry.verdict === 'pass', `${id} 场景 verdict=${entry.verdict}（预期 pass）。输出尾部：${outcome.output.slice(-1500)}`)
+      }
+    } finally {
+      await instance.close()
+    }
+  })
+
+  await stepAsync(results, 'A11：runner 自启共存 home 跑 lifecycle 回归（卸载 shell，opendesign 在场）', async () => {
+    const home = path.join(RUN_ROOT, 'home-shell-lifecycle')
+    fs.cpSync(TEMPLATE_HOME, home, { recursive: true })
+    const runId = `shell-lifecycle-${Date.now()}`
+    const outcome = runVerifyRunner([
+      '--dsh-bin', DSH_BIN, '--dsh-home', home, '--scenarios', 'lifecycle',
+      '--artifacts-dir', artifactsDir, '--run-id', runId,
+    ])
+    assert(outcome.status === 0, `runner 退出码 ${outcome.status}（预期 0；1=fail 2=doctor/参数错）。输出尾部：${outcome.output.slice(-1500)}`)
+    assert(outcome.verdict !== null && outcome.verdict.verdict !== 'fail', `lifecycle 聚合 verdict=${outcome.verdict?.verdict}`)
+    // 断言级结果在场景级 verdict.json（runner stdout 聚合 JSON 只带场景 verdict，不带 meta）。
+    const scenarioVerdict = JSON.parse(fs.readFileSync(path.join(artifactsDir, runId, 'lifecycle', 'verdict.json'), 'utf8'))
+    assert(scenarioVerdict.verdict !== 'fail', `lifecycle 场景 verdict=${scenarioVerdict.verdict}`)
+    const failed = scenarioVerdict.meta?.assertions?.failed
+    assert(failed === 0, `lifecycle 断言失败 ${JSON.stringify(failed)} 条（degraded 的固有 disable 通道登记不算失败，断言失败算）。输出尾部：${outcome.output.slice(-1500)}`)
+  })
+
+  return results
+}
+
 // ── 主编排 ───────────────────────────────────────────────────────────────────
 
 /** 全局看门狗：卡死（等待永不返回）时按 PID 清场并以失败退出，不留孤儿 dsh。 */
@@ -988,6 +1079,7 @@ try {
     ['S5 A6/V6 资产漂移', scenarioDrift],
     ['S6 A13/V9+RL7 resume 代际重组', scenarioResume],
     ['S7 A15/V11 项目目录写入形态', scenarioProjectWrites],
+    ['S8 A9/A10/A11 shell 包共存回归（runner 串接）', scenarioShellCoexistRegression],
   ]
 
   const outcome = []

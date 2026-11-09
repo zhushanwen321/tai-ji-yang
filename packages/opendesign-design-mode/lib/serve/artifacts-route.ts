@@ -1,7 +1,12 @@
 /**
  * 产物伺服 host 子插件：webServer 前缀路由（U6 终态实现）。
  *
- * 语义权威 = 设计 D7：伺服根定死 = 会话 cwd（会话工作目录）。每个请求第一步过
+ * 语义权威 = 设计 D7：伺服根定死 = 会话 cwd（会话工作目录）。路由地址带会话维度——
+ * `/opendesign/artifacts/<sessionId>/<产物相对路径>`，每个请求按 URL 的 session 段经
+ * resolveSessionCwdById（lib/serve/session-cwd.ts，与材质化落点共用同一函数）解析该会话
+ * 的工作目录作为伺服根；会话不可得或 cwd 不可得时 404 fail-closed，绝不回退部署级目录
+ * ——用户为会话选择非默认工作区时，伺服根必须跟着会话走（D7：伺服根小于会话 cwd 即断
+ * 产物相对引用；回退部署目录正是本文件旧实现被一致性审查打回的差距）。每个请求第一步过
  * connection.requestRejection 鉴权围栏（未认证 401 / Host-Origin 不可信 403，围栏语义
  * 归属 connection 服务，本包不复制其判定）；URL 相对路径与 cwd 拼接后经 realpath
  * 规范化，必须仍落在 cwd 内——.. 与绝对路径穿越（含符号链接逃逸）一律 403；cwd 内可读
@@ -15,25 +20,23 @@
  * 本包只注册路由、不触碰监听配置——DSH webserver 红线（不可通配绑定 host）在本包
  * 无可破坏面。
  *
- * cwd 通道（设计 U6 检查点的核实结论，runlog 有全文）：`ctx.workingDirectory
- * .defaultDirectory`——@deepseek-ai/dsh-working-directory 的部署级回退目录（base bundle
- * 组成行；会话无显式 cwd 时 workingDirectory.get(session) 兜底到的正是该值），服务缺席
- * 时回退 process.cwd() 保持同语义。U5 材质化落点必须经 resolveServeRoot 取同一通道，
- * 「伺服根 = 材质化目标」由此结构性成立，而非靠两边各自约定。
- *
  * 路由前缀 = /opendesign/artifacts（形态对齐 open-in-app shared 路由约定：PATH 供
  * webServer.register，ROUTE = 去前导斜杠的 document 相对形态供浏览器侧寻址）。U7 预览
- * 面板的 iframe 载入同一前缀（前缀定名已记 runlog，U7 消费）。
+ * 面板的 iframe 载入同一前缀 + 同一 session 段形态（client/present-card-link.ts 的
+ * artifactRouteUrlFor / artifactRouteUrlForPath 构造；两侧形态由各自单测锁定，漂移在
+ * U8 e2e 暴露）。
  */
 
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, resolve, sep } from 'node:path'
 
+import { resolveSessionCwdById } from './session-cwd.js'
+
 /** Cordis 插件名（preset plugins 行的行内标识）。 */
 export const name = 'od-serve'
 
-/** 本行消费的宿主服务：web 承载层 + 请求围栏（connection 的浏览器鉴权与 Host-Origin 棚栏）。 */
-export const inject = ['webServer', 'connection']
+/** 本行消费的宿主服务：web 承载层 + 请求围栏（connection）+ 会话注册表（sessions，cwd 通道）。 */
+export const inject = ['webServer', 'connection', 'sessions']
 
 /** 伺服路由前缀（webServer.register 的绝对路径形态，kind: 'prefix'）。 */
 export const OPENDESIGN_ARTIFACTS_PREFIX_PATH = '/opendesign/artifacts'
@@ -57,11 +60,6 @@ interface ServeResponse {
 /** 围栏服务的消费视图（结构局部类型化，先例 = open-in-app 的 OpenInAppConnection）。 */
 interface ServeConnection {
   requestRejection(request: { readonly headers: ServeRequest['headers'] }): 401 | 403 | undefined
-}
-
-/** 工作目录服务的消费视图（cwd 通道；完整服务见 @deepseek-ai/dsh-working-directory）。 */
-interface ServeWorkingDirectory {
-  readonly defaultDirectory?: string | undefined
 }
 
 /** 产物扩展名 → content-type（产物为 HTML 页面与其相对引用的静态资源；D7 伺服面）。 */
@@ -97,27 +95,37 @@ export function contentTypeFor(fileName: string): string {
   return CONTENT_TYPES[fileName.slice(dot).toLowerCase()] ?? 'application/octet-stream'
 }
 
+/** 一条产物请求地址的解析终态（parseArtifactRoute 的返回词表）。 */
+export type ArtifactRouteParse =
+  | { status: 'route'; sessionId: string; artifactRoute: string }
+  | { status: 'empty' }
+  | { status: 'malformed' }
+
 /**
- * 解析伺服根（U6 检查点结论的代码落点；U5 材质化落点消费同一函数）。
+ * 请求 pathname → sessionId 段 + 产物余段（路由地址的会话维度解析，单测直驱）。
  *
- * @param ctx - Cordis 插件上下文。workingDirectory 服务缺席（极简组合）时回退宿主进程
- *   启动目录——与 workingDirectory 服务自身的构造回退（config.defaultDirectory ??
- *   process.cwd()）同语义，保证「伺服根 = 会话默认工作目录」在两种组合形态下都成立。
+ * 规则：前缀余段（pathname 减去前缀）剥掉首部的结构性 '/'（webServer prefix 匹配形态
+ * prefix/<rest> 的分隔符，不属于用户寻址）——余段第一段 = sessionId（decodeURIComponent
+ * 还原，失败 → malformed）；其余段保持字面 '/' 连接后交 resolveArtifactPath（它在解码
+ * 后做穿越判定，编码形态的 %2e%2e（..）与 %2f（/）无法绕过）。session 段在解码前按字面
+ * '/' 切分：sessionId 内的 %2f 不会把段切碎，产物段的编码形态原样下传。
+ *
+ * @param pathname - 请求 URL 的 pathname（含前缀；调用方先做过前缀复查）。
  */
-export function resolveServeRoot(ctx: unknown): string {
-  // 服务存在性探测必须 try/catch 包裹属性读取（0.1.7 e2e 实测，U8 修正 2026-11-09）：
-  // 0.1.7 无 working-directory 行，cordis ctx 读未在本行 inject 声明的服务属性即抛
-  // （可选链 `?.` 拦不住 proxy getter 的抛错），抛错会沿 webServer.handle 的兜底变成
-  // 空 400——「服务不在」按缺席语义回退 process.cwd()，与 workingDirectory 服务自身的
-  // 构造回退（config.defaultDirectory ?? process.cwd()）同语义。
-  let workingDirectory: ServeWorkingDirectory | undefined
+export function parseArtifactRoute(pathname: string): ArtifactRouteParse {
+  const stripped = pathname.slice(OPENDESIGN_ARTIFACTS_PREFIX_PATH.length).replace(/^\/+/, '')
+  // 前缀根本身（无任何段）：目录无列举语义，且无 session 段可言。
+  if (stripped === '') return { status: 'empty' }
+  const slash = stripped.indexOf('/')
+  if (slash <= -1) return { status: 'empty' } // 只有 session 段无产物段，也无从寻址
+  let sessionId: string
   try {
-    workingDirectory = (ctx as { workingDirectory?: ServeWorkingDirectory } | null)?.workingDirectory
+    sessionId = decodeURIComponent(stripped.slice(0, slash))
   } catch {
-    // 0.1.7：服务行不在 → 回退
+    return { status: 'malformed' }
   }
-  const directory = workingDirectory?.defaultDirectory
-  return typeof directory === 'string' && directory.length > 0 ? directory : process.cwd()
+  if (sessionId === '') return { status: 'empty' } // 空 session 段（webServer 不会送来，直驱防御）
+  return { status: 'route', sessionId, artifactRoute: stripped.slice(slash + 1) }
 }
 
 /** 一条产物请求的解析终态（resolveArtifactPath 的返回词表）。 */
@@ -128,28 +136,26 @@ export type ArtifactResolution =
   | { status: 'malformed' }
 
 /**
- * URL 路径 → cwd 内绝对路径的安全解析核心（路由行为的唯一裁决点，单测直驱）。
+ * 产物余段 → 会话 cwd 内绝对路径的安全解析核心（路由行为的唯一裁决点，单测直驱）。
  *
  * 规则（设计 D7 / RL2）：
- *   1. 前缀余段（pathname 减去前缀）剥掉首部的结构性 '/'（webServer prefix 匹配形态
- *      prefix/<rest> 的分隔符，不属于用户寻址）——再经 decodeURIComponent 还原；先解码
- *      后判定，编码形态的 %2e%2e（..）与 %2f（/）无法绕过后续判定；
+ *   1. 产物余段（pathname 减去前缀与 session 段，字面 '/' 连接）经 decodeURIComponent
+ *      还原；先解码后判定，编码形态的 %2e%2e（..）与 %2f（/）无法绕过后续判定；
  *   2. 解码失败（畸形百分号转义）→ malformed；含 NUL → forbidden；绝对路径寻址
  *      （解码后以 / 开头，产物只以相对路径寻址）→ forbidden；
  *   3. 拼接 cwd 后先做词法包含判定（resolve 归一化 ..，不依赖目标存在），再 realpath
  *      规范化（消解符号链接）后复判包含——两层任一落点不在 cwd 内（含 symlink 指向
  *      cwd 外）→ forbidden；
- *   4. 落点必须是普通文件（目录无列举语义，前缀根本身也 404）→ 其余一律 missing。
+ *   4. 落点必须是普通文件（目录无列举语义，空余段即前缀根也 404）→ 其余一律 missing。
  *
  * @param rootReal - 伺服根的 realpath 规范化形态（调用方先对根做 realpath）。
- * @param pathname - 请求 URL 的 pathname（含前缀）。
+ * @param artifactRoute - 产物余段（parseArtifactRoute 的 artifactRoute，未解码形态）。
  */
-export async function resolveArtifactPath(rootReal: string, pathname: string): Promise<ArtifactResolution> {
-  const stripped = pathname.slice(OPENDESIGN_ARTIFACTS_PREFIX_PATH.length).replace(/^\/+/, '')
-  if (stripped === '') return { status: 'missing' }
+export async function resolveArtifactPath(rootReal: string, artifactRoute: string): Promise<ArtifactResolution> {
+  if (artifactRoute === '') return { status: 'missing' }
   let relative: string
   try {
-    relative = decodeURIComponent(stripped)
+    relative = decodeURIComponent(artifactRoute)
   } catch {
     return { status: 'malformed' }
   }
@@ -196,9 +202,9 @@ function fenceRejected(req: ServeRequest, res: ServeResponse, connection: ServeC
 }
 
 /**
- * 单条产物请求的完整处置（围栏 → 方法 → 解析 → 读盘 → 响应）。
+ * 单条产物请求的完整处置（围栏 → 方法 → 地址解析 → 会话 cwd → 解析 → 读盘 → 响应）。
  *
- * @param ctx - Cordis 插件上下文（围栏服务与伺服根经它取用）。
+ * @param ctx - Cordis 插件上下文（围栏服务与会话 cwd 通道经它取用）。
  * @param req - node:http 请求（webServer 前缀路由保证 pathname 已落在本前缀）。
  * @param res - node:http 响应（本 handler 拥有完整响应生命周期）。
  */
@@ -228,12 +234,30 @@ async function serveArtifactRequest(ctx: unknown, req: ServeRequest, res: ServeR
     sendJson(res, 404, { code: 'not-found', message: `no artifact route for ${pathname}` })
     return
   }
-  const rootReal = await realpath(resolveServeRoot(ctx)).catch(() => undefined)
+  // 会话维度解析（D7：伺服根定死 = 会话 cwd）：URL session 段 → 该会话的工作目录，
+  // 与材质化落点共用 resolveSessionCwdById 同一通道（U6 检查点「伺服根与材质化目标
+  // 统一 = 会话 cwd」的结构承载）。会话不可得 / cwd 不可得 → 404 fail-closed，不回退
+  // 部署级目录（回退即伺服根指向会话工作区之外，产物相对引用与暴露面判定全部失锚）。
+  const parsed = parseArtifactRoute(pathname)
+  if (parsed.status === 'empty') {
+    sendJson(res, 404, { code: 'not-found', message: 'artifact route requires a session segment' })
+    return
+  }
+  if (parsed.status === 'malformed') {
+    sendJson(res, 400, { code: 'bad-request', message: 'session segment contains a malformed percent-escape' })
+    return
+  }
+  const sessionCwd = resolveSessionCwdById(ctx, parsed.sessionId)
+  if (sessionCwd === null) {
+    sendJson(res, 404, { code: 'session-unknown', message: 'artifact route session has no working directory' })
+    return
+  }
+  const rootReal = await realpath(sessionCwd).catch(() => undefined)
   if (rootReal === undefined) {
     sendJson(res, 404, { code: 'root-missing', message: 'session working directory does not exist' })
     return
   }
-  const resolution = await resolveArtifactPath(rootReal, pathname)
+  const resolution = await resolveArtifactPath(rootReal, parsed.artifactRoute)
   if (resolution.status === 'forbidden') {
     sendJson(res, 403, { code: 'forbidden', message: 'path escapes the session working directory' })
     return

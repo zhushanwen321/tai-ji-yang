@@ -157,7 +157,7 @@ function createDesignPanelBody(listArtifacts: ArtifactLister) {
     const iframe = routeUrl !== undefined
       ? { url: routeUrl, name: artifactTitleFor(address) }
       : fallback !== undefined
-        ? { url: artifactRouteUrlForPath(fallback.path), name: fallback.name }
+        ? { url: artifactRouteUrlForPath(sessionId, fallback.path), name: fallback.name }
         : undefined
 
     if (iframe === undefined) {
