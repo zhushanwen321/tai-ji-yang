@@ -1,20 +1,36 @@
 # opendesign-design-mode 的 bundle 声明：两行 insert——本包 host 半主行 + 设计模式 preset 行。
 #
-# preset 行的 config.plugins 是显式子插件组合（DSH preset 无隐式工具基线，全部子插件逐项
-# 声明，形态对齐 DSH 仓 packages/bundle/web-app/presets/standard.patch.yml；agent-preset 的
-# config schema（id/name/description/order/plugins）以 0.1.7 与 0.2.x 包内 lib 实读核对，
-# 双版本一致）。八项声明：
-#   本包四子插件（本包内声明形态 = name 用本包 exports 子路径说明符，宿主 loader 按 ESM
-#   说明符解析到 lib/ 下对应入口）：
-#     persona（系统提示词注入 + 启动资产探测，探测失败抛 diagnostic → preset broken）
-#     /opendesign-doctor 诊断命令 / 设计面板 client / 产物伺服 host
-#   DSH 原生四工具（包名为 DSH 仓 standard.patch.yml 实名）：tool-fs / tool-bash /
-#     tool-web（fetch 能力，web-clone 档读目标页面所需）/ tool-present（交付声明与卡片链路）
+# preset 行的 config.plugins = 「DSH standard 模式全量基线 + 本包四子插件」（2026-11-09 用户
+# 裁决方案 B：OpenDesign 模式不收窄原生工具面，只在 standard 之上叠加 OD 定制提示词与面板/
+# 伺服/诊断）。DSH preset 无隐式工具基线，全部子插件逐项声明；standard 基线的行序与配置以
+# DSH 仓两版本 standard.patch.yml 实读为锚（web CLI 0.1.7-rc.2 / 桌面 0.2.2-rc.1 的
+# dsh-web-app presets 目录，agent-preset config schema 双版本一致）。
+#
+# 跨版本组合规则（engines >=0.1.7-rc.2 <0.3.0，preset 子行导入失败会把整个 preset 标记
+# broken——registry 的 mountPreset 对失败行拒绝挂载，故缺包行必须 disabled 声明而非启用：
+# loader 的 Entry.refresh 在 disabled 时早退于 init，disabled 行不解析包）：
+#   - 两版本都装了该包且至少一方 standard 启用 → 启用（time-context 仅桌面 standard 列出，
+#     但包随 0.1.7 发行且只依赖 agents/sessionProjections 核心服务，故启用）；
+#   - 包仅一方存在 → disabled 声明（tool-schedule 仅 0.2.x 有包；list-agents 仅 0.1.7 有
+#     该导出子路径；plugin-market 仅 0.2.x 有包——disabled 行在两版本都安全）；
+#   - 两版本 standard 都声明为禁用 → 按标准同款 disabled（codex / claude-code / ralph /
+#     plugin-market）；
+#   - 配置键跨版本漂移 → 联合声明（subagent 行的 modelSelectionSettings 是 0.1.7 键、
+#     modelSelection/modelDiscovery 是 0.2.x 键；各版本只读自己认识的键，未知键被配置解析
+#     忽略——applyPatch:false 在 0.1.7（无该选项）实际运行实证）；
+#   - plan-mode 的 section 文本两版本有微差 → 取 0.2.2 措辞（section 是本行自供配置，两
+#     版本 plan-mode 包均接受任意文本）。
+#
+# persona 行刻意不引入：本包 od-persona 按部署 persona 前缀槽（DEPLOYMENT_PERSONA_PREFIX）
+# 在 preset 作用域遮蔽标准身份句，设计会话身份由 OD Next core 承担（lib/persona.ts 文件头
+# 机制说明）。随之缺位的是 web standard persona 的 cwd suffix（工作目录告知）——已知差异，
+# 恢复动作 = od-persona 组装的事实块补 cwd 行（后续小增量，不影响本文件）。
 #
 # 用户在 Web 编辑器保存的编辑按行 id 覆盖本文件行（与 standard preset 同语义）。
 - insert:
-    # 本包 host 半主行：包级装配入口（lib/index.js）。preset 组合的挂载由上面 preset 行的
-    # @deepseek-ai/dsh-agent-preset 完成，本行只承载包级生命周期与跨子插件协调。
+    # 本包 host 半主行：包级装配入口（lib/index.js）。preset 组合的挂载由下面 preset 行的
+    # @deepseek-ai/dsh-agent-preset 完成，本行只承载包级生命周期与跨子插件协调
+    # （agent-preset/selected 事件 → 会话目录材质化）。
     - id: opendesign-design-mode
       name: opendesign-design-mode
 
@@ -24,7 +40,7 @@
       config:
         id: opendesign
         name: OpenDesign 设计模式
-        description: 以本机 OpenDesign 资产驱动的设计会话：发现→计划→生产产出八类 HTML 文件产物（原型/演示稿/文档/营销源码/动效源码/HyperFrames/网页复刻/webgl），右侧栏设计面板直接预览；图片/视频/音频成片生成不在 V1 范围（会如实说明并以 HTML 源码替代）；演示稿为普通单文件 HTML 预览（OD 协议级翻页/打印为后续版本）；未装 OpenDesign 时入口显式降级提示。
+        description: 以本机 OpenDesign 资产驱动的设计会话：发现→计划→生产产出八类 HTML 文件产物（原型/演示稿/文档/营销源码/动效源码/HyperFrames/网页复刻/webgl），右侧栏设计面板直接预览；图片/视频/音频成片生成不在 V1 范围（会如实说明并以 HTML 源码替代）；演示稿为普通单文件 HTML 预览（OD 协议级翻页/打印为后续版本）；未装 OpenDesign 时入口显式降级提示。工具面 = standard 模式全量 + OD 定制。
         order: 50
         plugins:
           # ── 本包子插件（name = 本包 exports 子路径）──────────────────────────
@@ -40,16 +56,153 @@
           # 子路径说明符不构成 client row，且浏览器 bundle 顶层引用 window 不能进 host 装载）。
           - id: od-client
             name: opendesign-design-mode/client-entry
-          # ── DSH 原生工具集（显式声明，包名 = standard preset 实名）────────────
+          # ── standard 基线（两版本 standard.patch.yml 实读锚定）──────────────
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
           - id: tool-fs
             name: '@deepseek-ai/dsh-tool-fs'
             config:
               applyPatch: false
-          - id: tool-bash
-            name: '@deepseek-ai/dsh-tool-bash'
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+          # 包仅 0.2.x 存在（0.1.7 缺 dsh-tool-schedule）：disabled 声明保持两版本可装载；
+          # 桌面 OD 会话暂无定时任务工具，engines 下限抬过 0.2.x 后可改启用。
+          - id: tool-schedule
+            name: '@deepseek-ai/dsh-tool-schedule'
+            disabled: true
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
+          - id: command-goal
+            name: '@deepseek-ai/dsh-command-goal'
+          - id: tool-goal
+            name: '@deepseek-ai/dsh-tool-goal'
+          - id: planning
+            name: cordis:group
+            group: true
+            isolate:
+              planMode: true
+            config:
+              - id: plan-mode
+                name: '@deepseek-ai/dsh-plan-mode'
+                config:
+                  section: |
+                    You are in plan mode. Stay in plan mode until the user approves your plan through exit_plan_mode or switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+                    Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+                    The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs to exit_plan_mode.
+
+                    Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+                    Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+                    When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+          - id: delegation
+            name: cordis:group
+            group: true
+            isolate:
+              workflowEngine: true
+            config:
+              - id: tool-subagent-control
+                name: '@deepseek-ai/dsh-tool-subagent-control'
+              # 导出子路径仅 0.1.7 存在（0.2.2 的 tool-subagent-control exports 无
+              # ./list-agents）：disabled 声明，启用会在桌面断 preset。
+              - id: tool-subagent-list-agents
+                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+                disabled: true
+              # subagent 主行配置 = 两版本键联合（见文件头跨版本规则）。
+              - id: tool-subagent
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: spawn
+                  toolName: subagent
+                  modelSelectionSettings: true
+                  modelSelection: true
+                  modelDiscovery: true
+                  backgroundMode: continuable
+              - id: tool-subagent-fork
+                name: '@deepseek-ai/dsh-tool-subagent'
+                config:
+                  provider: fork
+                  toolName: subagent_fork
+                  backgroundMode: continuable
+              - id: tool-subagent-codex
+                name: '@deepseek-ai/dsh-tool-subagent'
+                disabled: true
+                config:
+                  provider: codex
+                  toolName: subagent_codex
+                  backgroundMode: one-shot
+                  maxDepth: provider-managed
+              - id: tool-subagent-claude-code
+                name: '@deepseek-ai/dsh-tool-subagent'
+                disabled: true
+                config:
+                  provider: claude-code
+                  toolName: subagent_claude_code
+                  backgroundMode: one-shot
+                  maxDepth: provider-managed
+              - id: workflow-ptc
+                name: '@deepseek-ai/dsh-workflow-ptc'
+                config:
+                  provider: spawn
+              - id: tool-workflow
+                name: '@deepseek-ai/dsh-tool-workflow'
+              - id: tool-ralph
+                name: '@deepseek-ai/dsh-tool-ralph'
+                disabled: true
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
           - id: tool-web
             name: '@deepseek-ai/dsh-tool-web'
             config:
               fetch: true
+              searchTimeoutMs: 60000
           - id: present
             name: '@deepseek-ai/dsh-tool-present'
+          # desktop standard 同款条件式：profileContext 服务在场的宿主上启用、不在场恒禁
+          # （web CLI 0.1.7 无该服务 → 与 web standard 的 disabled:true 等效）。
+          - id: tool-plugin-manager
+            name: '@deepseek-ai/dsh-plugin-manager/tools'
+            disabled: !!js "!ctx.get('profileContext')"
+          # 包仅 0.2.x 存在且 desktop standard 本就 disabled：disabled 声明保持可见可开。
+          - id: tool-plugin-market
+            name: '@deepseek-ai/dsh-plugin-market/tools'
+            disabled: true

@@ -59,21 +59,46 @@ const ROOT_ONLY_CHECKS = new Set(['tai-ji-yang-shell'])
  * 子包特有：preset 注册面（U1 验收条款③ / RL1 的注册面机器化）。
  *
  * 断言 cordis.patch.yml 含一行 `@deepseek-ai/dsh-agent-preset` 声明，其 config 内
- * id/name/description/order 齐备，且 config.plugins 显式声明八项子插件（DSH preset 无隐式
- * 工具基线，全部子插件逐项声明）：DSH 原生四工具（tool-fs / tool-bash / tool-web /
- * tool-present，包名以 DSH 仓 standard.patch.yml 实名为准）+ 本包四子插件（persona /
- * doctor 命令 / 设计面板 client / 产物伺服 host，本包内声明形态 = name 以本包名为前缀的
- * exports 子路径说明符）。
+ * id/name/description/order 齐备，且 config.plugins 显式声明「standard 全量基线 + 本包四
+ * 子插件」（2026-11-09 用户裁决方案 B：OD 模式不收窄原生工具面。DSH preset 无隐式工具
+ * 基线，全部子插件逐项声明）：DSH 原生子插件以两版本 standard.patch.yml 实名的并集为准
+ * （含跨版本缺包 / 标准本禁而行 disabled 的成员——disabled 行也在声明面内）+ 本包四子插件
+ * （persona / doctor 命令 / 设计面板 client / 产物伺服 host，本包内声明形态 = name 以本包
+ * 名为前缀的 exports 子路径说明符）。
  *
  * 实现口径：文本级（零 YAML 依赖）。agent-preset 行之后、缩进更深的 `config:` 块内做行
- * 扫描——preset 行的字段与 plugins 八项都在该块内；缩进结构由本断言与 patch 产物同仓
- * 演进保证（断言改口径时同步改 patch，反之亦然）。
+ * 扫描——preset 行的字段与 plugins 全部子插件行都在该块内；缩进结构由本断言与 patch 产物
+ * 同仓演进保证（断言改口径时同步改 patch，反之亦然）。
  */
 const PRESET_PLUGINS_REQUIRED = [
-  '@deepseek-ai/dsh-tool-fs',
+  '@deepseek-ai/dsh-agent-instructions',
+  '@deepseek-ai/dsh-time-context',
   '@deepseek-ai/dsh-tool-bash',
+  '@deepseek-ai/dsh-tool-pwsh',
+  '@deepseek-ai/dsh-tool-fs',
+  '@deepseek-ai/dsh-tool-fs-search',
+  '@deepseek-ai/dsh-tool-jobs',
+  '@deepseek-ai/dsh-tool-schedule',
+  '@deepseek-ai/dsh-skill-filesystem',
+  '@deepseek-ai/dsh-tool-skill',
+  '@deepseek-ai/dsh-command-goal',
+  '@deepseek-ai/dsh-tool-goal',
+  '@deepseek-ai/dsh-plan-mode',
+  '@deepseek-ai/dsh-compaction-basic',
+  '@deepseek-ai/dsh-command-compact',
+  '@deepseek-ai/dsh-compaction-tool-result-pruner',
+  '@deepseek-ai/dsh-tool-subagent-control',
+  '@deepseek-ai/dsh-tool-subagent-control/list-agents',
+  '@deepseek-ai/dsh-tool-subagent',
+  '@deepseek-ai/dsh-workflow-ptc',
+  '@deepseek-ai/dsh-tool-workflow',
+  '@deepseek-ai/dsh-tool-ralph',
+  '@deepseek-ai/dsh-tool-ask-user',
+  '@deepseek-ai/dsh-tool-todo',
   '@deepseek-ai/dsh-tool-web',
   '@deepseek-ai/dsh-tool-present',
+  '@deepseek-ai/dsh-plugin-manager/tools',
+  '@deepseek-ai/dsh-plugin-market/tools',
 ]
 
 /** preset config.id 的裁决值（roster / 新会话选择器 / 会话归属记录用它作标识）。 */
@@ -307,7 +332,7 @@ function checkPackage(pkg) {
     })
   } else {
     const patchPath = field(manifest, 'dsh.bundle.patch')
-    check(label('preset 注册面：agent-preset 行 + config.plugins 八项显式声明'), () => {
+    check(label('preset 注册面：agent-preset 行 + config.plugins standard 全量基线显式声明'), () => {
       checkPresetRegistration(pkg, patchPath, patchLines(pkg, manifest))
     })
   }
