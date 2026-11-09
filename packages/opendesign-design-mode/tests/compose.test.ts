@@ -10,12 +10,12 @@
  * 断言结构（单元任务书验收条款对账）：
  * 1. 拼接顺序与 OD 组装契约同构（core → orchestration → 事实块 → 路由段 → 设计系统段
  *    → panel 协议段；逐字纪律抽查）
- * 2. 占位符零残留（组装产物 + 占位符替换逻辑的白名单过滤行为——RL3 断言对象；panel
+ * 2. 占位符零残留（组装产物 + 占位符替换逻辑的白名单过滤行为——V1 设计包 RL3 断言对象；panel
  *    槽位三标记是 D8 有意形态，单列断言）
- * 3. 路由段含八类任务档绝对路径、不含排除五档路径（D6 白名单）
- * 4. media 段报缺语义在组装产物中在场（D6 ①④⑤ 抽样 + motion-design 条目级压制指令）
- * 5. 注入文本特征串全量清零（$OD_BIN / Integration 视图——RL3 的组装管线断言，
- *    fixture 含完整 D6④ 段供段锚命中；自产段由 4/5 的分组断言分别覆盖）
+ * 3. 路由段含八类任务档绝对路径、不含排除五档路径（V1 设计包 D6 白名单）
+ * 4. media 段报缺语义在组装产物中在场（V1 设计包 D6 ①④⑤ 抽样 + motion-design 条目级压制指令）
+ * 5. 注入文本特征串全量清零（$OD_BIN / Integration 视图——V1 设计包 RL3 的组装管线断言，
+ *    fixture 含完整 V1 设计包 D6④ 段供段锚命中；自产段由 4/5 的分组断言分别覆盖）
  * 6. 事实块形态（od-next-context 格式、结束标签转义、最小集合两字段 + deck 槽接口）
  * 7. persona 静态注册一次（found 注册 / missing 与 error 激活失败；od-persona config
  *    两键通道 = U3b）
@@ -95,10 +95,10 @@ const FACTS_TEXT = composed.text.slice(composed.text.indexOf('<od-next-context')
 const INJECTED_TEXT = composed.text.slice(0, composed.text.indexOf('<od-next-context'))
 /** U1 资产目录 fixture 的完整摘要（形状包 / 设计系统清单段断言的输入）。 */
 const catalogFull = buildAssetCatalog(deriveCatalogDirs(catalogFullRoot))
-/** 真机 OD 资产根（对账锚，同 locate.test.ts；impl-plan 风险表：OD 升级后复跑对账）。 */
+/** 真机 OD 资产根（对账锚，同 locate.test.ts；impl-plan 风险表「包计数漂移」行与设计包 UD2/AS9 登记：OD 升级后复跑对账）。 */
 const realAssetRoot = '/Applications/Open Design.app/Contents/Resources/open-design'
 const hasRealAssetRoot = existsSync(realAssetRoot)
-/** RL7 体积断言基准：真机 2.0.4 实测 1421 行（2026-11-10，U2 基线 1263 + U3b panel 段常量 155），+19% 余量容纳 OD 升级包数增长（runlog 登记；panel 段为派生常量不占漂移余量）。 */
+/** RL7 体积断言基准：真机 2.0.4 实测 1421 行（2026-11-10 复测，构成 = 非 panel 段 1266 + panel 段常量 155；U2 登记基线 1263 与实测非 panel 段差 3 行——段分隔 4→5 占 1 行（U3b runlog 登记），其余 2 行为 U2/U3b 间自产段微调、未逐行归因），+19% 余量容纳 OD 升级包数增长（runlog 登记；panel 段为派生常量不占漂移余量）。 */
 const RL7_MAX_TOTAL_LINES = 1700
 
 // —— 临时树：缺档降级用例（用后清理）——
@@ -130,14 +130,14 @@ describe('组装顺序与 OD 组装契约同构（core → orchestration → 事
   })
 
   it('逐字纪律：core/orchestration 未被组装层重排（保留段原文在场）', () => {
-    // fixture core 的保留段（D6② 素材优先级子块的收尾句）与 orchestration 的保留句逐字在场。
+    // fixture core 的保留段（V1 设计包 D6② 素材优先级子块的收尾句）与 orchestration 的保留句逐字在场。
     expect(composed.text).toContain(
       'Every image lands as a local file or inline data URI referenced relatively;',
     )
     expect(composed.text).toContain('A task ID alone is not a delivered file.')
   })
 
-  it('改写器在组装链内运行（D6① 替换发生且命中记录随产物返回）', () => {
+  it('改写器在组装链内运行（V1 设计包 D6① 替换发生且命中记录随产物返回）', () => {
     const record = composed.rewriteRecords.find(
       (entry) => entry.ruleId === 'r5-core-standalone-image-delivery',
     )
@@ -146,13 +146,13 @@ describe('组装顺序与 OD 组装契约同构（core → orchestration → 事
   })
 })
 
-describe('占位符零残留（RL3 断言对象；panel 槽位标记是 D8 有意形态，单列断言）', () => {
+describe('占位符零残留（V1 设计包 RL3 断言对象；panel 槽位标记是 D8 有意形态，单列断言）', () => {
   it('组装产物不含 OD 注入资产占位符字面（SKILL_CATALOG / SKILL_ROOT，全文域）', () => {
     expect(composed.text).not.toContain('{{SKILL_CATALOG}}')
     expect(composed.text).not.toContain('{{SKILL_ROOT}}')
   })
 
-  it('注入资产域泛化 {{ 清零（RL3 防御域 = core/orchestration 改写产物）', () => {
+  it('注入资产域泛化 {{ 清零（V1 设计包 RL3 防御域 = core/orchestration 改写产物）', () => {
     expect(INJECTED_TEXT).not.toContain('{{')
   })
 
@@ -192,7 +192,7 @@ describe('占位符零残留（RL3 断言对象；panel 槽位标记是 D8 有�
   })
 })
 
-describe('路由段：八类路径 + 排除五档不进清单（D6 白名单）', () => {
+describe('路由段：八类路径 + 排除五档不进清单（V1 设计包 D6 白名单）', () => {
   it('八类任务档绝对路径齐备（逐类断言）', () => {
     for (const id of ROUTED_TASK_PROFILES) {
       expect(ROUTING_TEXT).toContain(join(miniScenario, 'assets', 'task-profiles', `${id}.md`))
@@ -237,7 +237,7 @@ describe('路由段：八类路径 + 排除五档不进清单（D6 白名单）'
   })
 })
 
-describe('media 段报缺语义在组装产物中在场（D6 抽样）', () => {
+describe('media 段报缺语义在组装产物中在场（V1 设计包 D6 抽样）', () => {
   it('D6① core 独立图片交付段替换语义在场', () => {
     expect(composed.text).toContain('Design mode V1 has no image, video, or audio production pipeline')
     expect(composed.text).not.toContain('deliver the actual image file')
@@ -263,7 +263,7 @@ describe('media 段报缺语义在组装产物中在场（D6 抽样）', () => {
   })
 })
 
-describe('注入文本特征串全量清零（RL3 的组装管线断言）', () => {
+describe('注入文本特征串全量清零（V1 设计包 RL3 的组装管线断言）', () => {
   it('注入文本无 od CLI 特征串（$OD_BIN 域；fixture 含完整 D6④ 段供段锚命中）', () => {
     expect(INJECTED_TEXT).not.toContain('$OD_BIN')
     expect(INJECTED_TEXT).not.toContain('$OD_NODE_BIN')

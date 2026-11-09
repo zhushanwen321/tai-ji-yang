@@ -224,7 +224,9 @@ verification scripts yourself.`
  *
  * @param params 数值参数（Partial 缺省兜底 {@link PANEL_PROTOCOL_DEFAULTS}）。
  * @param slots brand/skill 槽代入值——仅供对账/测试通道使用（slots 齐供时产物与
- *   正源 renderPanelPrompt 同构可对账）；缺省保留占位标记（DSH 生产形态）。
+ *   正源 renderPanelPrompt 同构可对账；同构以不含转义序列的槽值为前提——正源渲染器
+ *   对 brand.name/brandBody 先做实体/零宽连接符转义再代入，本替换通道不复刻该转义，
+ *   含引号或闭合标签的对抗性槽值下两产物不同构）；缺省保留占位标记（DSH 生产形态）。
  * @returns 指引块 + '\n\n' + 骨架代入产物。
  * @throws RangeError - 参数越界（正源渲染器同款校验语义，message 指名字段与实际值）。
  */

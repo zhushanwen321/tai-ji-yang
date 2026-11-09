@@ -1,24 +1,24 @@
 /**
  * 材质化器：会话创建时把设备壳支撑文件从 OD 源资产无条件全量重铺进会话工作目录
- * （U5；语义权威 = 设计 D8，写入影响登记 ①-④）。
+ * （V1 设计包 U5；语义权威 = V1 设计包 D8，写入影响登记 ①-④）。
  *
- * D8 的无条件语义——实现里不存在任何失效/跳过/比对分支：
- *   - 不按落点目录存在性跳过（SI1：目录存在只说明某次材质化发生过，不蕴含内容一致——
+ * V1 设计包 D8 的无条件语义——实现里不存在任何失效/跳过/比对分支：
+ *   - 不按落点目录存在性跳过（V1 设计包 SI1：目录存在只说明某次材质化发生过，不蕴含内容一致——
  *     OD 升级后源已变而目录内容是旧的，存在性跳过会让模型拿到与提示词不匹配的设备壳）；
  *   - 不做源 hash 比对、无失效判定（全量重铺成本 = 4 个小文件毫秒级写盘，判定机制的收入不抵概念成本）；
  *   - 不按任务条件触发（V1 无会话内运行时，任务选定是对话行为，插件侧无触发依据）；
- *   - 落点既有内容无条件覆盖（D8 ④ 判定：落点收在 .od-frames/ 约定子目录内，常态覆盖对象 =
+ *   - 落点既有内容无条件覆盖（V1 设计包 D8 ④ 判定：落点收在 .od-frames/ 约定子目录内，常态覆盖对象 =
  *     旧版本资产镜像；用户手写内容占用管理名被覆盖的概率极低，显式接受——
  *     感知通道 = doctor 材质化状态报告落点清单）。
  *
- * deck 协议供给形态（D9，V1 R-deck-degrade 降级裁决经 AS5 推翻后更新）：第 5 个铺盘文件
+ * deck 协议供给形态（opendesign-assets-quality D9；V1 设计包 R-deck-degrade 降级裁决经 opendesign-assets-quality AS5 推翻后更新）：第 5 个铺盘文件
  * `.od-frames/deck-framework.md`——内容非 OD 静态资产复制件，而是 lib/protocols/deck.ts 的
  * 派生登记文本（renderDeckFrameworkFile()：适用限定句 + Existing deck 兼容段 + New deck
  * 规范段三段结构，正源 = OD 源码仓 packages/contracts 的协议常量，AX3 例外 + 版本锚登记），
  * 与 4 个 manifest 复制件同目录同批、同无条件重铺语义。文件名 = 上游约定（任务档 ppt.md
  * L216 fallback 明文引用 .od-frames/deck-framework.md，OD contracts
  * OD_NEXT_MANAGED_RESOURCE_FILES 与 daemon device-frames.ts L121-126 组文同名——自造名将使
- * OD 升级后 fallback 扑空）。体积分档依据（D9）：deck 协议文本含整页骨架 HTML，不进提示词
+ * OD 升级后 fallback 扑空）。体积分档依据（opendesign-assets-quality D9）：deck 协议文本含整页骨架 HTML，不进提示词
  * 注入，模型经任务档路由段指针（ppt 条目，U2）自读全文。
  *
  * 管理名清单与 OD contracts 的 OD_NEXT_MANAGED_RESOURCE_FILES 同源同集（4 复制件 +
@@ -36,14 +36,14 @@ import path from 'node:path'
 import { renderDeckFrameworkFile } from '../protocols/deck.js'
 import type { MaterializeManifest, MaterializedFile } from '../types.js'
 
-/** 材质化落点子目录实名（与 OD contracts OD_NEXT_DEVICE_FRAME_ROOT 同源，D8 ①）。 */
+/** 材质化落点子目录实名（与 OD contracts OD_NEXT_DEVICE_FRAME_ROOT 同源，V1 设计包 D8 ①）。 */
 export const OD_FRAMES_DIR = '.od-frames'
 
-/** deck 协议铺盘文件实名（上游约定名，见文件头 D9 段）。 */
+/** deck 协议铺盘文件实名（上游约定名，见文件头 opendesign-assets-quality D9 段）。 */
 export const DECK_FRAMEWORK_FILE_NAME = 'deck-framework.md'
 
 /**
- * 材质化管理名清单（D8 ①：manifest 清单资源复制件，恰 4 文件——语义保持「复制件」
+ * 材质化管理名清单（V1 设计包 D8 ①：manifest 清单资源复制件，恰 4 文件——语义保持「复制件」
  * 不含派生件，消费方（context-facts 壳清单、doctor ⑤ 既有逐文件检查）按此口径派生）。
  */
 export const MATERIALIZED_FILE_NAMES = [
@@ -54,7 +54,7 @@ export const MATERIALIZED_FILE_NAMES = [
 ] as const
 
 /**
- * 材质化完整写清单（D8 ① + D9：恰 5 文件 = 复制件 4 + deck-framework.md 派生登记件；
+ * 材质化完整写清单（V1 设计包 D8 ① + opendesign-assets-quality D9：恰 5 文件 = 复制件 4 + deck-framework.md 派生登记件；
  * MaterializeManifest.files 与 doctor 材质化状态逐文件检查以此为准）。
  */
 export const MATERIALIZED_WRITE_LIST: readonly string[] = [
@@ -89,7 +89,7 @@ interface ScenarioManifestShape {
 }
 
 /**
- * 无条件全量重铺（D8）。
+ * 无条件全量重铺（V1 设计包 D8）。
  *
  * @param input.manifestPath open-design.json 清单绝对路径（资源相对路径以它所在目录为基准解析，
  *   与 OD 清单 schema 一致；调用方传 VersionProfile.manifestPath 或测试直传 fixture 路径）。
@@ -131,7 +131,7 @@ export async function materializeAssets(input: {
     )
   }
 
-  // 收集重铺计划：全量扫描全部任务档的资源声明（D8 全量语义——V1 无会话内运行时，
+  // 收集重铺计划：全量扫描全部任务档的资源声明（V1 设计包 D8 全量语义——V1 无会话内运行时，
   // 任务选定在首轮问答后，材质化不分任务），basename 命中管理名才落盘（OD daemon 同款
   // 过滤语义：任务档 md 等非管理名资源经模型自读进入上下文，不走落盘）。
   const plan = new Map<string, string>() // 管理名 → 源文件绝对路径
@@ -167,7 +167,7 @@ export async function materializeAssets(input: {
     }
   }
 
-  // 无条件覆盖写入：mkdir recursive 幂等（不以存在为跳过条件），writeFile 直接覆盖（D8 ④）。
+  // 无条件覆盖写入：mkdir recursive 幂等（不以存在为跳过条件），writeFile 直接覆盖（V1 设计包 D8 ④）。
   const targetRoot = path.join(input.cwd, OD_FRAMES_DIR)
   await mkdir(targetRoot, { recursive: true })
 
@@ -187,7 +187,7 @@ export async function materializeAssets(input: {
     files.push({ name, sourcePath, bytes: content.byteLength })
   }
 
-  // 第 5 文件：deck 协议铺盘（D9）——内容 = lib/protocols/deck.ts 派生登记文本
+  // 第 5 文件：deck 协议铺盘（opendesign-assets-quality D9）——内容 = lib/protocols/deck.ts 派生登记文本
   // （非 OD 静态资产复制件，MaterializedFile.sourcePath 缺省），与复制件同目录同批、
   // 同无条件覆盖语义；写清单恰 5 文件（MATERIALIZED_WRITE_LIST）。
   const deckText = renderDeckFrameworkFile()

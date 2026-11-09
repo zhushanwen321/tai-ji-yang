@@ -1,15 +1,17 @@
 /**
- * 材质化器一致性测试（U5 基线 + U3a 扩展：D9 第 5 文件 deck-framework.md；
- * 语义权威 = 设计 D8/D9，验收 = impl-plan A3「材质化 5 文件写清单断言」的单测层）。
+ * 材质化器一致性测试（V1 设计包 U5 基线 + opendesign-assets-quality U3a 扩展：该设计包
+ * D9 第 5 文件 deck-framework.md；语义权威 = V1 设计包 D8（无条件全量重铺）+
+ * opendesign-assets-quality D9（deck 派生件），验收 = opendesign-assets-quality impl-plan
+ * A3「材质化 5 文件写清单断言」的单测层）。
  *
  * 断言（任务书）：
  *   1. 首铺齐全 —— 空目录首铺后 .od-frames/ 恰为写清单 5 文件（4 个 manifest 复制件 +
  *      deck-framework.md 派生登记件），MaterializeManifest 契约完整；
  *   2. 逐字节一致 —— manifest 复制件与源 fixture 对应文件逐字节相等；deck-framework.md
- *      内容 === lib/protocols/deck.ts 派生登记文本（D9 三段结构全文）；
- *   3. 源变更后新内容 —— 源资产变更（模拟 OD 升级）后下次重铺拿到新内容（RL4）；
+ *      内容 === lib/protocols/deck.ts 派生登记文本（opendesign-assets-quality D9 三段结构全文）；
+ *   3. 源变更后新内容 —— 源资产变更（模拟 OD 升级）后下次重铺拿到新内容（V1 设计包 RL4）；
  *   4. 幂等不堆积 —— 重复重铺文件集不变、无清单外文件；既有非管理名文件不被清理
- *      （D8 无删除通道的镜像语义），落点旧镜像被源覆盖（D8 ④ 无条件覆盖语义）。
+ *      （V1 设计包 D8 无删除通道的镜像语义），落点旧镜像被源覆盖（V1 设计包 D8 ④ 无条件覆盖语义）。
  *
  * fixture 消费纪律：tests/fixtures/mini-od 共享树只读；「源变更」断言不触碰共享树
  * （改共享 fixture 会污染 fixtures.test.ts 与并行消费方断言），在 tmpdir 深拷贝源上模拟——
@@ -91,7 +93,7 @@ describe('断言 1：首铺齐全（空目录首铺 + manifest 契约）', () =>
       expect(path.isAbsolute(file!.sourcePath!), name).toBe(true)
       expect(file!.sourcePath, name).toBe(path.resolve(FIXTURE_PLUGIN_DIR, rel))
     }
-    // deck 派生登记件：无源资产路径（D9 内容生成自 lib/protocols/deck.ts）。
+    // deck 派生登记件：无源资产路径（opendesign-assets-quality D9 内容生成自 lib/protocols/deck.ts）。
     const deck = result.files.find((f) => f.name === DECK_FRAMEWORK_FILE_NAME)
     expect(deck).toBeDefined()
     expect(deck!.sourcePath).toBeUndefined()
@@ -110,7 +112,7 @@ describe('断言 2：重铺后与源逐字节一致（共享 fixture 只读消�
     }
   })
 
-  it('deck-framework.md 内容 === 协议派生登记文本（D9 三段结构全文；验收 A3 写清单断言）', async () => {
+  it('deck-framework.md 内容 === 协议派生登记文本（opendesign-assets-quality D9 三段结构全文；验收 impl-plan A3 写清单断言）', async () => {
     const cwd = path.join(workspace, 'project')
     await materializeAssets({ manifestPath: FIXTURE_MANIFEST, cwd })
 
@@ -123,7 +125,7 @@ describe('断言 2：重铺后与源逐字节一致（共享 fixture 只读消�
   })
 })
 
-describe('断言 3：模拟源变更后下次重铺拿到新内容（RL4：OD 升级 → 副本跟随）', () => {
+describe('断言 3：模拟源变更后下次重铺拿到新内容（V1 设计包 RL4：OD 升级 → 副本跟随）', () => {
   it('tmp 源拷贝上改 layout.css 后重铺，落点为新内容且旧内容清零', async () => {
     // 深拷贝源资产到 tmp（共享 fixture 只读纪律，见文件头）
     const srcDir = path.join(workspace, 'od-src')
@@ -144,13 +146,13 @@ describe('断言 3：模拟源变更后下次重铺拿到新内容（RL4：OD �
     const staged = readFileSync(path.join(cwd, OD_FRAMES_DIR, 'layout.css'), 'utf8')
     expect(staged).toBe(upgraded)
     expect(staged).not.toBe(oldBytes.toString('utf8'))
-    // 重铺清单恒 5 文件（4 复制件 + deck 派生件，D9 写清单口径）
+    // 重铺清单恒 5 文件（4 复制件 + deck 派生件，opendesign-assets-quality D9 写清单口径）
     expect(second.files).toHaveLength(MATERIALIZED_WRITE_LIST.length)
     expect(first.files).toHaveLength(MATERIALIZED_WRITE_LIST.length)
   })
 })
 
-describe('断言 4：重复重铺幂等不堆积、不产生清单外文件（V11 单测层）', () => {
+describe('断言 4：重复重铺幂等不堆积、不产生清单外文件（V1 设计包 V11 单测层）', () => {
   it('同一 cwd 重铺 3 次：文件集恒为写清单 5 文件、无清单外文件、内容稳定一致', async () => {
     const cwd = path.join(workspace, 'project')
     let deckContentFirst = ''
@@ -169,13 +171,13 @@ describe('断言 4：重复重铺幂等不堆积、不产生清单外文件（V1
     expect(readFileSync(path.join(stagedDir, DECK_FRAMEWORK_FILE_NAME), 'utf8')).toBe(renderDeckFrameworkFile())
   })
 
-  it('既有非管理名文件不被清理（D8：无插件侧删除通道），落点旧镜像被源覆盖（D8 ④ 无条件覆盖）', async () => {
+  it('既有非管理名文件不被清理（V1 设计包 D8：无插件侧删除通道），落点旧镜像被源覆盖（V1 设计包 D8 ④ 无条件覆盖）', async () => {
     const cwd = path.join(workspace, 'project')
     const stagedDir = path.join(cwd, OD_FRAMES_DIR)
     await materializeAssets({ manifestPath: FIXTURE_MANIFEST, cwd })
 
     // 用户/旧版本留在落点的两类既有内容（含对管理写清单名 deck-framework.md 的手写占用——
-    // 同样被无条件覆盖，D8 ④）
+    // 同样被无条件覆盖，V1 设计包 D8 ④）
     writeFileSync(path.join(stagedDir, 'user-note.txt'), 'user owns this', 'utf8')
     writeFileSync(path.join(stagedDir, 'iphone.html'), 'stale previous-generation shell', 'utf8')
     writeFileSync(path.join(stagedDir, DECK_FRAMEWORK_FILE_NAME), 'stale previous-generation deck protocol', 'utf8')

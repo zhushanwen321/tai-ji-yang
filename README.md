@@ -333,7 +333,7 @@ pnpm build:self-test  # 12 项自证，含四条失败支证明会红
 
 真实 DSH 验收使用 [.agents/skills/verify-taiji-yang](.agents/skills/verify-taiji-yang/SKILL.md) 与 `scripts/verify/run.mjs`：连接显式测试 URL，或在隔离 DSH_HOME 自启实例。覆盖品牌、会话头、主题、项目列表和卸载回落；证据包含 `verdict.json`、`summary.jsonl`、截图与控制台。该入口不读取用户浏览器 profile，不修改用户真实 DSH profile，不发送模型请求。
 
-brand/projects/lifecycle 三场景的回归命题是「新插件（opendesign-design-mode）安装进同一 profile 后，preset 注册与 UI 注入不干扰 shell 包」——只在两包共存 profile 上可证明。runner 自启形态只装本仓 shell 包，单装态结果不能登记为共存回归通过。共存前提的手工准备：对同一隔离 profile 先后执行 `dsh plugin --profile web add <本仓根>`（shell）与 `dsh plugin --profile web add packages/opendesign-design-mode`（两包共存），再以 `--dsh-home <该目录>`（lifecycle 须自启形态）或 `--url <实例认证 URL>`（brand/projects）跑 runner；该串接已由 web 版 e2e 场景 S8 自动化（`packages/opendesign-design-mode/tests/e2e/web.spec.mjs`）。
+brand/projects/lifecycle 三场景的回归命题是「新插件（opendesign-design-mode）安装进同一 profile 后，preset 注册与 UI 注入不干扰 shell 包」——只在两包共存 profile 上可证明。runner 自启形态只装本仓 shell 包，单装态结果不能登记为共存回归通过。共存前提的手工准备：对同一隔离 profile 先后执行 `dsh plugin --profile web add <本仓根>`（shell）与 `dsh plugin --profile web add packages/opendesign-design-mode`（两包共存），再以 `--dsh-home <该目录>`（lifecycle 须自启形态）或 `--url <实例认证 URL>`（brand/projects）跑 runner；该串接已由 web 版 e2e 场景 S9 自动化（`packages/opendesign-design-mode/tests/e2e/web.spec.mjs`）。
 
 ## 发布（npm）
 

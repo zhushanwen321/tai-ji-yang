@@ -1,17 +1,20 @@
 /**
- * 版本画像 + 默认读取器（设计 §3.1 资产层的画像与直连段；任务书 U2a 职责 4）。
+ * 版本画像 + 默认读取器 + 三目录路径派生（V1 设计包 §3.1 资产层的画像与直连段；V1 任务书 U2a
+ * 职责 4。三目录路径派生 deriveCatalogDirs 属 opendesign-assets-quality U1——资产根直系
+ * 子目录 craft/design-templates/design-systems 的路径集计算，见本文件「资产根直系子目录
+ * 三目录路径集」段与 locate.test.ts 同名测试组）。
  *
  * 版本画像：对候选列表逐个做清单发现（discoverManifest），按选定规则取第一个完整可用候选：
  *   环境变量覆盖（override 恒最先）> 渠道优先级（正式 > Beta > Prerelease > Preview）> 路径序。
  * 候选不可用（not-found / broken）时顺延下一候选；全部尽墨时 missing（零候选或全 not-found）
  * 与 error（存在 broken——已装但资产损坏）两形态分开，供 persona 的 SI3 区分文案消费。
- * profile.candidates 保留全部候选，doctor（U2b）报告「全部候选与选中依据」的源数据。
+ * profile.candidates 保留全部候选，doctor（V1 任务书 U2b）报告「全部候选与选中依据」的源数据。
  *
- * 默认读取器（UD2：无适配器注册表骨架，直连）：readRosterAsset 读清单 roster 内声明的资产
+ * 默认读取器（V1 设计包 UD2：无适配器注册表骨架，直连）：readRosterAsset 读清单 roster 内声明的资产
  * 文本，无版本分支——V1 唯一读取路径就是它；OD 升级后的失配由 doctor 的版本警告与改写命中
- * 清单暴露（D9 止损位），不在读取层做版本分叉。
+ * 清单暴露（V1 设计包 D9 止损位），不在读取层做版本分叉。
  *
- * 版本核实（UD2）：verified = 清单 specVersion ∈ VERIFIED_SPEC_VERSIONS（对 OD 0.25.1 与
+ * 版本核实（V1 设计包 UD2）：verified = 清单 specVersion ∈ VERIFIED_SPEC_VERSIONS（对 OD 0.25.1 与
  * OpenDesign.app 安装版 2.0.4 真机清单核实过的规范版本）。verified=false 不是错误——画像照常
  * 产出，doctor 对未核实版本出警告（versionProfile 在手即可与已核实版本比对告警，无需注册表）。
  */
@@ -148,7 +151,7 @@ export function deriveCatalogDirs(resourceRoot: string): AssetCatalogDirs {
 }
 
 /**
- * 默认读取器：读清单 roster 内声明的资产文本（UD2 直连，无版本分支）。
+ * 默认读取器：读清单 roster 内声明的资产文本（V1 设计包 UD2 直连，无版本分支）。
  *
  * 两道校验后直读：
  *   1. 声明校验——relativePath 必须在清单声明的 roster 集合内（"./" 前缀归一后比对），

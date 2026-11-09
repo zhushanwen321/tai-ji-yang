@@ -9,7 +9,7 @@
 | 包 | 目录 | 职责 | 用户文档 |
 |----|------|------|----------|
 | `tai-ji-yang-shell`（根包） | `.`（仓根） | 太极视觉身份（染色三层 + 槽位贡献）与项目分组侧栏 | 仓库根 `README.md`（正文主体） |
-| `opendesign-design-mode`（子包） | `packages/opendesign-design-mode` | OpenDesign 设计模式：preset 入口 + 设计预览面板 + 资产定位 / 会话组装 / 材质化 | `packages/opendesign-design-mode/README.md` |
+| `opendesign-design-mode`（子包） | `packages/opendesign-design-mode` | OpenDesign 设计模式：preset 入口 + 设计预览面板 + 资产定位 / 会话组装 / 材质化 / 质量环 / 协议登记 | `packages/opendesign-design-mode/README.md` |
 
 本文以下章节描述根包 tai-ji-yang-shell 的架构；子包架构见文末「子包 opendesign-design-mode 架构简述」节。
 
@@ -193,10 +193,10 @@ single 槽的槽规则 = 按 priority 升序、数值最小者渲染，同优先
 子包交付 OpenDesign 设计模式：新会话选择器出现「OpenDesign 设计模式」preset 入口，定位本机 OpenDesign（下称 OD）安装资产驱动设计会话，产物在右侧栏设计面板预览；未装 OD 时入口显式降级提示。形态与根包同构的双半场：Node 半场源码在 `lib/*.ts`（经 esbuild transform 成同名 `.js` 同仓入库，不打包——每个 exports 子路径是宿主 loader 独立 import 的入口），浏览器半场在 `client/`。本节是索引级简述，模块级设计裁决以各源码文件头注释为权威（内含设计编号的依据链）。
 
 - `cordis.patch.yml`：两行 insert——本包主行（`id: opendesign-design-mode`，承载包级生命周期与跨子插件协调）+ 设计模式 preset 行（`@deepseek-ai/dsh-agent-preset`，新会话选择器入口）。preset 的 `config.plugins` 无隐式工具基线，全部子插件逐项显式声明：DSH standard 模式全量基线（含跨版本缺包行的 disabled 声明）+ 本包四子插件（persona / doctor 命令 / 设计面板 client / 产物伺服 host），其注册声明由 `scripts/check-manifest.mjs` 逐项断言。
-- `lib/index.js`：包主行的 host 半入口——订阅宿主 `agent-preset/selected` 事件，在会话选定设计 preset 时触发设备壳文件材质化。
+- `lib/index.js`：包主行的 host 半入口——订阅宿主 `agent-preset/selected` 事件，在会话选定设计 preset 时触发设备壳文件材质化；同一事件接线质量环监听（`startQualityWatchForSession`，presetId 过滤，监听器集合挂进程 effect），链路 = watcher 监听 → lint 检查 → feedback 仅 P0 回注。
 - `lib/persona.ts`：persona 子插件——启动时探测 OD 资产，探测成功则调用组装器产出设计模式系统提示词并注册为 preset 作用域 section；探测失败以携带恢复动作的 diagnostic 激活失败，宿主把该 preset 标记 broken（选择器自动过滤、设置页显示诊断与恢复动作），绝不进入提示词残缺的坏会话。
-- `lib/locate/`：OD 资产定位。`manifest-discovery.ts` 搜索式清单发现（受限深度遍历找 `open-design.json` + 内容特征校验 + roster 核验，缺件显式失败）；`version-profile.ts` 版本画像（多候选按「环境变量覆盖 > 渠道优先级 > 路径序」选定，终态三分——可用 / missing（未安装）/ error（已装但资产损坏），供 persona 区分降级文案）+ 默认资产读取器；`platform.ts` / `platform-macos.ts` 平台策略（枚举候选资源根，V1 仅 macOS 有实策略，其余平台留接口空位返回空候选）。
-- `lib/compose/`：设计会话组装。`bundle.ts` 组装编排（从清单读声明路径 → 逐字直读 core / orchestration 两文本 → 改写 → 占位符 → 事实块 → 路由指令段）；`context-facts.ts` 基本事实块（设备壳可用性 + layout.css 指针两个最小字段）；`placeholders.ts` 占位符替换（OD 升级防御，渲染经与路由段共用的白名单过滤）；`task-routing.ts` 路由指令段（列出八类可交付任务及其任务档路径，任务档由模型首轮问答选定后用文件工具自读）。
+- `lib/locate/`：OD 资产定位。`manifest-discovery.ts` 搜索式清单发现（受限深度遍历找 `open-design.json` + 内容特征校验 + roster 核验，缺件显式失败）；`version-profile.ts` 版本画像（多候选按「环境变量覆盖 > 渠道优先级 > 路径序」选定，终态三分——可用 / missing（未安装）/ error（已装但资产损坏），供 persona 区分降级文案）+ 默认资产读取器；`asset-catalog.ts` 资产目录摘要扫描（craft / design-templates / design-systems 三目录逐包摘要与三态降级，compose 三个自产段与 doctor ⑨ 的唯一数据源，路径由 `version-profile.ts` 的 `deriveCatalogDirs` 派生）；`platform.ts` / `platform-macos.ts` 平台策略（枚举候选资源根，V1 仅 macOS 有实策略，其余平台留接口空位返回空候选）。
+- `lib/compose/`：设计会话组装。`bundle.ts` 组装编排（从清单读声明路径 → 逐字直读 core / orchestration 两文本 → 改写 → 占位符 → 事实块 → 路由指令段）；`context-facts.ts` 基本事实块（设备壳可用性 + layout.css 指针两个最小字段）；`placeholders.ts` 占位符替换（OD 升级防御，渲染经与路由段共用的白名单过滤）；`task-routing.ts` 路由指令段（列出八类可交付任务及其任务档路径 + 形状包清单段 + ppt 条目 deck 协议指针，任务档由模型首轮问答选定后用文件工具自读）；`design-systems.ts` manifest 感知设计系统清单段（name + category + USAGE/components/tailwind 深层文件指路）。
 - `lib/materialize/copy.ts`：材质化器——会话创建时把设备壳支撑文件与 deck 协议文件（共 5 个小文件，含 `.od-frames/deck-framework.md` 三段结构：适用限定句 / Existing deck 兼容段 / New deck 规范段——文件名对齐 OD 上游管理名约定，OD 升级后任务档 fallback 直达）无条件全量重铺进会话工作目录的 `.od-frames/` 子目录；纯复制器语义，源侧只读，写侧收在 `.od-frames/` 约定子目录内，失败 fail-fast 由包主行监听记日志（不阻断会话）。
 - `lib/rewrite/`：降级改写器。`rules.ts` 五族规则（cli-path / ui-guidance / two-turn-protocol / question-form / media-missing）按资产代际分单（代际按文本标记探测，每条规则声明生效代际）；`apply.ts` 逐条应用并产出逐条命中记录——代际适用规则零命中即规则失配信号，是 OD 升级漂移的第一发现通道。
 - `lib/protocols/`：协议文本登记层（AX3 范围化例外——安装盘无静态源、正源在 OD 源码仓的 daemon 侧协议文本，派生副本进插件仓并承担对账义务）。`panel.ts` 评审团协议骨架（五面板角色/输出标记语法/收敛规则；阈值与轮数从 preset config 读、缺省沿用 OD 缺省 8.0/3；正源 brand/skill 输入槽转为协议段内占位指引）；`deck.ts` deck 协议三段结构派生；`anchors.ts` 版本锚登记与比对纯函数（正源 commit + 骨架 sha256）。对账通道 = doctor 第⑩节。

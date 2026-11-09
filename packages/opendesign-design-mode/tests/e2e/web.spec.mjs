@@ -1412,11 +1412,13 @@ function runVerifyRunner(args) {
 }
 
 /**
- * 场景 S8（A9/A10/A11）：shell 包既有断言场景在两包共存 profile 上的回归。
+ * 场景 S9（主编排注册名；A9/A10/A11 = V1 设计包 impl-plan 验收项：shell 包 brand/projects/
+ * lifecycle 三场景）：shell 包既有断言场景在两包共存 profile 上的回归。
  *
  * 共存前提即命题：brand/projects/lifecycle 三场景的验收目的 =「新插件安装进同一 profile 后
  * preset 注册与 UI 注入不干扰 shell 包」——只在 opendesign 在场时才可证明（verify runner
- * 自启形态只装 shell 单包，单装态结果不能登记为 A9/A10/A11 通过）。串接形态：
+ * 自启形态只装 shell 单包，单装态结果不能登记为通过）。登记锚 = 本轮 impl-plan U7 验收④
+ * 与设计 §4.3 web 行（承 V1 设计包 impl-plan U8「shell 包 reuse 三场景不回归」）。串接形态：
  *  - brand+projects：runner --url 连本套件的两包共存实例（runner 不装包不启实例）；
  *  - lifecycle：runner 自启形态对克隆的共存 home（runner 幂等重 add shell——实测幂等；
  *    opendesign 保持在场）。lifecycle 的固有 degrade（禁用回落无 CLI 通道）按 runner 登记

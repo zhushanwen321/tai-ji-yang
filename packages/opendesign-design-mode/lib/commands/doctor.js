@@ -147,7 +147,7 @@ function renderMaterializeSection(sessionCwd, issues) {
     issues.push({ section: DOCTOR_SECTIONS.materialize, message });
     lines.push(`- ✗ ${message}`);
   } else if (missingNames.length > 0) {
-    const message = `材质化异常：${missingNames.length} 个管理名缺失（${missingNames.join("、")}；D8/D9 为无条件全量重铺，写清单 ${MATERIALIZED_WRITE_LIST.length} 文件应齐备）。${DOCTOR_RECOVERY_ACTIONS.restartDsh}`;
+    const message = `材质化异常：${missingNames.length} 个管理名缺失（${missingNames.join("、")}；材质化为无条件全量重铺——V1 设计包 D8 确立语义、opendesign-assets-quality D9 扩至 5 文件写清单，${MATERIALIZED_WRITE_LIST.length} 文件应齐备）。${DOCTOR_RECOVERY_ACTIONS.restartDsh}`;
     issues.push({ section: DOCTOR_SECTIONS.materialize, message });
     lines.push(`- ✗ ${message}`);
   } else {

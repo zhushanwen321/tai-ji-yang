@@ -1,18 +1,23 @@
 /**
- * 资产定位器 + 清单发现 + 版本画像 + 默认读取器测试（U2a）。
+ * 资产定位器 + 清单发现 + 版本画像 + 默认读取器测试（V1 任务书 U2a）。
  *
  * fixture：U0 共享 fixture（tests/fixtures/mini-od 默认布局形态、drift-od 漂移形态）；
  * 「roster 缺件」「超已知版本」「深层清单」「清单穿越声明」四种异常/边界形态在测试内
  * 以临时树构造（mkdtemp + 复制 drift-od 场景包改字段），不落 tests/fixtures/ 目录——
- * 它们是定位层的行为用例，不是多单元共享的资产样本。
+ * 它们是定位层行为用例，不是多单元共享的资产样本。例外：U1 资产目录 fixture
+ * （tests/fixtures/asset-catalog，full + missing-dirs 两变体）登记在 tests/fixtures/
+ * 且被 compose.test.ts 共享消费（清单段断言的同源输入），不适用上一句。
  *
- * 断言结构（任务书验收条款对账）：
+ * 断言结构（V1 任务书验收条款对账）：
  * 1. 定位/发现/画像正确（mini-od：默认布局、三层版本、特征校验）
  * 2. 多候选选定规则：环境变量覆盖 > 渠道优先级 > 路径序（含不可用候选顺延）
- * 3. 漂移 fixture（清单非默认位置）仍可定位（A6/V6 探测层）
+ * 3. 漂移 fixture（清单非默认位置）仍可定位（V1 设计包 A6/V6 探测层）
  * 4. 未核实版本警告标记（specVersion 超已知集合 → verified=false）
- * 5. roster 缺件显式失败（SI2：恢复动作「重装 OpenDesign」）
+ * 5. roster 缺件显式失败（V1 设计包 SI2：恢复动作「重装 OpenDesign」）
  * 6. 平台策略接口：darwin 走 macOS、其余平台空位；深度限制；默认读取器声明/穿越两道校验
+ * 7. 三目录派生与资产摘要扫描（impl-plan U1：deriveCatalogDirs + buildAssetCatalog 三态
+ *    降级；fixture asset-catalog/full + missing-dirs + 真机对账组——full 被 compose.test
+ *    共享消费）
  */
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -160,7 +165,7 @@ describe('搜索式清单发现（discoverManifest）', () => {
     })
   })
 
-  it('drift-od：清单在非默认相对位置（upgraded/v2/）仍命中（A6/V6 漂移形态）', () => {
+  it('drift-od：清单在非默认相对位置（upgraded/v2/）仍命中（V1 设计包 A6/V6 漂移形态）', () => {
     const result = discoverManifest(driftRoot)
     expect(result.status).toBe('found')
     if (result.status !== 'found') return
@@ -198,7 +203,7 @@ describe('搜索式清单发现（discoverManifest）', () => {
   })
 })
 
-describe('roster 核验（SI2：清单存在 ≠ 资产可用）', () => {
+describe('roster 核验（V1 设计包 SI2：清单存在 ≠ 资产可用）', () => {
   it('清单声明文件缺失 → broken，message 带缺失路径与恢复动作「重装 OpenDesign」', () => {
     const tree = copyDriftScenario('missing')
     rmSync(join(tree, 'assets', 'core-system-prompt.md'))
@@ -355,7 +360,7 @@ describe('版本画像（buildVersionProfile）与多候选选定规则', () => 
   })
 })
 
-describe('未核实版本警告标记（UD2：doctor 对未核实版本警告）', () => {
+describe('未核实版本警告标记（V1 设计包 UD2：doctor 对未核实版本警告）', () => {
   it('specVersion 超已知核实集合 → 画像照常产出但 verified=false', () => {
     // 已核实集合是实施期事实（OD 0.25.1 检出核实），fixture 断言锁住它的当前值防无意扩缩。
     expect(VERIFIED_SPEC_VERSIONS).toEqual(['1.0.0'])
@@ -443,7 +448,7 @@ describe('一站式入口（locateOdAssets）', () => {
 /** 资产目录 fixture：full = 三目录齐备（真机形态摘录 + 损坏/缺席变体），missing-dirs = 目录缺失变体。 */
 const catalogFullRoot = join(fixturesRoot, 'asset-catalog', 'full')
 const catalogMissingRoot = join(fixturesRoot, 'asset-catalog', 'missing-dirs')
-/** 真机 OD 资产根（对账锚；impl-plan 风险表：OD 升级后计数漂移时复跑对账更新登记）。 */
+/** 真机 OD 资产根（对账锚；impl-plan 风险表「包计数漂移」行与设计包 UD2/AS9 登记：OD 升级后计数漂移时复跑对账更新登记）。 */
 const realAssetRoot = '/Applications/Open Design.app/Contents/Resources/open-design'
 const hasRealAssetRoot = existsSync(realAssetRoot)
 

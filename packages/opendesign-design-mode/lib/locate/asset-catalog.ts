@@ -22,7 +22,10 @@
  * frontmatter 解析是最小解析器（非通用 YAML）：只认 name / description / triggers /
  * od.mode / od.craft.requires 五个目标键，支持块标量（`|`）、block 列表（`- x`）与
  * 单行 flow 序列（`[a, b]`）三种实测形态；多行 flow、tab 缩进不在边界内（真机 114 包
- * 全量为空格缩进 + 上述三形态，OD 升级引入新形态时由 doctor 解析异常计数暴露）。
+ * 全量为空格缩进 + 上述三形态）。OD 升级引入新形态时的暴露口径分两类：块级损坏
+ * （读失败 / 无 frontmatter 块）与 name 缺席由解析异常计数暴露；键值形态变化
+ * （如 triggers flow 化——assignScalar 无 triggers 分支，值被忽略）按字段缺席
+ * 静默降级为空数组，不经异常计数（设计口径：字段缺席不计解析异常，U1 检查点）。
  * 全部只读直读（AX2），零 npm 依赖（node:fs / node:path）。
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'

@@ -1,14 +1,14 @@
 /**
- * 提示词组装编排（OD 组装契约的会话组装层落点；权威依据 = 设计 §3.1 / D4 / D6 + 任务书 U3 职责 1）。
+ * 提示词组装编排（OD 组装契约的会话组装层落点；权威依据 = V1 设计包 §3.1 / D4 / D6 + V1 任务书 U3 职责 1）。
  *
  * OD Next 组装契约（AS6，initial-prompt-bundle-service + strategy-package.ts:104-116 亲读核实）：
  * 注入文本 = core + orchestration 逐字原文；占位符由组装方替换；任务档支撑资源材质化落盘
- * 而非拼进提示词。本模块的组装序与其同构、任务档位唯一偏离（D4：DSH 会话任务首轮问答后才
+ * 而非拼进提示词。本模块的组装序与其同构、任务档位唯一偏离（V1 设计包 D4：DSH 会话任务首轮问答后才
  * 选定，任务档经路由指令段由模型自读）：
  *
  *   1. 清单读锚：从 open-design.json 取 core/orchestration 声明路径（不硬编码——资产目录
  *      属观察级依赖且历史上迁移过，PR2）；
- *   2. 默认读取器直读两文本（U2a readRosterAsset：roster 声明校验 + 防穿越）；
+ *   2. 默认读取器直读两文本（V1 任务书 U2a readRosterAsset：roster 声明校验 + 防穿越）；
  *   3. 逐字拼接（verbatim 纪律：core/orchestration 原文不经本层改写，改写是 U4 改写器的
  *      职责——本层只编排与过滤），段间连接形态对齐 OD 组装（sections.join('\n\n---\n\n')）；
  *   4. U4 改写器（applyRewrites，designSystemsRoot 取资产根下 design-systems/）；
@@ -58,7 +58,7 @@ export interface ComposedBundle {
   rewriteRecords: RewriteApplyRecord[]
 }
 
-/** 组装入参（profile = U2a 定位链的 found 产物）。 */
+/** 组装入参（profile = V1 任务书 U2a 定位链的 found 产物）。 */
 export interface ComposeBundleInput {
   profile: VersionProfile
   /**
@@ -88,7 +88,7 @@ function requiredInjectionAssetPath(manifest: OdManifestShape, manifestPath: str
  * @param input ComposeBundleInput（VersionProfile 必为 locate/build 的 found 结局）。
  * @returns 组装产物（文本 + 改写命中记录）。
  * @throws OdComposeSourceError - 清单缺注入资产声明（结构漂移，AX5 显式失败）。
- * @throws ManifestValidationError / Error - 默认读取器的声明校验与读取失败（U2a 契约）。
+ * @throws ManifestValidationError / Error - 默认读取器的声明校验与读取失败（V1 任务书 U2a 契约）。
  */
 export function composeSystemPrompt(input: ComposeBundleInput): ComposedBundle {
   const { profile } = input
