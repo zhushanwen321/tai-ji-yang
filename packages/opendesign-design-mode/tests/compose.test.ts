@@ -9,14 +9,11 @@
  * 1. 拼接顺序与 OD 组装契约同构（core → orchestration → 事实块 → 路由段；逐字纪律抽查）
  * 2. 占位符零残留（组装产物 + 占位符替换逻辑的白名单过滤行为——RL3 断言对象）
  * 3. 路由段含八类任务档绝对路径与设计系统清单、不含排除五档路径（D6 白名单）
- * 4. media 段报缺语义在组装产物中在场（D6 ①⑤ 抽样 + motion-design 条目级压制指令）
- * 5. 事实块形态（od-next-context 格式、结束标签转义、最小集合两字段 + deck 槽接口）
- * 6. persona 静态注册一次（found 注册 / missing 与 error 激活失败）
- *
- * 已知边界（runlog 登记）：fixture 的 orchestration 摘录在 D6④ 段中部截尾，r5-orch-media-
- * input-skill-section 的段锚在 fixture 上不命中，fixture 原文内的 $OD_BIN 命令行因此残留——
- * 组装产物的 $OD_BIN 全量清零断言归 U4（rewrite.test，全锚 fixture 补跑义务）与 e2e，
- * 本文件对自产段（事实块 + 路由段）做特征串清零断言。
+ * 4. media 段报缺语义在组装产物中在场（D6 ①④⑤ 抽样 + motion-design 条目级压制指令）
+ * 5. 注入文本特征串全量清零（$OD_BIN / Integration 视图——RL3 的组装管线断言，
+ *    fixture 含完整 D6④ 段供段锚命中；自产段由 4/5 的分组断言分别覆盖）
+ * 6. 事实块形态（od-next-context 格式、结束标签转义、最小集合两字段 + deck 槽接口）
+ * 7. persona 静态注册一次（found 注册 / missing 与 error 激活失败）
  */
 import { cpSync, mkdtempSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -73,6 +70,8 @@ const routingStart = composed.text.indexOf('## Task routing (design mode)')
 const ROUTING_TEXT = composed.text.slice(routingStart)
 /** 事实块段（本单元自产内容），位于注入文本与路由段之间。 */
 const FACTS_TEXT = composed.text.slice(composed.text.indexOf('<od-next-context'), routingStart)
+/** 注入文本（core + orchestration 的改写产物），位于组装产物开头与事实块之间。 */
+const INJECTED_TEXT = composed.text.slice(0, composed.text.indexOf('<od-next-context'))
 
 // —— 临时树：缺档降级用例（用后清理）——
 const tempRoots: string[] = []
@@ -211,8 +210,32 @@ describe('media 段报缺语义在组装产物中在场（D6 抽样）', () => {
     expect(composed.text).not.toContain('Source code alone is not rendered media')
   })
 
+  it('D6④ orchestration Media input Skill 段整段报缺化（段锚在 fixture 上命中）', () => {
+    const record = composed.rewriteRecords.find(
+      (entry) => entry.ruleId === 'r5-orch-media-input-skill-section',
+    )
+    expect(record?.hitCount).toBe(1)
+    expect(record?.asset).toBe('general-orchestration')
+    expect(INJECTED_TEXT).toContain('no media pipeline and no media-input Skill channel')
+    expect(INJECTED_TEXT).not.toContain('od-next-media-inputs')
+  })
+
   it('路由段独立媒体请求报缺指引在场（discovery 档职责承接面）', () => {
     expect(ROUTING_TEXT).toContain('state that media rendering is not available in this')
+  })
+})
+
+describe('注入文本特征串全量清零（RL3 的组装管线断言）', () => {
+  it('注入文本无 od CLI 特征串（$OD_BIN 域；fixture 含完整 D6④ 段供段锚命中）', () => {
+    expect(INJECTED_TEXT).not.toContain('$OD_BIN')
+    expect(INJECTED_TEXT).not.toContain('$OD_NODE_BIN')
+    expect(INJECTED_TEXT).not.toContain('$OD_WORKSPACE')
+  })
+
+  it('注入文本无 OD 界面指引残留（Integration view / Integration 视图 / Skills tab）', () => {
+    expect(INJECTED_TEXT).not.toMatch(/Integration\s+view/i)
+    expect(INJECTED_TEXT).not.toContain('Integration 视图')
+    expect(INJECTED_TEXT).not.toContain('Skills tab')
   })
 })
 

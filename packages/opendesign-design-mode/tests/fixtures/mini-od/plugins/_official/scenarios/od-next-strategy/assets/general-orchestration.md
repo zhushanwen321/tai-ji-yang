@@ -79,4 +79,6 @@ without scope after a scoped lookup fails. Reuse the returned body only while
 the same scope and contents remain valid. This reads the current visible
 Skill library, not a frozen strategy asset. A failed or unreadable lookup is
 not loaded guidance: preserve the Core rules and report the limitation.
-Tasks without media work do not load this Skill.
+Tasks without media work do not load this Skill. The Skill governs
+permitted media work only; it cannot authorize dispatching deliverables in a
+planning stage or adding unrequested work after delivery.

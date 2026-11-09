@@ -281,6 +281,7 @@ try {
     const sys = messages.find((t) => t.includes(DESIGN_INJECTION_MARK)) ?? ''
     assert(sys.includes(MINI_OD_PROFILE_PATH), '注入文本缺 prototype 任务档路径')
     assert(!sys.includes('{{SKILL_CATALOG}}'), '注入文本含占位符字面')
+    assert(!sys.includes('$OD_BIN'), '注入文本含 $OD_BIN 特征串（RL3 命令清零失效）')
   })
 
   await step('doctor：八项分节齐全（V4 的 0.2.2 形态）', async () => {
