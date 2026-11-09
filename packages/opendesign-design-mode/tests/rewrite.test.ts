@@ -1,25 +1,35 @@
 /**
- * 降级改写器 V1 规则集测试（U4）。
+ * 降级改写器 V1 规则集测试（U4）——双代际对账形态。
  *
- * fixture：OD Next 资产原文的迷你摘录（U0 共享 fixture 未就绪期的 U4 自建内联形态；
- * 切换到 U0 fixture 后补跑——见单元 deviations 登记）。摘录范围 = 设计 D6 ①-⑤ 逐段清单
- * 的全部处置段与保留段 + R2/R3/R4 锚段，逐行从 OD 0.25.1 原文（0.25.1 检出，U4 动手前
- * 亲读核对行号一致）复制，保持硬换行形态——语义段锚按 \s+ 容忍换行，fixture 失真会让
- * 断言失去对账意义。
+ * fixture 两套：
+ * - 旧代（0.25.1 检出）内联迷你摘录：legacy-only 与 cross-generation 规则的命中域。
+ *   摘录范围 = 设计 D6 ①-⑤ 逐段清单的全部处置段与保留段 + R2/R3/R4 锚段，逐行从 OD
+ *   0.25.1 原文复制，保持硬换行形态——语义段锚按 \s+ 容忍换行，fixture 失真会让断言
+ *   失去对账意义。
+ * - 真机 2.x 代际摘录（tests/fixtures/real-od/assets，OpenDesign.app 安装版 2.0.4，
+ *   2026-11-09 真机对账）：current-only 规则的命中域 + legacy-only 规则零命中的预期形态。
+ *   两代措辞系统性不同（真机对账核实），一代一套 fixture 是对账的事实基座。
  *
  * 断言结构：
- * 1. RL3 特征串清零（$OD_BIN / 占位符 / Integration 视图 / 反指令特征短语）
- * 2. D6 ①-⑤ 逐段对账（每段断言替换语义在场、原文相反指令清零）
+ * 1. RL3 特征串清零（$OD_BIN / 占位符 / Integration 视图 / 反指令特征短语；两代各扫一遍）
+ * 2. D6 ①-⑤ 逐段对账（每段断言替换语义在场、原文相反指令清零；2.x 上已消失的段按
+ *    legacy-only 零命中预期断言，仍存在的段由 -2x 规则命中断言）
  * 3. 保留段抽查（fallback 句、占位披露、attribution、素材优先级、读回禁令、质检禁令不被误伤）
- * 4. 命中记录契约（逐规则逐资产记录、零命中可见、规则元数据齐备）
+ * 4. 命中记录契约（逐规则逐资产记录、零命中可见、规则元数据齐备、代际字段自包含）
  * 5. R1 CLI 路径化行为（防御性规则，构造样本测行为）
+ * 6. 资产代际探测与规则代际适用性（detectAssetGeneration / ruleAppliesToGeneration）
  */
 
+import { readFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { applyRewrites, type RewriteAssetTexts } from '../lib/rewrite/apply.js'
 import {
   REWRITE_RULES,
   compileAnchor,
+  detectAssetGeneration,
+  ruleAppliesToGeneration,
   type RewriteRule,
 } from '../lib/rewrite/rules.js'
 
@@ -338,8 +348,26 @@ const CORE_OUT = texts['core-system-prompt']
 const ORCH_OUT = texts['general-orchestration']
 const ALL_OUT = `${CORE_OUT}\n\n${ORCH_OUT}`
 
+// —— 真机 2.x 代际 fixture（OpenDesign.app 安装版 2.0.4 摘录，行段见文件头注释）——
+const REAL_OD_DIR = resolve(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'real-od', 'assets')
+const REAL_OD_INPUT: RewriteAssetTexts = {
+  'core-system-prompt': readFileSync(join(REAL_OD_DIR, 'core-system-prompt.md'), 'utf8'),
+  'general-orchestration': readFileSync(join(REAL_OD_DIR, 'general-orchestration.md'), 'utf8'),
+}
+
+const realOdOutput = applyRewrites(REAL_OD_INPUT)
+const REAL_CORE_OUT = realOdOutput.texts['core-system-prompt']
+const REAL_ORCH_OUT = realOdOutput.texts['general-orchestration']
+const REAL_ALL_OUT = `${REAL_CORE_OUT}\n\n${REAL_ORCH_OUT}`
+
 function recordFor(ruleId: string, asset?: string) {
   return records.filter(
+    (r) => r.ruleId === ruleId && (asset === undefined || r.asset === asset),
+  )
+}
+
+function realRecordFor(ruleId: string, asset?: string) {
+  return realOdOutput.records.filter(
     (r) => r.ruleId === ruleId && (asset === undefined || r.asset === asset),
   )
 }
@@ -515,14 +543,39 @@ describe('保留段抽查（D6 保留判定 + 任务书三项，不被误伤）'
 })
 
 describe('命中记录契约（供 doctor 消费）', () => {
-  it('全部语义段规则在 fixture 上命中 ≥ 1（锚失配当场暴露）', () => {
-    const semanticRules = REWRITE_RULES.filter((r) => r.locator === 'semantic-anchor')
-    expect(semanticRules.length).toBeGreaterThan(0)
-    for (const rule of semanticRules) {
+  it('旧代适用语义段规则（legacy-only + cross-generation）在旧代 fixture 上命中 ≥ 1（锚失配当场暴露）', () => {
+    const legacyApplicable = REWRITE_RULES.filter(
+      (r) => r.locator === 'semantic-anchor' && r.generation !== 'current-only',
+    )
+    expect(legacyApplicable.length).toBeGreaterThan(0)
+    for (const rule of legacyApplicable) {
       for (const asset of rule.targets) {
         const rec = recordFor(rule.id, asset)
         expect(rec, `${rule.id} × ${asset} 缺记录`).toHaveLength(1)
-        expect(rec[0].hitCount, `${rule.id} × ${asset} 零命中（锚失配）`).toBeGreaterThanOrEqual(1)
+        expect(rec[0].hitCount, `${rule.id} × ${asset} 零命中（旧代锚失配）`).toBeGreaterThanOrEqual(1)
+      }
+    }
+  })
+
+  it('新代规则（current-only）在旧代 fixture 上零命中且逐条可见（预期形态，非漂移）', () => {
+    const currentOnly = REWRITE_RULES.filter((r) => r.generation === 'current-only')
+    expect(currentOnly.length).toBeGreaterThanOrEqual(9)
+    for (const rule of currentOnly) {
+      for (const asset of rule.targets) {
+        const rec = recordFor(rule.id, asset)
+        expect(rec, `${rule.id} × ${asset} 缺记录`).toHaveLength(1)
+        expect(rec[0].hitCount, `${rule.id} × ${asset} 应在旧代资产上零命中`).toBe(0)
+        expect(rec[0].generation).toBe('current-only')
+        expect(rec[0].assetGeneration).toBe('legacy')
+      }
+    }
+  })
+
+  it('逐条记录携带代际字段（generation 自规则清单透传、assetGeneration 为本次应用的探测产物）', () => {
+    for (const rule of REWRITE_RULES) {
+      for (const rec of recordFor(rule.id)) {
+        expect(rec.generation, `${rule.id} generation 字段`).toBe(rule.generation)
+        expect(rec.assetGeneration, `${rule.id} assetGeneration 字段`).toBe('legacy')
       }
     }
   })
@@ -607,5 +660,151 @@ describe('语义段锚编译器', () => {
     const re = compileAnchor('State the limitation plainly and point at the Skills tab instead.')
     expect(re.test('they will go looking and find nothing. State\n  the limitation\nplainly and point at the Skills tab instead.')).toBe(true)
     expect(re.test('unrelated text')).toBe(false)
+  })
+})
+
+describe('真机 2.x 措辞（real-od fixture）上的改写命中与报缺语义', () => {
+  it('资产代际探测 = current，逐记录携带代际字段（记录自包含）', () => {
+    expect(detectAssetGeneration(REAL_OD_INPUT)).toBe('current')
+    expect(realOdOutput.records.length).toBeGreaterThan(0)
+    for (const rec of realOdOutput.records) {
+      expect(['cross-generation', 'legacy-only', 'current-only']).toContain(rec.generation)
+      expect(rec.assetGeneration).toBe('current')
+    }
+  })
+
+  it('RL3 特征串清零（2.x fixture 全文扫描）', () => {
+    expect(REAL_ALL_OUT).not.toContain('$OD_BIN')
+    expect(REAL_ALL_OUT).not.toContain('$OD_NODE_BIN')
+    expect(REAL_ALL_OUT).not.toContain('$OD_WORKSPACE')
+    expect(REAL_ALL_OUT).not.toMatch(/Integration\s+view/i)
+    expect(REAL_ALL_OUT).not.toContain('Skills tab')
+    expect(REAL_ALL_OUT).not.toContain('production-ready')
+    expect(REAL_ALL_OUT).not.toContain('question-form')
+    expect(REAL_ALL_OUT).not.toContain('od-next-media-inputs')
+    expect(REAL_ALL_OUT).not.toContain('hidden structured blocks')
+    expect(REAL_ALL_OUT).not.toContain('fall back to image generation')
+    expect(REAL_ALL_OUT).not.toContain('the V2 machine contract specifies')
+  })
+
+  it('全部 current-only 规则逐条命中 ≥ 1（2.x 锚失配当场暴露）', () => {
+    const currentOnly = REWRITE_RULES.filter((r) => r.generation === 'current-only')
+    expect(currentOnly.length).toBeGreaterThanOrEqual(9)
+    for (const rule of currentOnly) {
+      for (const asset of rule.targets) {
+        const rec = realRecordFor(rule.id, asset)
+        expect(rec, `${rule.id} × ${asset} 缺记录`).toHaveLength(1)
+        expect(rec[0].hitCount, `${rule.id} × ${asset} 零命中（2.x 锚失配）`).toBeGreaterThanOrEqual(1)
+      }
+    }
+  })
+
+  it('legacy-only 语义段规则在 2.x fixture 上零命中且逐条可见（预期形态，非漂移）', () => {
+    const legacyOnly = REWRITE_RULES.filter((r) => r.generation === 'legacy-only' && r.locator === 'semantic-anchor')
+    expect(legacyOnly.length).toBeGreaterThan(0)
+    for (const rule of legacyOnly) {
+      for (const asset of rule.targets) {
+        const rec = realRecordFor(rule.id, asset)
+        expect(rec, `${rule.id} × ${asset} 缺记录`).toHaveLength(1)
+        expect(rec[0].hitCount, `${rule.id} × ${asset} 应在 2.x 资产上零命中`).toBe(0)
+        expect(rec[0].assetGeneration).toBe('current')
+      }
+    }
+  })
+
+  it('cross-generation 规则在 2.x fixture 上命中 ≥ 1（R2 界面指引两代同形）', () => {
+    for (const id of ['r2-integration-skills-tab', 'r2-skills-tab-pointer']) {
+      const rec = realRecordFor(id, 'core-system-prompt')
+      expect(rec).toHaveLength(1)
+      expect(rec[0].hitCount).toBeGreaterThanOrEqual(1)
+    }
+  })
+
+  it('D2 协议折叠语义在场（续轮折叠 + plan-only 边界 + 机器契约文本化，2.x 措辞）', () => {
+    expect(REAL_CORE_OUT).toContain('no host continuation starts Build')
+    expect(REAL_CORE_OUT).toContain('honor plan-only and no-write requests by answering with the plan alone')
+    expect(REAL_CORE_OUT).toContain('no host parses hidden machine-contract blocks')
+    expect(REAL_CORE_OUT).toContain('no host continuation arrives')
+    expect(REAL_ORCH_OUT).toContain('No host continues the session in this environment')
+    expect(REAL_ORCH_OUT).toContain('no host parses machine contract blocks in this environment')
+    expect(REAL_ORCH_OUT).toContain('never emit machine-only structured blocks')
+    expect(REAL_ORCH_OUT).toContain('stay in the planning prose')
+    expect(REAL_ORCH_OUT).toContain('attach the Build Packages in the plan')
+  })
+
+  it('D6②b/④ 报缺语义在场（2.x 措辞；两段共用同一替换文本）', () => {
+    expect(REAL_CORE_OUT).toContain('image generation is not available (design mode V1 has no media pipeline)')
+    expect(REAL_CORE_OUT).toContain('design a disclosed placeholder instead of generating')
+    expect(REAL_ORCH_OUT).toContain('### Media input')
+    expect(REAL_ORCH_OUT).toContain('no media pipeline and no media-input Skill channel')
+    expect(REAL_ORCH_OUT).not.toContain('### Media input Skill')
+  })
+
+  it('保留段不被误伤（2.x：stand-in 禁令、占位披露、质检禁令六条、交付默认句）', () => {
+    expect(REAL_CORE_OUT).toContain('never generate a fake stand-in for a real referent')
+    // 占位披露句在真机原文中硬换行（never ship\n  a gray box），按语义串容忍换行断言。
+    expect(REAL_CORE_OUT).toMatch(/design the placeholder\s+—\s+never ship\s+a gray box/)
+    expect(REAL_ORCH_OUT).toContain('Writing the primary HTML deliverable to disk IS the delivery')
+    expect(REAL_ORCH_OUT).toContain('Screen captures, rendering, render review, or frame extraction')
+    expect(REAL_ORCH_OUT).toContain('Spawning acceptance Children or performing formal acceptance')
+    expect(REAL_ORCH_OUT).toContain('Validating export results after exporting')
+  })
+
+  it('D6 ①-⑤ 在 2.x 上的覆盖形态：②b④ 由 -2x 规则命中；①②a③⑤a-⑤d 段在 2.x 已消失（legacy-only 零命中预期）', () => {
+    // 消失段清单逐条声明（真机对账 2026-11-09 逐段核实）：对应规则在 2.x 资产上零命中是预期形态。
+    const vanished = [
+      'r5-core-standalone-image-delivery',
+      'r5-core-stock-search-command',
+      'r5-core-image-generation-gate',
+      'r5-orch-anti-html-wrapper',
+      'r5-orch-media-input-skill-section',
+      'r5-core-media-production-step',
+      'r5-core-video-motion-exception',
+      'r5-orch-video-motion-authorization',
+      'r5-orch-standalone-media-real-file',
+    ]
+    expect(vanished).toHaveLength(9)
+    for (const id of vanished) {
+      expect(ruleById(id).generation, `${id} 应标 legacy-only`).toBe('legacy-only')
+      expect(realRecordFor(id).every((rec) => rec.hitCount === 0), `${id} 在 2.x 应零命中`).toBe(true)
+    }
+    // 仍存在的两段由新代规则承接命中（D6②b 生成回退分句 + D6④ 媒体 Skill 段）。
+    const d6Current = ['r5-core-image-generation-fallback-2x', 'r5-orch-media-input-skill-section-2x']
+    for (const id of d6Current) {
+      expect(ruleById(id).generation, `${id} 应标 current-only`).toBe('current-only')
+      expect(realRecordFor(id).every((rec) => rec.hitCount >= 1), `${id} 在 2.x 应命中`).toBe(true)
+    }
+  })
+})
+
+describe('资产代际探测与规则代际适用性（detectAssetGeneration / ruleAppliesToGeneration）', () => {
+  it('代际探测：旧代 fixture → legacy；real-od fixture → current；双缺或双标记同现 → unknown', () => {
+    expect(detectAssetGeneration(INPUT)).toBe('legacy')
+    expect(detectAssetGeneration(REAL_OD_INPUT)).toBe('current')
+    expect(
+      detectAssetGeneration({ 'core-system-prompt': 'neutral text', 'general-orchestration': 'more neutral text' }),
+    ).toBe('unknown')
+    expect(
+      detectAssetGeneration({
+        'core-system-prompt': 'mentions the production-ready marker line',
+        'general-orchestration': 'mentions the V2 machine contract blocks',
+      }),
+    ).toBe('unknown')
+  })
+
+  it('代际适用性：代际外规则不适用（零命中为预期形态）；unknown 保守按适用处理', () => {
+    expect(ruleAppliesToGeneration('legacy-only', 'legacy')).toBe(true)
+    expect(ruleAppliesToGeneration('legacy-only', 'current')).toBe(false)
+    expect(ruleAppliesToGeneration('current-only', 'current')).toBe(true)
+    expect(ruleAppliesToGeneration('current-only', 'legacy')).toBe(false)
+    expect(ruleAppliesToGeneration('cross-generation', 'current')).toBe(true)
+    expect(ruleAppliesToGeneration('cross-generation', 'legacy')).toBe(true)
+    expect(ruleAppliesToGeneration('legacy-only', 'unknown')).toBe(true)
+    expect(ruleAppliesToGeneration('current-only', 'unknown')).toBe(true)
+    expect(ruleAppliesToGeneration('cross-generation', 'unknown')).toBe(true)
+  })
+
+  it('两代 fixture 的代际探测互异（双代际对账基座有效性）', () => {
+    expect(detectAssetGeneration(INPUT)).not.toBe(detectAssetGeneration(REAL_OD_INPUT))
   })
 })

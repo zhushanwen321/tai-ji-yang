@@ -1,7 +1,8 @@
 import {
   REWRITE_ASSET_IDS,
   REWRITE_RULES,
-  compileAnchor
+  compileAnchor,
+  detectAssetGeneration
 } from "./rules.js";
 function applyRuleToText(ruleId, text, context) {
   const rule = REWRITE_RULES.find((r) => r.id === ruleId);
@@ -21,6 +22,7 @@ function applyRuleToText(ruleId, text, context) {
 }
 function applyRewrites(inputs, context = {}) {
   const texts = { ...inputs };
+  const assetGeneration = detectAssetGeneration(texts);
   const records = [];
   for (const rule of REWRITE_RULES) {
     for (const asset of rule.targets) {
@@ -33,6 +35,8 @@ function applyRewrites(inputs, context = {}) {
         asset,
         locator: rule.locator,
         fragility: rule.fragility,
+        generation: rule.generation,
+        assetGeneration,
         hitCount,
         summary: hitCount > 0 ? `replaced ${hitCount} occurrence(s)` : "no replacement performed (anchor not found, or context missing — possible OD drift)"
       });

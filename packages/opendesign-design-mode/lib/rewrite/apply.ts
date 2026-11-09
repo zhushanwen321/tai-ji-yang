@@ -3,8 +3,9 @@
  *
  * 输入两个注入资产文本（core-system-prompt / general-orchestration），按 rules.ts 的规则清单
  * 顺序逐条应用，产出改写后文本与逐条命中记录（RewriteApplyRecord[]，供 doctor 的「改写规则
- * 命中清单」消费——零命中（hitCount = 0）= 锚失配信号，是 OD 升级漂移的第一发现通道，
- * 不静默跳过）。
+ * 命中清单」消费——代际适用规则零命中（hitCount = 0）= 锚失配信号，是 OD 升级漂移的第一
+ * 发现通道，不静默跳过；代际外规则的零命中是预期形态，按 rules.ts 的 generation 字段解释）。
+ * 资产代际探测基于改写前原文（改写会替换掉代际标记串），逐记录冗余携带使记录自包含。
  *
  * RewriteApplyRecord 的最终契约归 lib/types.ts（U1 范围）；U1 未就绪期此处内联最小定义，
  * types.ts 落地后迁移并对齐（见单元 deviations 登记）。
@@ -14,11 +15,14 @@ import {
   REWRITE_ASSET_IDS,
   REWRITE_RULES,
   compileAnchor,
+  detectAssetGeneration,
+  type RewriteAssetGeneration,
   type RewriteAssetId,
   type RewriteContext,
   type RewriteFragility,
   type RewriteLocatorKind,
   type RewriteRuleFamily,
+  type RewriteRuleGeneration,
 } from './rules.js'
 
 export interface RewriteApplyRecord {
@@ -29,7 +33,11 @@ export interface RewriteApplyRecord {
   asset: RewriteAssetId
   locator: RewriteLocatorKind
   fragility: RewriteFragility
-  /** 实际替换次数；0 = 锚未命中（OD 升级失配信号，doctor 按此暴露漂移） */
+  /** 规则生效代际（自规则清单透传；doctor 按代际适用性解释零命中） */
+  generation: RewriteRuleGeneration
+  /** 本次应用的资产代际探测结局（逐记录冗余携带使记录自包含；探测基于改写前原文） */
+  assetGeneration: RewriteAssetGeneration
+  /** 实际替换次数；0 = 锚未命中（代际适用时 = OD 升级失配信号，doctor 按此暴露漂移） */
   hitCount: number
   /** 替换结果摘要（供 doctor 逐条展示） */
   summary: string
@@ -77,6 +85,9 @@ export function applyRewrites(
   context: RewriteContext = {},
 ): RewriteApplyOutput {
   const texts: RewriteAssetTexts = { ...inputs }
+  // 代际探测基于改写前原文：改写本身会替换掉代际标记串（如 V2 machine contract 段），
+  // 改写后再探测会失真。
+  const assetGeneration = detectAssetGeneration(texts)
   const records: RewriteApplyRecord[] = []
   for (const rule of REWRITE_RULES) {
     for (const asset of rule.targets) {
@@ -89,6 +100,8 @@ export function applyRewrites(
         asset,
         locator: rule.locator,
         fragility: rule.fragility,
+        generation: rule.generation,
+        assetGeneration,
         hitCount,
         summary:
           hitCount > 0

@@ -30,6 +30,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { applyRewrites, type RewriteApplyRecord } from '../rewrite/apply.js'
+import { ruleAppliesToGeneration } from '../rewrite/rules.js'
 import { listDeclaredRosterPaths, type OdManifestShape } from '../locate/manifest-discovery.js'
 import { locateOdAssets, readRosterAsset, type VersionProfileResult } from '../locate/version-profile.js'
 import { MATERIALIZED_FILE_NAMES, OD_FRAMES_DIR } from '../materialize/copy.js'
@@ -108,12 +109,20 @@ export interface StopLossEvaluation {
 /**
  * 止损位评估（D9 三判据；数据源 = 改写命中清单与读取可用性）。
  *
- * 失配判定 = locator 为 semantic-anchor 且 hitCount 为 0 的记录（锚应当命中却未命中）。
- * 两类「正常零命中」不计入失配：R1（locator=regex，防御性规则，注入文本基线零命中）与
- * 残余兜底两条 regex（正常形态零命中；命中 >0 是段锚漂移的旁证，在第④节以提示行展示）。
+ * 失配判定 = locator 为 semantic-anchor 且 hitCount 为 0 且规则在资产代际上适用的记录
+ * （锚应当命中却未命中）。两类「正常零命中」不计入失配：R1（locator=regex，防御性规则，
+ * 注入文本基线零命中）、残余兜底两条 regex（正常形态零命中；命中 >0 是段锚漂移的旁证，
+ * 在第④节以提示行展示），以及代际外规则的零命中（legacy-only 规则在 2.x 资产上、
+ * current-only 规则在 0.25.x 资产上均为预期形态，规则自带 generation 字段裁决；
+ * 代际探测为 unknown 时全部按适用处理——保守方向：宁可多报失配，不漏报漂移）。
  */
 export function evaluateStopLoss(records: readonly RewriteApplyRecord[], readerUnavailable: boolean): StopLossEvaluation {
-  const misfires = records.filter((record) => record.locator === 'semantic-anchor' && record.hitCount === 0)
+  const misfires = records.filter(
+    (record) =>
+      record.locator === 'semantic-anchor'
+      && record.hitCount === 0
+      && ruleAppliesToGeneration(record.generation, record.assetGeneration),
+  )
   const criterion1Triggered = misfires.length >= 3
   return {
     criterion1Triggered,
@@ -124,9 +133,22 @@ export function evaluateStopLoss(records: readonly RewriteApplyRecord[], readerU
   }
 }
 
-/** 一条 apply 记录在第④节的展示行（规则名 / 命中资产 / 替换结果摘要 / 脆弱度）；导出供测试对账。 */
+/**
+ * 一条 apply 记录在第④节的展示行（规则名 / 命中资产 / 替换结果摘要 / 脆弱度）；导出供测试对账。
+ * 零命中按代际适用性分标记：代际适用的语义段规则零命中 = [✗ 失配]（漂移信号）；
+ * 代际外规则零命中 = [— 仅旧代生效 / 仅新代生效]（预期形态，非漂移）。
+ */
 export function rewriteRecordLine(record: RewriteApplyRecord): string {
-  const marker = record.hitCount > 0 ? '[✓]' : record.locator === 'semantic-anchor' ? '[✗ 失配]' : '[—]'
+  const applicable = ruleAppliesToGeneration(record.generation, record.assetGeneration)
+  const marker = record.hitCount > 0
+    ? '[✓]'
+    : record.locator === 'regex'
+      ? '[—]'
+      : applicable
+        ? '[✗ 失配]'
+        : record.generation === 'legacy-only'
+          ? '[— 仅旧代生效]'
+          : '[— 仅新代生效]'
   const fragility = `脆弱度 ${record.fragility}`
   return `- ${marker} ${record.ruleName}（${record.ruleId}）→ ${record.asset} → ${record.summary}（${fragility}）`
 }
@@ -252,8 +274,11 @@ function renderRewriteSection(
     }
   }
   const hit = records.filter((record) => record.hitCount > 0).length
+  // 代际探测产物随记录冗余携带（apply 基于改写前原文探测）；unknown = 代际不可判，零命中全按失配保守处理。
+  const assetGeneration = records[0]?.assetGeneration ?? 'unknown'
   const lines: string[] = [
-    `- 规则应用记录共 ${records.length} 条（命中 ${hit} 条 / 零命中 ${records.length - hit} 条；零命中含防御性规则基线形态与残余兜底未触发形态，见逐条标记）：`,
+    `- 资产代际探测：${assetGeneration}（legacy = 0.25.x 形态 / current = 真机 2.0.4 形态 / unknown = 按全规则适用保守处理；代际外规则的零命中是预期形态）`,
+    `- 规则应用记录共 ${records.length} 条（命中 ${hit} 条 / 零命中 ${records.length - hit} 条；零命中含防御性规则基线形态、残余兜底未触发形态与代际外规则预期形态，见逐条标记）：`,
     ...records.map(rewriteRecordLine),
   ]
   // 旁证提示：残余兜底 regex 命中 >0 说明上游段锚漂移（失配计数已由段锚零命中覆盖，不重复计）。

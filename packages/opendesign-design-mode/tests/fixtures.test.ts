@@ -288,6 +288,58 @@ describe('单测 fixture：drift-od 资产漂移形态', () => {
   })
 })
 
+describe('单测 fixture：real-od 真机 2.x 措辞摘录', () => {
+  // OpenDesign.app 安装版 2.0.4 的注入资产措辞（真机对账 2026-11-09）：新代规则
+  // （generation=current-only）的命中域；与 mini-od（0.25.1 旧代）构成双代际对账。
+  const realOdAssetsDir = join(fixturesRoot, 'real-od', 'assets')
+
+  it('两份摘录在场且正文含 2.x 代际标记串、不含旧代协议特征串（代际探测 current 形态的 fixture 基座）', () => {
+    const core = normalized(readText(join(realOdAssetsDir, 'core-system-prompt.md')))
+    const orchestration = normalized(readText(join(realOdAssetsDir, 'general-orchestration.md')))
+    // 2.x 代际标记（detectAssetGeneration 的 current 判据来源）。
+    expect(core).toContain('the V2 machine contract specifies')
+    expect(orchestration).toContain('the V2 machine contract specifies')
+    // 旧代协议特征串在 2.x 资产中不存在（改写器 legacy-only 规则在此树上零命中的事实基座）。
+    expect(core).not.toContain('production-ready')
+    expect(orchestration).not.toContain('production-ready')
+    expect(core).not.toContain('question-form')
+    expect(orchestration).not.toContain('question-form')
+  })
+
+  it('core 摘录含新代规则锚段（续轮两句 / 机器契约块 / real-first 生成回退分句 / Integration 界面指引）', () => {
+    const core = normalized(readText(join(realOdAssetsDir, 'core-system-prompt.md')))
+    // R3 续轮两句（r3-core-planning-continuation-2x / r3-core-production-continuation-2x 的锚）。
+    expect(core).toContain('Build starts only in the production continuation.')
+    expect(core).toContain('after the production continuation arrives, execute exactly what was frozen.')
+    // 机器契约块（r3-core-machine-contract-2x 的锚）。
+    expect(core).toContain('Write them into the hidden structured blocks the V2 machine contract specifies')
+    // real-first 生成回退分句（r5-core-image-generation-fallback-2x 的锚）。
+    expect(core).toContain('fall back to image generation only when no suitable asset can be acquired')
+    // 保留断言基座：stand-in 禁令与占位披露（不被误伤）。
+    expect(core).toContain('never generate a fake stand-in for a real referent')
+    expect(core).toContain('design the placeholder — never ship a gray box')
+    // R2 界面指引（cross-generation，两代同形）。
+    expect(core).toContain("the Integration view's Skills tab")
+    expect(core).toContain('State the limitation plainly and point at the Skills tab instead.')
+  })
+
+  it('orchestration 摘录含新代规则锚段（计划停轮段 / 第 10 步契约输出 / 媒体 Skill 段 / plan_ready 输出）与保留质检禁令', () => {
+    const orchestration = normalized(readText(join(realOdAssetsDir, 'general-orchestration.md')))
+    // R3 计划停轮段与第 10 步（r3-orch-plan-stop-continuation-2x / r3-orch-plan-contract-emission-2x 的锚）。
+    expect(orchestration).toContain('The request and clarification turns stop after this planning output.')
+    expect(orchestration).toContain('Emit a strict Plan Contract and Runtime State for Open Design to parse.')
+    // D6④ 2.x 段（r5-orch-media-input-skill-section-2x 的锚；命令特征串载体）。
+    expect(orchestration).toContain('load the `od-next-media-inputs` Skill if its complete, still-valid body is not already in context')
+    expect(orchestration).toContain('$OD_BIN')
+    // plan_ready 输出两条锚。
+    expect(orchestration).toContain('Emit the complete Task Profile, Full Plan, and completion standards in the hidden structured blocks')
+    expect(orchestration).toContain("The Run's execution mode, production routes, and Preflight results stay in the machine contract")
+    // 保留断言基座：质检禁令六条与新代交付默认句（不被误伤）。
+    expect(orchestration).toContain('Screen captures, rendering, render review, or frame extraction')
+    expect(orchestration).toContain('Writing the primary HTML deliverable to disk IS the delivery')
+  })
+})
+
 describe('单测 fixture：artifacts 产物样本', () => {
   it('产物样本存在且以相对路径引用材质化设备壳', () => {
     const artifact = readText(join(fixturesRoot, 'artifacts', 'index.html'))
@@ -299,7 +351,7 @@ describe('单测 fixture：artifacts 产物样本', () => {
 describe('e2e fixture 树完整性', () => {
   it('两棵树各有 README 索引且覆盖各自子目录', () => {
     const fixturesReadme = readText(join(fixturesRoot, 'README.md'))
-    for (const dir of ['mini-od', 'drift-od', 'artifacts']) {
+    for (const dir of ['mini-od', 'drift-od', 'real-od', 'artifacts']) {
       expect(fixturesReadme).toContain(dir)
     }
     const e2eReadme = readText(join(e2eFixturesRoot, 'README.md'))

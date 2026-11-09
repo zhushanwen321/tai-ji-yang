@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { applyRewrites } from "../rewrite/apply.js";
+import { ruleAppliesToGeneration } from "../rewrite/rules.js";
 import { listDeclaredRosterPaths } from "../locate/manifest-discovery.js";
 import { locateOdAssets, readRosterAsset } from "../locate/version-profile.js";
 import { MATERIALIZED_FILE_NAMES, OD_FRAMES_DIR } from "../materialize/copy.js";
@@ -28,7 +29,9 @@ const DOCTOR_RECOVERY_ACTIONS = {
   restartDsh: "恢复动作：重启 DSH（材质化在新会话创建时无条件全量重铺；.od-frames/ 目录可安全删除后重建）。"
 };
 function evaluateStopLoss(records, readerUnavailable) {
-  const misfires = records.filter((record) => record.locator === "semantic-anchor" && record.hitCount === 0);
+  const misfires = records.filter(
+    (record) => record.locator === "semantic-anchor" && record.hitCount === 0 && ruleAppliesToGeneration(record.generation, record.assetGeneration)
+  );
   const criterion1Triggered = misfires.length >= 3;
   return {
     criterion1Triggered,
@@ -39,7 +42,8 @@ function evaluateStopLoss(records, readerUnavailable) {
   };
 }
 function rewriteRecordLine(record) {
-  const marker = record.hitCount > 0 ? "[✓]" : record.locator === "semantic-anchor" ? "[✗ 失配]" : "[—]";
+  const applicable = ruleAppliesToGeneration(record.generation, record.assetGeneration);
+  const marker = record.hitCount > 0 ? "[✓]" : record.locator === "regex" ? "[—]" : applicable ? "[✗ 失配]" : record.generation === "legacy-only" ? "[— 仅旧代生效]" : "[— 仅新代生效]";
   const fragility = `脆弱度 ${record.fragility}`;
   return `- ${marker} ${record.ruleName}（${record.ruleId}）→ ${record.asset} → ${record.summary}（${fragility}）`;
 }
@@ -154,8 +158,10 @@ function renderRewriteSection(profile, issues) {
     };
   }
   const hit = records.filter((record) => record.hitCount > 0).length;
+  const assetGeneration = records[0]?.assetGeneration ?? "unknown";
   const lines = [
-    `- 规则应用记录共 ${records.length} 条（命中 ${hit} 条 / 零命中 ${records.length - hit} 条；零命中含防御性规则基线形态与残余兜底未触发形态，见逐条标记）：`,
+    `- 资产代际探测：${assetGeneration}（legacy = 0.25.x 形态 / current = 真机 2.0.4 形态 / unknown = 按全规则适用保守处理；代际外规则的零命中是预期形态）`,
+    `- 规则应用记录共 ${records.length} 条（命中 ${hit} 条 / 零命中 ${records.length - hit} 条；零命中含防御性规则基线形态、残余兜底未触发形态与代际外规则预期形态，见逐条标记）：`,
     ...records.map(rewriteRecordLine)
   ];
   const residualHits = records.filter((record) => record.ruleId.endsWith("residual") && record.hitCount > 0);

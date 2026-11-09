@@ -260,10 +260,11 @@ describe('缺失项带恢复动作', () => {
 })
 
 describe('命中清单与 apply 记录一致', () => {
-  it('第④节逐行 == 测试侧独立重放 applyRewrites 的记录行（28 条全对账）', () => {
+  it('第④节逐行 == 测试侧独立重放 applyRewrites 的记录行（37 条全对账）', () => {
     const records = replayRewriteRecords()
-    // mini-od 摘录 × 规则清单 = 每规则 × 每目标资产一条记录（U4 规则清单的笛卡尔展开）。
-    expect(records.length).toBe(28)
+    // mini-od 摘录 × 规则清单 = 每规则 × 每目标资产一条记录（U4 规则清单的笛卡尔展开，
+    // 含 legacy-only 与 current-only 两代规则）。
+    expect(records.length).toBe(37)
     const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd: null })
     for (const record of records) {
       expect(report).toContain(rewriteRecordLine(record))
@@ -271,6 +272,8 @@ describe('命中清单与 apply 记录一致', () => {
     // 命中统计行与重放一致。
     const hit = records.filter((record) => record.hitCount > 0).length
     expect(report).toContain(`- 规则应用记录共 ${records.length} 条（命中 ${hit} 条 / 零命中 ${records.length - hit} 条`)
+    // 资产代际探测行在场（mini-od = 0.25.1 旧代形态）。
+    expect(report).toContain('- 资产代际探测：legacy')
   })
 
   it('记录行形态契约：命中/失配/防御性零命中三态标记与摘要、脆弱度字段逐项在场', () => {
@@ -292,8 +295,16 @@ describe('命中清单与 apply 记录一致', () => {
 })
 
 describe('止损位状态（D9 三判据）', () => {
-  /** 构造合成记录：semantic-anchor 规则 × hitCount（模拟全命中基线与失配翻转）。 */
-  function syntheticRecord(id: string, hitCount: number): RewriteApplyRecord {
+  /**
+   * 构造合成记录：semantic-anchor 规则 × hitCount（模拟全命中基线与失配翻转）。
+   * 代际字段默认 cross-generation × current（恒适用）——代际裁决语义由下方专用用例锁。
+   */
+  function syntheticRecord(
+    id: string,
+    hitCount: number,
+    generation: RewriteApplyRecord['generation'] = 'cross-generation',
+    assetGeneration: RewriteApplyRecord['assetGeneration'] = 'current',
+  ): RewriteApplyRecord {
     const isAnchor = !id.startsWith('r1-') && !id.includes('residual')
     return {
       ruleId: id,
@@ -302,6 +313,8 @@ describe('止损位状态（D9 三判据）', () => {
       asset: 'core-system-prompt',
       locator: isAnchor ? 'semantic-anchor' : 'regex',
       fragility: 'high',
+      generation,
+      assetGeneration,
       hitCount,
       summary: hitCount > 0 ? `replaced ${hitCount} occurrence(s)` : 'no replacement performed',
     }
@@ -351,8 +364,63 @@ describe('止损位状态（D9 三判据）', () => {
     expect(report).toContain('触发（')
     expect(report).toContain('条失配）')
     expect(report).toContain('⚠ 建议方案级重审：止损位判据已触发（V2 真桥接提前或改写策略重构）。')
+    // 代际不可判（无代际标记串）→ 全部按适用保守处理，失配照常计数。
+    expect(report).toContain('- 资产代际探测：unknown')
     // 失配逐条行带规则 id / 资产 / 脆弱度（判据①的数据源 = 第④节命中清单；行形态见 renderStopLossSection）。
     expect(report).toContain('core-system-prompt，脆弱度 high）：锚未命中')
+  })
+
+  it('代际外零命中不计失配：legacy-only × current 与 current-only × legacy 均为预期形态', () => {
+    // legacy-only 规则在 2.x（current）资产上零命中 = 预期（真机对账 2026-11-09 后的正常形态）。
+    const legacyOnCurrent = [
+      syntheticRecord('r-legacy-a', 1),
+      syntheticRecord('r-legacy-b', 1),
+      syntheticRecord('r-legacy-c', 1),
+      syntheticRecord('r-legacy-dead', 0, 'legacy-only', 'current'),
+    ]
+    const evaluation = evaluateStopLoss(legacyOnCurrent, false)
+    expect(evaluation.criterion1Triggered).toBe(false)
+    expect(evaluation.misfires).toHaveLength(0)
+    // current-only 规则在旧代（legacy）资产上零命中 = 预期。
+    const currentOnLegacy = [
+      syntheticRecord('r-anchor-a', 1, 'legacy-only', 'legacy'),
+      syntheticRecord('r-anchor-b', 1, 'legacy-only', 'legacy'),
+      syntheticRecord('r-anchor-c', 1, 'legacy-only', 'legacy'),
+      syntheticRecord('r-current-dead', 0, 'current-only', 'legacy'),
+    ]
+    expect(evaluateStopLoss(currentOnLegacy, false).misfires).toHaveLength(0)
+  })
+
+  it('代际适用的零命中仍是失配：unknown 代际保守按适用；代际内零命中照常触发判据①', () => {
+    // 代际探测 unknown → 全部按适用（保守方向：宁可多报失配，不漏报漂移）；失配 ≥3 触发判据①。
+    const unknownGen = [
+      syntheticRecord('r-x-a', 1, 'cross-generation', 'unknown'),
+      syntheticRecord('r-x-dead-1', 0, 'legacy-only', 'unknown'),
+      syntheticRecord('r-x-dead-2', 0, 'legacy-only', 'unknown'),
+      syntheticRecord('r-x-dead-3', 0, 'legacy-only', 'unknown'),
+    ]
+    const evaluation = evaluateStopLoss(unknownGen, false)
+    expect(evaluation.criterion1Triggered).toBe(true)
+    expect(evaluation.misfires).toHaveLength(3)
+    // 代际适用的语义段规则零命中（current-only × current）照常计失配并触发判据①。
+    const applicableZero = [
+      syntheticRecord('r-y-a', 1, 'current-only', 'current'),
+      syntheticRecord('r-y-dead-1', 0, 'current-only', 'current'),
+      syntheticRecord('r-y-dead-2', 0, 'current-only', 'current'),
+      syntheticRecord('r-y-dead-3', 0, 'current-only', 'current'),
+    ]
+    const applicableEvaluation = evaluateStopLoss(applicableZero, false)
+    expect(applicableEvaluation.criterion1Triggered).toBe(true)
+    expect(applicableEvaluation.misfires).toHaveLength(3)
+  })
+
+  it('记录行三态标记按代际解释：代际外零命中标「仅旧代生效 / 仅新代生效」，代际适用零命中标「失配」', () => {
+    expect(rewriteRecordLine(syntheticRecord('r-hit', 1, 'legacy-only', 'legacy'))).toContain('[✓]')
+    expect(rewriteRecordLine(syntheticRecord('r-miss-applicable', 0, 'current-only', 'current'))).toContain('[✗ 失配]')
+    expect(rewriteRecordLine(syntheticRecord('r-miss-legacy', 0, 'legacy-only', 'current'))).toContain('[— 仅旧代生效]')
+    expect(rewriteRecordLine(syntheticRecord('r-miss-current', 0, 'current-only', 'legacy'))).toContain('[— 仅新代生效]')
+    // regex 记录不受代际影响（防御性/残余兜底的零命中恒为正常形态）。
+    expect(rewriteRecordLine(syntheticRecord('r1-defensive', 0, 'cross-generation', 'current'))).toContain('[—]')
   })
 })
 
