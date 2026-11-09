@@ -104,16 +104,19 @@ export type { RewriteApplyRecord } from './rewrite/apply.js'
 export interface MaterializedFile {
   /** 管理名（.od-frames/ 内的文件名，如 android.html）。 */
   name: string
-  /** 源资产绝对路径。 */
-  sourcePath: string
+  /**
+   * 源资产绝对路径（manifest 清单资源复制件）。派生登记件（deck-framework.md，D9——
+   * 内容生成自 lib/protocols/deck.ts，非 OD 静态资产复制）无源资产路径，缺省。
+   */
+  sourcePath?: string
   /** 写入字节数。 */
   bytes: number
 }
 
-/** 材质化写入清单（会话创建时无条件全量重铺的落点记录，设计 D8）。 */
+/** 材质化写入清单（会话创建时无条件全量重铺的落点记录，设计 D8/D9）。 */
 export interface MaterializeManifest {
   /** 写入落点根（会话工作目录的 .od-frames/ 子目录）。 */
   targetRoot: string
-  /** 写入文件清单（恰 4 文件，终态形态；deck 指令为注入块供给不落盘，见 materialize/copy.ts 文件头）。 */
+  /** 写入文件清单（恰 5 文件 = materialize/copy.ts 的 MATERIALIZED_WRITE_LIST）。 */
   files: MaterializedFile[]
 }

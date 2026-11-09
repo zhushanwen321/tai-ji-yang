@@ -1,9 +1,12 @@
 /**
- * 材质化器一致性测试（U5；语义权威 = 设计 D8，断言红灯 RL4，验收场景 V11 的单测层）。
+ * 材质化器一致性测试（U5 基线 + U3a 扩展：D9 第 5 文件 deck-framework.md；
+ * 语义权威 = 设计 D8/D9，验收 = impl-plan A3「材质化 5 文件写清单断言」的单测层）。
  *
- * 四断言（任务书）：
- *   1. 首铺齐全 —— 空目录首铺后 .od-frames/ 恰为管理名 4 文件，MaterializeManifest 契约完整；
- *   2. 逐字节一致 —— 每个落点文件与源 fixture 对应文件逐字节相等；
+ * 断言（任务书）：
+ *   1. 首铺齐全 —— 空目录首铺后 .od-frames/ 恰为写清单 5 文件（4 个 manifest 复制件 +
+ *      deck-framework.md 派生登记件），MaterializeManifest 契约完整；
+ *   2. 逐字节一致 —— manifest 复制件与源 fixture 对应文件逐字节相等；deck-framework.md
+ *      内容 === lib/protocols/deck.ts 派生登记文本（D9 三段结构全文）；
  *   3. 源变更后新内容 —— 源资产变更（模拟 OD 升级）后下次重铺拿到新内容（RL4）；
  *   4. 幂等不堆积 —— 重复重铺文件集不变、无清单外文件；既有非管理名文件不被清理
  *      （D8 无删除通道的镜像语义），落点旧镜像被源覆盖（D8 ④ 无条件覆盖语义）。
@@ -21,11 +24,13 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
-  MATERIALIZED_FILE_NAMES,
+  DECK_FRAMEWORK_FILE_NAME,
+  MATERIALIZED_WRITE_LIST,
   OD_FRAMES_DIR,
   materializeAssets,
   MaterializeSourceError,
 } from '../lib/materialize/copy.js'
+import { renderDeckFrameworkFile } from '../lib/protocols/deck.js'
 import type { MaterializeManifest } from '../lib/types.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -54,37 +59,47 @@ afterEach(() => {
 })
 
 describe('断言 1：首铺齐全（空目录首铺 + manifest 契约）', () => {
-  it('空 cwd 首铺后 .od-frames/ 恰为管理名 4 文件', async () => {
+  it('空 cwd 首铺后 .od-frames/ 恰为写清单 5 文件', async () => {
     const cwd = path.join(workspace, 'project')
     mkdirSync(cwd, { recursive: true })
 
     const result = await materializeAssets({ manifestPath: FIXTURE_MANIFEST, cwd })
 
     expect(readdirSync(path.join(cwd, OD_FRAMES_DIR)).sort()).toEqual(
-      [...MATERIALIZED_FILE_NAMES].sort(),
+      [...MATERIALIZED_WRITE_LIST].sort(),
     )
     expect(result.targetRoot).toBe(path.join(cwd, OD_FRAMES_DIR))
   })
 
-  it('MaterializeManifest 契约完整：4 项、name 集合、bytes > 0、sourcePath 为源绝对路径', async () => {
+  it('MaterializeManifest 契约完整：5 项、name 集合、bytes > 0；复制件 sourcePath 为源绝对路径、deck 派生件 sourcePath 缺省', async () => {
     const cwd = path.join(workspace, 'project')
     const result: MaterializeManifest = await materializeAssets({
       manifestPath: FIXTURE_MANIFEST,
       cwd,
     })
 
-    expect(result.files).toHaveLength(MATERIALIZED_FILE_NAMES.length)
-    expect(result.files.map((f) => f.name).sort()).toEqual([...MATERIALIZED_FILE_NAMES].sort())
+    expect(result.files).toHaveLength(MATERIALIZED_WRITE_LIST.length)
+    expect(result.files.map((f) => f.name).sort()).toEqual([...MATERIALIZED_WRITE_LIST].sort())
     for (const file of result.files) {
       expect(file.bytes).toBeGreaterThan(0)
-      expect(path.isAbsolute(file.sourcePath)).toBe(true)
-      expect(file.sourcePath).toBe(path.resolve(FIXTURE_PLUGIN_DIR, SOURCE_REL[file.name]))
     }
+    // manifest 复制件：sourcePath 指向源资产绝对路径。
+    for (const [name, rel] of Object.entries(SOURCE_REL)) {
+      const file = result.files.find((f) => f.name === name)
+      expect(file, name).toBeDefined()
+      expect(file!.sourcePath, name).toBeDefined()
+      expect(path.isAbsolute(file!.sourcePath!), name).toBe(true)
+      expect(file!.sourcePath, name).toBe(path.resolve(FIXTURE_PLUGIN_DIR, rel))
+    }
+    // deck 派生登记件：无源资产路径（D9 内容生成自 lib/protocols/deck.ts）。
+    const deck = result.files.find((f) => f.name === DECK_FRAMEWORK_FILE_NAME)
+    expect(deck).toBeDefined()
+    expect(deck!.sourcePath).toBeUndefined()
   })
 })
 
 describe('断言 2：重铺后与源逐字节一致（共享 fixture 只读消费）', () => {
-  it('每个落点文件字节与源 fixture 对应文件完全一致', async () => {
+  it('manifest 复制件字节与源 fixture 对应文件完全一致', async () => {
     const cwd = path.join(workspace, 'project')
     await materializeAssets({ manifestPath: FIXTURE_MANIFEST, cwd })
 
@@ -93,6 +108,18 @@ describe('断言 2：重铺后与源逐字节一致（共享 fixture 只读消�
       const staged = readFileSync(path.join(workspace, 'project', OD_FRAMES_DIR, name))
       expect(staged.equals(source), `${name} 与源逐字节不一致`).toBe(true)
     }
+  })
+
+  it('deck-framework.md 内容 === 协议派生登记文本（D9 三段结构全文；验收 A3 写清单断言）', async () => {
+    const cwd = path.join(workspace, 'project')
+    await materializeAssets({ manifestPath: FIXTURE_MANIFEST, cwd })
+
+    const staged = readFileSync(path.join(cwd, OD_FRAMES_DIR, DECK_FRAMEWORK_FILE_NAME), 'utf8')
+    expect(staged).toBe(renderDeckFrameworkFile())
+    // 三段结构头在场（适用限定句 + 兼容段 + 规范段）。
+    expect(staged.startsWith('# HTML deck host protocol')).toBe(true)
+    expect(staged).toContain('## Existing deck or selected template')
+    expect(staged).toContain('## New deck only')
   })
 })
 
@@ -117,24 +144,29 @@ describe('断言 3：模拟源变更后下次重铺拿到新内容（RL4：OD �
     const staged = readFileSync(path.join(cwd, OD_FRAMES_DIR, 'layout.css'), 'utf8')
     expect(staged).toBe(upgraded)
     expect(staged).not.toBe(oldBytes.toString('utf8'))
-    // 重铺清单仍恰 4 文件（deck 注指令块形态不落盘，RR5 裁决）
-    expect(second.files).toHaveLength(4)
-    expect(first.files).toHaveLength(4)
+    // 重铺清单恒 5 文件（4 复制件 + deck 派生件，D9 写清单口径）
+    expect(second.files).toHaveLength(MATERIALIZED_WRITE_LIST.length)
+    expect(first.files).toHaveLength(MATERIALIZED_WRITE_LIST.length)
   })
 })
 
 describe('断言 4：重复重铺幂等不堆积、不产生清单外文件（V11 单测层）', () => {
-  it('同一 cwd 重铺 3 次：文件集恒为管理名 4 文件、无清单外文件、内容仍与源一致', async () => {
+  it('同一 cwd 重铺 3 次：文件集恒为写清单 5 文件、无清单外文件、内容稳定一致', async () => {
     const cwd = path.join(workspace, 'project')
+    let deckContentFirst = ''
     for (let round = 0; round < 3; round += 1) {
       await materializeAssets({ manifestPath: FIXTURE_MANIFEST, cwd })
+      const deckText = readFileSync(path.join(cwd, OD_FRAMES_DIR, DECK_FRAMEWORK_FILE_NAME), 'utf8')
+      if (round === 0) deckContentFirst = deckText
+      expect(deckText).toBe(deckContentFirst)
     }
 
     const stagedDir = path.join(cwd, OD_FRAMES_DIR)
-    expect(readdirSync(stagedDir).sort()).toEqual([...MATERIALIZED_FILE_NAMES].sort())
+    expect(readdirSync(stagedDir).sort()).toEqual([...MATERIALIZED_WRITE_LIST].sort())
     for (const [name, rel] of Object.entries(SOURCE_REL)) {
       expect(readFileSync(path.join(stagedDir, name)).equals(readFileSync(path.join(FIXTURE_PLUGIN_DIR, rel)))).toBe(true)
     }
+    expect(readFileSync(path.join(stagedDir, DECK_FRAMEWORK_FILE_NAME), 'utf8')).toBe(renderDeckFrameworkFile())
   })
 
   it('既有非管理名文件不被清理（D8：无插件侧删除通道），落点旧镜像被源覆盖（D8 ④ 无条件覆盖）', async () => {
@@ -142,17 +174,20 @@ describe('断言 4：重复重铺幂等不堆积、不产生清单外文件（V1
     const stagedDir = path.join(cwd, OD_FRAMES_DIR)
     await materializeAssets({ manifestPath: FIXTURE_MANIFEST, cwd })
 
-    // 用户/旧版本留在落点的两类既有内容
+    // 用户/旧版本留在落点的两类既有内容（含对管理写清单名 deck-framework.md 的手写占用——
+    // 同样被无条件覆盖，D8 ④）
     writeFileSync(path.join(stagedDir, 'user-note.txt'), 'user owns this', 'utf8')
     writeFileSync(path.join(stagedDir, 'iphone.html'), 'stale previous-generation shell', 'utf8')
+    writeFileSync(path.join(stagedDir, DECK_FRAMEWORK_FILE_NAME), 'stale previous-generation deck protocol', 'utf8')
 
     await materializeAssets({ manifestPath: FIXTURE_MANIFEST, cwd })
 
     expect(readFileSync(path.join(stagedDir, 'user-note.txt'), 'utf8')).toBe('user owns this')
     const sourceIphone = readFileSync(path.join(FIXTURE_PLUGIN_DIR, SOURCE_REL['iphone.html']))
     expect(readFileSync(path.join(stagedDir, 'iphone.html')).equals(sourceIphone)).toBe(true)
-    // 清单外文件不产生：除管理名 + 用户自有文件外无其他写入
-    expect(readdirSync(stagedDir).sort()).toEqual([...MATERIALIZED_FILE_NAMES, 'user-note.txt'].sort())
+    expect(readFileSync(path.join(stagedDir, DECK_FRAMEWORK_FILE_NAME), 'utf8')).toBe(renderDeckFrameworkFile())
+    // 清单外文件不产生：除写清单 + 用户自有文件外无其他写入
+    expect(readdirSync(stagedDir).sort()).toEqual([...MATERIALIZED_WRITE_LIST, 'user-note.txt'].sort())
   })
 })
 
@@ -187,6 +222,6 @@ describe('源完整性 fail-fast（AX5 显式降级语义的支撑行为）', ()
     // fixture 清单 discovery.resources 另声明 prototype.md / ppt.md（非管理名）——不出现于落点
     expect(staged).not.toContain('prototype.md')
     expect(staged).not.toContain('ppt.md')
-    expect(result.files.every((f) => (MATERIALIZED_FILE_NAMES as readonly string[]).includes(f.name))).toBe(true)
+    expect(result.files.every((f) => MATERIALIZED_WRITE_LIST.includes(f.name))).toBe(true)
   })
 })

@@ -1,7 +1,7 @@
 # opendesign-design-mode 的 bundle 声明：两行 insert——本包 host 半主行 + 设计模式 preset 行。
 #
 # preset 行的 config.plugins = 「DSH standard 模式全量基线 + 本包四子插件」（2026-11-09 用户
-# 裁决方案 B：OpenDesign 模式不收窄原生工具面，只在 standard 之上叠加 OD 定制提示词与面板/
+# 裁决方案 B：OpenDesign 模式不收窄原生工具范围，只在 standard 之上叠加 OD 定制提示词与面板/
 # 伺服/诊断）。DSH preset 无隐式工具基线，全部子插件逐项声明；standard 基线的行序与配置以
 # DSH 仓两版本 standard.patch.yml 实读为锚（web CLI 0.1.7-rc.2 / 桌面 0.2.2-rc.1 的
 # dsh-web-app presets 目录，agent-preset config schema 双版本一致）。
@@ -40,12 +40,18 @@
       config:
         id: opendesign
         name: OpenDesign 设计模式
-        description: 以本机 OpenDesign 资产驱动的设计会话：发现→计划→生产产出八类 HTML 文件产物（原型/演示稿/文档/营销源码/动效源码/HyperFrames/网页复刻/webgl），右侧栏设计面板直接预览；图片/视频/音频成片生成不在 V1 范围（会如实说明并以 HTML 源码替代）；演示稿为普通单文件 HTML 预览（OD 协议级翻页/打印为后续版本）；未装 OpenDesign 时入口显式降级提示。工具面 = standard 模式全量 + OD 定制。
+        description: 以本机 OpenDesign 资产驱动的设计会话：发现→计划→生产产出八类 HTML 文件产物（原型/演示稿/文档/营销源码/动效源码/HyperFrames/网页复刻/webgl），右侧栏设计面板直接预览；图片/视频/音频成片生成不在 V1 范围（会如实说明并以 HTML 源码替代）；演示稿带 deck 协议信号（协议级翻页/打印分页）；未装 OpenDesign 时入口显式降级提示。工具集合 = standard 模式全量 + OD 定制。
         order: 50
         plugins:
           # ── 本包子插件（name = 本包 exports 子路径）──────────────────────────
           - id: od-persona
             name: opendesign-design-mode/persona
+            config:
+              # 评审团协议（panel）数值参数（D8）：compose 的 panel 段渲染从本行 config
+              # 读，缺省兜底 = OD defaultCritiqueConfig 同值（lib/protocols/panel.ts
+              # PANEL_PROTOCOL_DEFAULTS；静态一次注册，会话中途不可变）。
+              panelScoreThreshold: 8.0
+              panelMaxRounds: 3
           - id: od-doctor
             name: opendesign-design-mode/commands/doctor
           - id: od-serve

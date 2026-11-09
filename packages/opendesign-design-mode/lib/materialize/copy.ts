@@ -11,27 +11,18 @@
  *     旧版本资产镜像；用户手写内容占用管理名被覆盖的概率极低，显式接受——
  *     感知通道 = doctor 材质化状态报告落点清单）。
  *
- * deck 指令供给形态（RR5，R-deck-degrade 已裁决）：**注指令块形态，不落盘**——本模块写清单恰
- * 4 文件（android.html / iphone.html / neutral.html / layout.css），此为终态形态而非待定项。
- * 裁决依据（2026-11-09 亲读 OD 仓）：
- *   - deck-framework.md 在 OD 源资产根不存在静态文件：清单 ppt 档 resources 为空（本仓 fixture
- *     与 OD 0.25.1 真实清单一致），该文件由 OD daemon 运行时动态生成
- *     （apps/daemon/src/strategies/od-next/device-frames.ts L121-126）——铺文件形态要求插件自产
- *     内容（复刻 OD contracts 的 render 函数文本进插件仓），即把流程提示词写死，违反 AX3
- *     （OD 升级后副本过期、无跟随）；本设计「不实现 OD manifest 所有权机制」是同一减法方向。
- *   - 注指令块形态把 deck 协议供给交给组装层（U3）：OD 先例同构——注入块由 daemon 组装代码
- *     生成（packages/contracts/src/prompts/od-next-strategy.ts:549-561，
- *     `<od-next-context kind="instruction" name="deck-framework">`），本就是组装时点职责。
- *   - 与 ppt.md 任务档原文兼容（OD 原文 L216）："use the host deck protocol if it is already in
- *     context; otherwise read .od-frames/deck-framework.md"——注入块在场即命中
- *     "already in context" 分支，模型不因文件缺失而降级。
- *   终态结论：两形态纯 DSH 均无供给源，V1 deck 协议恒空槽（ppt 档按「protocol 不在场」分支
- *   降级），协议级翻页/打印归 M2 后续版本；「组装层若按铺文件形态实现则变 5 文件」的条件
- *   分支已随裁决排除，材质化器保持纯复制器语义。
+ * deck 协议供给形态（D9，V1 R-deck-degrade 降级裁决经 AS5 推翻后更新）：第 5 个铺盘文件
+ * `.od-frames/deck-framework.md`——内容非 OD 静态资产复制件，而是 lib/protocols/deck.ts 的
+ * 派生登记文本（renderDeckFrameworkFile()：适用限定句 + Existing deck 兼容段 + New deck
+ * 规范段三段结构，正源 = OD 源码仓 packages/contracts 的协议常量，AX3 例外 + 版本锚登记），
+ * 与 4 个 manifest 复制件同目录同批、同无条件重铺语义。文件名 = 上游约定（任务档 ppt.md
+ * L216 fallback 明文引用 .od-frames/deck-framework.md，OD contracts
+ * OD_NEXT_MANAGED_RESOURCE_FILES 与 daemon device-frames.ts L121-126 组文同名——自造名将使
+ * OD 升级后 fallback 扑空）。体积分档依据（D9）：deck 协议文本含整页骨架 HTML，不进提示词
+ * 注入，模型经任务档路由段指针（ppt 条目，U2）自读全文。
  *
- * 管理名清单与 OD contracts 的 OD_NEXT_MANAGED_RESOURCE_FILES 同源，差 = deck-framework.md
- * （上条形态决策所致；OD 升级若把 deck-framework.md 变为静态清单资源，deck 供给形态随组装层
- * 一并适配，材质化器保持纯复制器语义不变）。
+ * 管理名清单与 OD contracts 的 OD_NEXT_MANAGED_RESOURCE_FILES 同源同集（4 复制件 +
+ * deck-framework.md 派生件）。
  *
  * AX2 红线：源侧只读（readFile 清单与资源文件），写侧只有调用方传入 cwd 之下 .od-frames/；
  * 源清单/源资源缺失或清单结构漂移时 fail-fast 抛错（AX5 显式降级语义——材质化失败抛错由
@@ -42,14 +33,18 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import { renderDeckFrameworkFile } from '../protocols/deck.js'
 import type { MaterializeManifest, MaterializedFile } from '../types.js'
 
 /** 材质化落点子目录实名（与 OD contracts OD_NEXT_DEVICE_FRAME_ROOT 同源，D8 ①）。 */
 export const OD_FRAMES_DIR = '.od-frames'
 
+/** deck 协议铺盘文件实名（上游约定名，见文件头 D9 段）。 */
+export const DECK_FRAMEWORK_FILE_NAME = 'deck-framework.md'
+
 /**
- * 材质化管理名清单（D8 ① 写清单 = 恰此 4 文件；D8 ④「OD 管理名恰为同 5 文件名」中的第 5 名
- * deck-framework.md 因注指令块形态不在此列，见文件头注释）。
+ * 材质化管理名清单（D8 ①：manifest 清单资源复制件，恰 4 文件——语义保持「复制件」
+ * 不含派生件，消费方（context-facts 壳清单、doctor ⑤ 既有逐文件检查）按此口径派生）。
  */
 export const MATERIALIZED_FILE_NAMES = [
   'android.html',
@@ -57,6 +52,15 @@ export const MATERIALIZED_FILE_NAMES = [
   'neutral.html',
   'layout.css',
 ] as const
+
+/**
+ * 材质化完整写清单（D8 ① + D9：恰 5 文件 = 复制件 4 + deck-framework.md 派生登记件；
+ * MaterializeManifest.files 与 doctor 材质化状态逐文件检查以此为准）。
+ */
+export const MATERIALIZED_WRITE_LIST: readonly string[] = [
+  ...MATERIALIZED_FILE_NAMES,
+  DECK_FRAMEWORK_FILE_NAME,
+]
 
 const MANAGED_NAMES: ReadonlySet<string> = new Set(MATERIALIZED_FILE_NAMES)
 
@@ -182,6 +186,13 @@ export async function materializeAssets(input: {
     await writeFile(path.join(targetRoot, name), content)
     files.push({ name, sourcePath, bytes: content.byteLength })
   }
+
+  // 第 5 文件：deck 协议铺盘（D9）——内容 = lib/protocols/deck.ts 派生登记文本
+  // （非 OD 静态资产复制件，MaterializedFile.sourcePath 缺省），与复制件同目录同批、
+  // 同无条件覆盖语义；写清单恰 5 文件（MATERIALIZED_WRITE_LIST）。
+  const deckText = renderDeckFrameworkFile()
+  await writeFile(path.join(targetRoot, DECK_FRAMEWORK_FILE_NAME), deckText)
+  files.push({ name: DECK_FRAMEWORK_FILE_NAME, bytes: Buffer.byteLength(deckText) })
 
   return { targetRoot, files }
 }

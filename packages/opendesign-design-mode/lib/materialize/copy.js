@@ -1,11 +1,17 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { renderDeckFrameworkFile } from "../protocols/deck.js";
 const OD_FRAMES_DIR = ".od-frames";
+const DECK_FRAMEWORK_FILE_NAME = "deck-framework.md";
 const MATERIALIZED_FILE_NAMES = [
   "android.html",
   "iphone.html",
   "neutral.html",
   "layout.css"
+];
+const MATERIALIZED_WRITE_LIST = [
+  ...MATERIALIZED_FILE_NAMES,
+  DECK_FRAMEWORK_FILE_NAME
 ];
 const MANAGED_NAMES = new Set(MATERIALIZED_FILE_NAMES);
 class MaterializeSourceError extends Error {
@@ -82,10 +88,15 @@ async function materializeAssets(input) {
     await writeFile(path.join(targetRoot, name), content);
     files.push({ name, sourcePath, bytes: content.byteLength });
   }
+  const deckText = renderDeckFrameworkFile();
+  await writeFile(path.join(targetRoot, DECK_FRAMEWORK_FILE_NAME), deckText);
+  files.push({ name: DECK_FRAMEWORK_FILE_NAME, bytes: Buffer.byteLength(deckText) });
   return { targetRoot, files };
 }
 export {
+  DECK_FRAMEWORK_FILE_NAME,
   MATERIALIZED_FILE_NAMES,
+  MATERIALIZED_WRITE_LIST,
   MaterializeSourceError,
   OD_FRAMES_DIR,
   materializeAssets
