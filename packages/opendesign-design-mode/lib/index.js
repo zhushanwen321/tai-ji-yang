@@ -8,7 +8,12 @@
  *     失败是 profile 装配错误，不是设计内的降级形态，见 persona.ts 文件头）。
  *   - 本文件是包级生命周期的宿主侧锚点：承载跨子插件协调。本文件登记材质化触发（D8）：
  *     会话选定设计 preset 的时点（宿主 `agent-preset/selected` 事件）把设备壳支撑文件
- *     无条件全量重铺进会话工作目录。
+ *     无条件全量重铺进会话工作目录。同一事件（独立监听、presetId 过滤同款）登记质量环
+ *     触发（U5 / D4 / D5）：起 fs.watch 递归监听（lib/quality/watcher.js）→ 写盘事件经
+ *     防抖 + 完整性哨兵 → lib/quality/lint.js 检查 → lib/quality/feedback.js 仅 P0 回注
+ *     （steer/followup 双通道）+ .od-quality/report.jsonl 记录。监听器集合挂进程 effect
+ *     （卸载即撤）；同会话重复 selected（resume 重组路径）先撤旧监听再起新一代——新一代
+ *     快照 + 产物身份豁免集即 resume 语义（D5④）。非设计会话零监听零注入（preset 过滤）。
  *
  * 材质化触发点的宿主契约（0.1.7-rc.2 亲读核实，U8 接线时定案）：
  *   - 事件：agent-preset-registry 对会话事件 `agent-preset/selected` 的转发
@@ -34,6 +39,9 @@
  */
 import { locateOdAssets } from './locate/version-profile.js'
 import { materializeAssets } from './materialize/copy.js'
+import { createQualityFeedbackHandler } from './quality/feedback.js'
+import { lintArtifact } from './quality/lint.js'
+import { startSessionWatcher } from './quality/watcher.js'
 import { resolveSessionCwdById } from './serve/session-cwd.js'
 
 /** Cordis 插件显示名（与 package.json 的 name、patch 行 id 同一字面值；诊断日志归属名）。 */
@@ -56,6 +64,17 @@ export function apply(ctx) {
   ctx.effect(() => ctx.on('agent-preset/selected', (sessionId, presetId) => {
     materializeForSession(ctx, sessionId, presetId)
   }), 'opendesign-design-mode: 材质化触发（agent-preset/selected）')
+  // 质量环监听器集合（U5/D4）：每设计会话一个监听器，同会话 selected 重复先撤旧起新
+  // （Map 键 = sessionId）；进程卸载统一撤除。监听器自毁（错误/目录不可达）从集合出清
+  // 由自毁侧完成（controller.destroyed 后 dispose 为 no-op，残留在集合内无害）。
+  const qualityWatchers = new Map()
+  ctx.effect(() => () => {
+    for (const watcher of qualityWatchers.values()) watcher.dispose()
+    qualityWatchers.clear()
+  }, 'opendesign-design-mode: 质量环监听器集合（进程卸载即撤）')
+  ctx.effect(() => ctx.on('agent-preset/selected', (sessionId, presetId) => {
+    startQualityWatchForSession(ctx, sessionId, presetId, qualityWatchers)
+  }), 'opendesign-design-mode: 质量环监听触发（agent-preset/selected）')
 }
 
 /**
@@ -83,4 +102,57 @@ function materializeForSession(ctx, sessionId, presetId) {
     (manifest) => ctx.logger.debug(`opendesign-design-mode: 会话 ${sessionId} 材质化完成（${manifest.files.length} 文件 → ${manifest.targetRoot}）`),
     (error) => ctx.logger.error(`opendesign-design-mode: 会话 ${sessionId} 材质化失败：${error instanceof Error ? error.message : String(error)}（落点状态由 /opendesign-doctor 第⑤项报告）`),
   )
+}
+
+/**
+ * 设计 preset 应答到会话时点的质量环监听启动（U5/D4；非设计会话零监听）。
+ *
+ * @param ctx - Cordis 插件上下文（包主行 scope）。
+ * @param sessionId - 选定了 preset 的会话 id。
+ * @param presetId - 选定的 preset id；非本包 preset 直接返回。
+ * @param qualityWatchers - 会话 → 换代条目的在册集合（进程 effect 持有，卸载统一撤）。
+ */
+function startQualityWatchForSession(ctx, sessionId, presetId, qualityWatchers) {
+  if (presetId !== OD_PRESET_ID) return
+  const cwd = resolveSessionCwdById(ctx, sessionId)
+  if (cwd === null) {
+    ctx.logger.warn(`opendesign-design-mode: 会话 ${sessionId} 选定设计 preset 但工作目录不可得，质量环监听跳过（落点未知；/opendesign-doctor 第⑪节按监听未启动报告）`)
+    return
+  }
+  // 同会话重复 selected（resume 重组路径）：先撤上一代监听再起新一代——新一代的启动快照
+  // + 产物身份豁免集（report.jsonl 回查）承载 resume 语义（D5④）。条目同步创建：监听启动
+  // 是异步的（快照扫描先行），换代若发生在启动完成前，条目 disposed 旗标会在完成时把
+  // 刚落定的控制器立即撤除——不存在「旧代启动完才入集合」的双监听竞态。
+  const previous = qualityWatchers.get(sessionId)
+  if (previous !== undefined) {
+    previous.dispose()
+    qualityWatchers.delete(sessionId)
+  }
+  const entry = {
+    disposed: false,
+    controller: undefined,
+    dispose() {
+      entry.disposed = true
+      if (entry.controller !== undefined) entry.controller.dispose()
+    },
+  }
+  qualityWatchers.set(sessionId, entry)
+  const feedback = createQualityFeedbackHandler({ ctx, sessionId, cwd })
+  startSessionWatcher({
+    cwd,
+    lintArtifact,
+    onFindings: (input) => feedback(input),
+    onDestroyed: (reason) => ctx.logger.warn(`opendesign-design-mode: 会话 ${sessionId} 质量环监听器自毁（${reason}）。恢复动作：resume 该会话重新触发监听；生命周期记录见 /opendesign-doctor 第⑪节。`),
+    logger: ctx.logger,
+  }).then((controller) => {
+    // 启动即自毁（目录不可达等）不持控制器——残存句柄零；换代竞态见 entry.dispose 注释。
+    if (controller.destroyed) return
+    if (entry.disposed) {
+      controller.dispose()
+      return
+    }
+    entry.controller = controller
+  }, (error) => {
+    ctx.logger.error(`opendesign-design-mode: 会话 ${sessionId} 质量环监听启动异常：${error instanceof Error ? error.message : String(error)}。恢复动作：运行 /opendesign-doctor 检查会话目录状态。`)
+  })
 }
