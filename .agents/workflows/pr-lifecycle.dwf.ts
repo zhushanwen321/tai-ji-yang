@@ -266,7 +266,7 @@ async function obsCloseExecution(outcome: string): Promise<void> {
 }
 
 const OBS_LAYER_SHA256 = "176ef8dfb549fe0d7e783035a9ede755e1d95b973914324958b6d13935244ee3"; // 构建注入：公共观测层安装位源（~/.agents/scripts/workflow-observability.shared.ts）内容 sha256，setup 首步现算比对
-const SKILL_VERSION = "pr-lifecycle-59a2177f"; // 构建注入：观测层 skill_version 溯源常量（taiji 无 frontmatter 版本源，取 shared 源 hash 前 8 位）
+const SKILL_VERSION = "pr-lifecycle-60f57d73"; // 构建注入：观测层 skill_version 溯源常量（taiji 无 frontmatter 版本源，取 shared 源 hash 前 8 位）
 // pr-lifecycle — tai-ji-yang PR 全生命周期单源公共体（唯一业务源）
 // 本文件不直接发起。zcode 与 pi 产物由 .agents/workflows/scripts/build-workflows.mjs
 // 从本文件 + 两个平台壳生成；产物禁止手工维护。
@@ -492,7 +492,7 @@ const runAbsDir = wt === "" ? `${runDir}/${runId}` : `${wt}/.review/pr-lifecycle
 
 function reviewerPersona(dimension: string): string {
   return [
-    `你是 tai-ji-yang-shell 的 ${dimension} 审查员。`,
+    `你是 tai-ji-yang 多包仓库（根包 tai-ji-yang-shell 与 packages/ 子包）的 ${dimension} 审查员：diff 可能涉及任一包，按 reviewer 定义中对应包的判据审（定义含子包判据节）。`,
     "先完整读取派发 prompt 给出的项目 reviewer 定义，并按它的判据、只报告不改代码的约束、报告格式与结构化返回协议执行。",
     "所有 git/diff 命令都必须先进入派发 prompt 给出的 worktree 目录；不要依赖当前 shell cwd。",
     "若定义或项目规范文件缺失，立即返回说明缺失路径的结论，不要凭记忆空审。",

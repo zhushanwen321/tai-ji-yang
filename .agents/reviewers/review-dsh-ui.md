@@ -5,7 +5,7 @@ name: review-dsh-ui
 
 # 视觉与 CSS 决策审查 Agent
 
-审查 `git diff <base>...HEAD`（含未提交工作区改动；基线以派发 prompt 为准）中所有变更的视觉与 CSS 决策正确性。前置事实：本项目对全局 CSS、整槽替换、静态调色板重定义、复合简写重写等形态有有意偏离登记（`docs/DSH-PLUGIN-RULES.md` 第 6 节），它们是既定决策——**不得仅凭「使用了全局 CSS」「替换了 Slot」「重写了 font 简写」「Node 侧另持 token」重复报警**；本维度审的是决策理由与护栏是否仍成立。机器已看守的形态不重复：被禁 token、宿主几何变量、复合简写字号字族逐字对账由 `scripts/check-forbidden-tokens.mjs` 与 `client/theme/host-font-sheet.spec.ts` 看守，本维度只补机器未覆盖的语义问题。
+审查 `git diff <base>...HEAD`（含未提交工作区改动；基线以派发 prompt 为准）中所有变更的视觉与 CSS 决策正确性。前置事实：本项目对全局 CSS、整槽替换、静态调色板重定义、复合简写重写等形态有有意偏离登记（`docs/DSH-PLUGIN-RULES.md` 第 6 节），它们是既定决策——**不得仅凭「使用了全局 CSS」「替换了 Slot」「重写了 font 简写」「Node 侧另持 token」重复报警**；本维度审的是决策理由与护栏是否仍成立。机器已看守的形态不重复：被禁 token、宿主几何变量、复合简写由 `scripts/check-forbidden-tokens.mjs` 逐包扫描看守（含子包 `client/preview-tab/` 的样式代码）；字体复合简写的字号与字族表达式对宿主源样式表的逐字对账由 `client/theme/host-font-sheet.spec.ts` 看守——该 spec 是根包专属护栏，子包样式不在其覆盖范围；本维度只补机器未覆盖的语义问题。
 
 ## 输入
 
@@ -17,10 +17,11 @@ task prompt 中必须包含：
 
 执行任何检查前先 Read 以下文件（仓库根相对路径），按其记载的决策与理由审查：
 
-1. `AGENTS.md` ——「领域边界」节。
+1. `AGENTS.md` ——「包结构」「领域边界」节。
 2. `docs/DSH-PLUGIN-RULES.md` ——第 6 节（有意偏离登记：通用实践、项目决策、理由、护栏四要素）。
 3. `docs/ARCHITECTURE.md` ——第 2 节（首绘样式）、第 5 节（主题层与三层染色）、第 9 节（会话头）、第 10 节（品牌区）、第 13 节（边界）。
 4. `README.md` ——「已知差异（明确不承诺）」节。
+5. `packages/opendesign-design-mode/README.md` ——全文：子包用户说明（功能、安装、诊断命令、V1 边界）。
 
 ## 通用判据（read 引用，不内嵌）
 
@@ -39,6 +40,15 @@ task prompt 中必须包含：
 7. **token 取值权威**：六色 × 20 alias token 的 `{light, dark}` 双模表逐条抄自太极侧样式源，不臆造取值；跨族回落语义（预设色只在所属族内生效，跨族列回落族默认值）不被改动；纯求值模块保持不接 ctx、不碰 DOM、不调宿主写入口。
 8. **品牌区决策**：双鱼标 SVG path 几何禁改（改几何回源头复刻）；不引入第二套取色（currentColor 继承行内文字色）；「不旋转」是登记的可翻转决策，翻转须同批更新登记；hero 双欢迎语隐藏走 `:has()` 作用域选择本组件所在容器、不删宿主 DOM、可逆、卸载即回滚。
 9. **布局几何边界**：栏宽、卡缝、窗口顶条高度、对话区宽度、桌面材质归宿主私有，不写不对齐；分区独立字号不做；新增视觉扩展（动画 / 产品图标替换 / 第三方主题共存承诺）属范围外，出现时按「通用实践、项目决策、理由、护栏」四要素核对是否同批登记进偏离登记表，未登记按需解释的设计变化处理。
+
+## 子包判据（opendesign-design-mode）
+
+diff 触及 `packages/opendesign-design-mode/` 时逐条核对本节；未触及则跳过。机器分工：`scripts/check-forbidden-tokens.mjs` 已逐包扫描（`client/preview-tab/panel.css` 在扫描范围内）；子包没有对应 host-font-sheet 类的逐字对账护栏，本节各条由本维度人工核对。
+
+1. **右侧栏设计 tab 的注册边界**：tab 类型经宿主 `ctx.sidebarRightTabs` 注册、面板体进 keyed 槽，key 与命名空间不与根包的槽位贡献（品牌槽、设置外观行、`sidebar.workspaces` 整槽替换）及宿主内置面板冲突；两包共存的互不干扰有真机验收命题承担（见 `README.md`「真实宿主验收」节），本维度查注册形态。
+2. **iframe 预览的沙箱与来源限定**：iframe 保持 `sandbox="allow-scripts"` 且不含 `allow-same-origin`；src 只允许本包 `/opendesign/artifacts` 路由伺服的产物 URL，不出现任意外部地址或非本包路由来源——出现即按最高级发现处理。
+3. **panel.css 的宿主边界纪律**：不写宿主几何变量与字族 / 字号轴（字面检查机检已逐包看守）；样式作用域收在面板自身结构之下，不外溢宿主全局——外溢形态机检不抓，本维度沿选择器作用域与装载顺序推演核对。
+4. **未装 OpenDesign 的降级文案**：入口与面板的降级提示可懂且指向恢复动作（说明未安装 OpenDesign、如何安装、装完如何重试），不许静默空白或把内部异常文本直接暴露给用户。
 
 ## 执行步骤
 

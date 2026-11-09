@@ -37,7 +37,7 @@ parameters:
       description: 观测事件采样标记（默认 production；自动化验证用 selftest）
 usage: |
   ## 使用说明
-  - 目标目录必须是 tai-ji-yang-shell git worktree，且工作区全提交、.agents/reviewers/ 四份定义在盘。
+  - 目标目录必须是 tai-ji-yang 多包仓库的 git worktree，且工作区全提交、.agents/reviewers/ 四份定义在盘。
   - 发起：workflow 工具 action=run + name=<本脚本绝对路径>（取 <available_workflows> 清单的 location）。
   - args 示例：base=main maxRounds=5 worktree=<绝对路径> verifyUrl=<测试URL> taskId=... executionId=...
   - 终态 return：status=awaiting-push 或 failed；push 与 PR 创建需用户授权后由主 agent/skill 执行。

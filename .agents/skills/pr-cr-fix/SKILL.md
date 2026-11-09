@@ -6,7 +6,7 @@ description: >-
   触发词："pr-cr-fix"、"review 完开 PR"、"审查并修复"、"push 前检查"。
 ---
 
-# PR 审查修复 Skill（tai-ji-yang-shell）
+# PR 审查修复 Skill（tai-ji-yang 多包 workspace）
 
 本 skill 是 PR 审查修复的项目唯一入口。默认路径两条段：
 
@@ -35,7 +35,7 @@ description: >-
 - `base`：默认 `main`。
 - `worktree`：目标 git worktree 绝对路径；会话 cwd 不是该 worktree 时必传。
 - `maxRounds`：审查修复循环上限，默认 5。
-- `verifyUrl` / `verifyEvidenceDir`：真实 DSH 验收二选一。`verifyUrl` 让 workflow 现跑 brand/head/theme/projects 四场景；`verifyEvidenceDir` 指向已生成的验收证据根（内含 `verdict.json`）。都不传时 workflow 终态显式标 acceptance skipped，不得对外声称已真机验收。
+- `verifyUrl` / `verifyEvidenceDir`：真实 DSH 验收二选一。`verifyUrl` 让 workflow 现跑 brand/head/theme/projects 四场景（根包 tai-ji-yang-shell 场景）；`verifyEvidenceDir` 指向已生成的验收证据根（内含 `verdict.json`）。都不传时 workflow 终态显式标 acceptance skipped，不得对外声称已真机验收。
 - `taskId` / `executionId` / `sampleType`：阶段观测可选参数。
 
 workflow 行为：preflight（要求工作区全提交）→ `pnpm check` → 四份固定项目 reviewer 审查/聚合/分组修复循环 → final `pnpm check` → acceptance → PR title/body 起草 → `awaiting-push`。它不执行 `git push`，不创建 PR。`failed` 终态按 `error/recovery` 处置；`awaiting-push` 时向用户披露 review、acceptance、prMeta、residualFiles 和 skipped。
@@ -50,9 +50,9 @@ workflow 不可用时先在 worktree 根执行：
 pnpm check
 ```
 
-失败按输出逐项修复后重跑；`client/theme/host-font-sheet.spec.ts` 需要 `DSH_FONT_SHEET` 指向宿主源样式表，缺失时按错误信息设置，不绕过。
+失败按输出逐项修复后重跑；`client/theme/host-font-sheet.spec.ts` 需要 `DSH_FONT_SHEET` 指向宿主源样式表，缺失时按错误信息设置，不绕过。CI 环境（`CI=true`）没有宿主源码仓，该 spec 显式跳过并播报说明——这条字体复合简写护栏由本地承担。
 
-再按 `.agents/skills/verify-taiji-yang/SKILL.md` 执行真实 DSH 验收（brand/head/theme/projects；卸载用隔离自启模式）。无法执行真机验收时显式披露原因，停回用户裁决是否继续，不静默跳过。
+再按 `.agents/skills/verify-taiji-yang/SKILL.md` 执行真实 DSH 验收（brand/head/theme/projects；卸载用隔离自启模式）。该入口只验根包 tai-ji-yang-shell；diff 涉及子包 `packages/opendesign-design-mode` 时，真实宿主验收另走 `pnpm test:e2e:design-mode`（node 直跑，需本机 DSH 环境与构建产物）——跑不了的场合显式登记 skipped，不冒充通过。无法执行真机验收时显式披露原因，停回用户裁决是否继续，不静默跳过。
 
 ## 3. review-fix-loop（手工兜底的审查循环）
 
@@ -62,6 +62,8 @@ pnpm check
 - `.agents/reviewers/review-dsh-contract.md`
 - `.agents/reviewers/review-dsh-lifecycle.md`
 - `.agents/reviewers/review-dsh-ui.md`
+
+四份定义含子包判据（opendesign-design-mode）：各定义的必读判据（AGENTS.md「领域边界」「产物与依赖纪律」等节）对仓内每个包生效，子包改动按同一判据审查。
 
 zcode 用全局 saved `review-fix-loop`：
 
@@ -114,6 +116,6 @@ node --test .agents/workflows/tests/*.test.mjs
 
 ## 约束
 
-- 审查基线默认 `base=main`；不设 dev 队列、变更集（changeset）与覆盖率/度量门禁——本包零 npm 运行时依赖、单包交付，无对应设施。
+- 审查基线默认 `base=main`；不设 dev 队列与覆盖率/度量门禁。本仓是 pnpm 多包 workspace（根包 tai-ji-yang-shell + 子包 `packages/opendesign-design-mode`），每包零 npm 运行时依赖；发布走 changesets + GitHub Actions（见 AGENTS.md「发布」节），PR 流程不含发布与变更集步骤。
 - push 与建 PR 都不在自动动作集内：push 须当场授权，PR 创建不在本流程。
 - 四份 reviewer 定义（`.agents/reviewers/review-*.md`，文件名 `review-<维度>.md` 是循环的维度接口）是循环的审查判据来源；调整审查维度时同步维护定义文件与本节的固定清单。

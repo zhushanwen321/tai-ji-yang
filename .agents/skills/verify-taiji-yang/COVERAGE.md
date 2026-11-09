@@ -1,6 +1,6 @@
 # verify-taiji-yang 场景覆盖矩阵
 
-P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工）↔ 场景断言行的对账。维护单元 = 本表矩阵行：交付触达某行时同步改场景并在本表更新状态。
+P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工）↔ 场景断言行的对账。维护单元 = 本表矩阵行：交付触达某行时同步改场景并在本表更新状态。覆盖范围 = 根包 tai-ji-yang-shell；子包 opendesign-design-mode 的验收项不在本表，见文末「子包维度」节。
 
 状态：`covered`（场景断言已锁定）/ `degraded-channel`（有断言但缺通道，显式降级）/ `uncovered`（登记未做）。
 
@@ -74,3 +74,10 @@ P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工
 | 零模型请求 | 场景只点击/重载，不输入文本 | covered（设计约束 + 代码审查口径） |
 | 按 PID 清理、禁 pkill | 进程组 SIGTERM/SIGKILL | covered（合成假 dsh bin 测试） |
 | 凭据不入公开日志 | URL 行 redactToken | covered（单测覆盖） |
+
+## 子包维度（opendesign-design-mode）：不在本 runner 覆盖范围
+
+子包的真实宿主验收场景——预览面板、伺服路由、doctor、preset 注册、材质化、共存回归——全部不在本 runner 覆盖范围，本表不为它们登记 covered / uncovered 状态。
+
+- 入口：`pnpm test:e2e:design-mode`（node 直跑，场景在 `packages/opendesign-design-mode/tests/e2e/`，覆盖 web 与桌面 0.2.x 双版本宿主）。
+- 共存回归命题（两包安装进同一 profile，子包 preset 注册与 UI 注入不干扰根包 shell 包）由该 e2e 的 S8 场景承载。本 runner 自启形态只装根包，单装态结果不得登记为共存回归通过。

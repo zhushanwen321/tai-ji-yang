@@ -1,14 +1,15 @@
 ---
 name: verify-taiji-yang
-description: "tai-ji-yang-shell 的真实 DSH 宿主验收：隔离 DSH_HOME 自启 dsh web（或连接已为测试启动的 URL）、doctor 体检、Playwright 驱动五场景（brand / head / theme / projects / lifecycle）、证据三件套（verdict.json / summary.jsonl / 截图+控制台）、按 PID 清理。触发词：真机验收、宿主验收、verify taiji-yang、验收插件、DSH 验收。不用于静态自检（pnpm check）与单测（pnpm test），也不用于 taiji 本体的 verify-taiji。"
+description: "tai-ji-yang 根包 tai-ji-yang-shell 的真实 DSH 宿主验收：隔离 DSH_HOME 自启 dsh web（或连接已为测试启动的 URL）、doctor 体检、Playwright 驱动五场景（brand / head / theme / projects / lifecycle）、证据三件套（verdict.json / summary.jsonl / 截图+控制台）、按 PID 清理。验收范围仅根包 tai-ji-yang-shell；子包 opendesign-design-mode 的真实宿主验收走 pnpm test:e2e:design-mode（node 直跑，web 与桌面双版本宿主），两套入口独立、互不替代。触发词：真机验收、宿主验收、verify taiji-yang、验收插件、DSH 验收。不用于静态自检（pnpm check）与单测（pnpm test），也不用于 taiji 本体的 verify-taiji。"
 ---
 
 # verify-taiji-yang：tai-ji-yang-shell 真机验收技能
 
-本技能把插件装进**隔离 DSH_HOME** 的 dsh web 实例，按用户可见路径驱动五类场景，落证据，收尾不留进程。写给冷启动的验收 agent 与 dev-flow D3 wrapper。
+本技能把根包 tai-ji-yang-shell 装进**隔离 DSH_HOME** 的 dsh web 实例，按用户可见路径驱动五类场景，落证据，收尾不留进程。写给冷启动的验收 agent 与 dev-flow D3 wrapper。
 
 分工边界：
 
+- **验收范围 = 根包 tai-ji-yang-shell**：runner 安装只 add 仓根（根包），五场景的 DOM 断言全部指向根包 `taiji-*` 目标。子包 `packages/opendesign-design-mode` 的真实宿主验收走它自己的 node 直跑 e2e（`pnpm test:e2e:design-mode`，场景在 `packages/opendesign-design-mode/tests/e2e/`，覆盖 web 与桌面 0.2.x 双版本宿主）——两套验收入口独立，互不替代。
 - `pnpm check`（静态断言 + 构建 + 全仓单测）验「代码结构与构建产物」；本技能验「真实宿主里的行为」。两者互补，互不替代。
 - 本技能不写 e2e spec、不进 CI；驱动只走用户路径（点击/重载），绝不向模型发送请求。
 
@@ -33,7 +34,7 @@ node scripts/verify/run.mjs \
   --scenarios all
 ```
 
-runner 依次执行：在隔离 DSH_HOME 里 `dsh plugin --profile web add <本仓>` → `dsh --profile web --no-open` 启动 → 从 stdout 的 `dsh web: <url>` 行解析认证 URL（**不猜端口不猜 token**）→ HTTP 探活就绪 → 跑场景 → 按记录的 PID（进程组）收尾。
+runner 依次执行：在隔离 DSH_HOME 里 `dsh plugin --profile web add <本仓根>`（只装入根包 tai-ji-yang-shell，不装子包）→ `dsh --profile web --no-open` 启动 → 从 stdout 的 `dsh web: <url>` 行解析认证 URL（**不猜端口不猜 token**）→ HTTP 探活就绪 → 跑场景 → 按记录的 PID（进程组）收尾。
 
 参数表：
 

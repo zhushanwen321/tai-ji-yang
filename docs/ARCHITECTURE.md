@@ -1,6 +1,17 @@
 # 架构（当前实际形态）
 
-本文描述 tai-ji-yang-shell 的当前实际架构：一个以 DSH（DeepSeek Harness）组合包形态交付的插件，负责「打开就认得出是太极」与「会话按项目组织」。本文解释每个机制是什么、为什么这样设计。上游权威来源与开发审查规则见 `docs/DSH-PLUGIN-RULES.md`；用户手册（安装/卸载/排障）见仓库根 `README.md`。
+本文描述 tai-ji-yang-shell 的当前实际架构：一个以 DSH（DeepSeek Harness）组合包形态交付的插件，负责「打开就认得出是太极」与「会话按项目组织」。本文解释每个机制是什么、为什么这样设计。上游权威来源与开发审查规则见 `docs/DSH-PLUGIN-RULES.md`；用户手册（安装/卸载/排障）见仓库根 `README.md`。本包是本仓 pnpm 多包 workspace 的根包；容器级包结构见下节「多包总览」。
+
+## 多包总览
+
+本仓是 pnpm 多包 workspace：`pnpm-workspace.yaml` 声明 `packages/*`，功能型子包逐个落 `packages/<name>/`，每包都是独立的 DSH 插件包，可独立安装到不同 profile，包与包互不牵连。包清单登记两处、一处对账：`scripts/workspace-packages.mjs` 登记每包的构建声明（包名 / 目录 / 浏览器半场入口 / Node 半场产物形态 / preset 登记），并在每次构建与检查时与 `pnpm-workspace.yaml` 的实际包目录对账，两边不同步即失败。容器级协作规范（包边界、逐包构建与检查、依赖与产物纪律）见 `AGENTS.md` 的「包结构」节。
+
+| 包 | 目录 | 职责 | 用户文档 |
+|----|------|------|----------|
+| `tai-ji-yang-shell`（根包） | `.`（仓根） | 太极视觉身份（染色三层 + 槽位贡献）与项目分组侧栏 | 仓库根 `README.md`（正文主体） |
+| `opendesign-design-mode`（子包） | `packages/opendesign-design-mode` | OpenDesign 设计模式：preset 入口 + 设计预览面板 + 资产定位 / 会话组装 / 材质化 | `packages/opendesign-design-mode/README.md` |
+
+本文以下章节描述根包 tai-ji-yang-shell 的架构；子包架构见文末「子包 opendesign-design-mode 架构简述」节。
 
 ## 1. 包形态：单包承载两个半场
 
@@ -70,7 +81,7 @@ Node 半场只承载默认色玄这一套的「宿主默认 palette 之上的最
 6. **品牌三槽** → **外观行** → **composer 快速配色 chip** → **设置「太极」分区** → **项目分组浏览器** → **会话头状态图标**（详见第 7 节总表）。
 7. **反注册持久通道镜像订阅**——form 本体归宿主 ConfigForms 服务所有（跨插件共享），本包只撤自己的监听。
 
-`client/apply.ts` 导出 `inject = ['slots', 'locale', 'theme', 'configForms', 'remote', 'sessions', 'uiWorkspace']`——这是**服务名**声明：宿主 fiber context 是带拦截器的 Proxy，未声明就读 `ctx.<service>` 会直接抛错，浏览器半场整体装载失败（页面白屏而首次绘制前样式照常注入的半死态）。它与 manifest 的 `dsh.client.inject`（包名，加载排序）不可互相替代，两者都要。
+`client/apply.ts` 导出 `inject = ['slots', 'locale', 'theme', 'configForms', 'remote', 'sessions', 'uiWorkspace']`——这是**服务名**声明：宿主 fiber context 是带拦截器的 Proxy，未声明就读 `ctx.<service>` 会直接抛错，浏览器半场整体装载失败（页面白屏而首次绘制前样式照常注入的半死态）。它与 manifest 的 `dsh.client.inject`（包名，加载排序）不可互相替代，两者都要。该声明由机检看守：`scripts/check-manifest.mjs` 断言这条导出形态存在，并强制其中前五项（slots / locale / theme / configForms / remote）必须都在声明内；`sessions` 与 `uiWorkspace` 是项目分组浏览器消费的服务（见第 8 节），按装配入口实际消费的宿主服务如实声明，不在机检强制清单内。
 
 ### 3.2 CSS 交付形态
 
@@ -176,6 +187,23 @@ single 槽的槽规则 = 按 priority 升序、数值最小者渲染，同优先
 - 代码高亮、工具 JSON 面板、附件文件图标的功能色保持不动（这些颜色承载高差异化信息，改色会削弱信息功能）。
 - 字号与字族轴完全交回宿主；分区独立字号不做（宿主字号维度按内容类型分轴，与按界面分区定档的两套维度对不上，硬映射只能造出无语义档位）。
 - 第三方主题插件不承诺共存（覆盖层叠加结果不可保证）；产品图标不替换（逐 id 图标契约需逐个重制）。
+
+## 子包 opendesign-design-mode 架构简述
+
+子包交付 OpenDesign 设计模式：新会话选择器出现「OpenDesign 设计模式」preset 入口，定位本机 OpenDesign（下称 OD）安装资产驱动设计会话，产物在右侧栏设计面板预览；未装 OD 时入口显式降级提示。形态与根包同构的双半场：Node 半场源码在 `lib/*.ts`（经 esbuild transform 成同名 `.js` 同仓入库，不打包——每个 exports 子路径是宿主 loader 独立 import 的入口），浏览器半场在 `client/`。本节是索引级简述，模块级设计裁决以各源码文件头注释为权威（内含设计编号的依据链）。
+
+- `cordis.patch.yml`：两行 insert——本包主行（`id: opendesign-design-mode`，承载包级生命周期与跨子插件协调）+ 设计模式 preset 行（`@deepseek-ai/dsh-agent-preset`，新会话选择器入口）。preset 的 `config.plugins` 无隐式工具基线，全部子插件逐项显式声明：DSH standard 模式全量基线（含跨版本缺包行的 disabled 声明）+ 本包四子插件（persona / doctor 命令 / 设计面板 client / 产物伺服 host），其注册声明由 `scripts/check-manifest.mjs` 逐项断言。
+- `lib/index.js`：包主行的 host 半入口——订阅宿主 `agent-preset/selected` 事件，在会话选定设计 preset 时触发设备壳文件材质化。
+- `lib/persona.ts`：persona 子插件——启动时探测 OD 资产，探测成功则调用组装器产出设计模式系统提示词并注册为 preset 作用域 section；探测失败以携带恢复动作的 diagnostic 激活失败，宿主把该 preset 标记 broken（选择器自动过滤、设置页显示诊断与恢复动作），绝不进入提示词残缺的坏会话。
+- `lib/locate/`：OD 资产定位。`manifest-discovery.ts` 搜索式清单发现（受限深度遍历找 `open-design.json` + 内容特征校验 + roster 核验，缺件显式失败）；`version-profile.ts` 版本画像（多候选按「环境变量覆盖 > 渠道优先级 > 路径序」选定，终态三分——可用 / missing（未安装）/ error（已装但资产损坏），供 persona 区分降级文案）+ 默认资产读取器；`platform.ts` / `platform-macos.ts` 平台策略（枚举候选资源根，V1 仅 macOS 有实策略，其余平台留接口空位返回空候选）。
+- `lib/compose/`：设计会话组装。`bundle.ts` 组装编排（从清单读声明路径 → 逐字直读 core / orchestration 两文本 → 改写 → 占位符 → 事实块 → 路由指令段）；`context-facts.ts` 基本事实块（设备壳可用性 + layout.css 指针两个最小字段）；`placeholders.ts` 占位符替换（OD 升级防御，渲染经与路由段共用的白名单过滤）；`task-routing.ts` 路由指令段（列出八类可交付任务及其任务档路径，任务档由模型首轮问答选定后用文件工具自读）。
+- `lib/materialize/copy.ts`：材质化器——会话创建时把设备壳支撑文件（4 个小文件）无条件全量重铺进会话工作目录的 `.od-frames/` 子目录；纯复制器语义，源侧只读，失败 fail-fast 由包主行监听记日志（不阻断会话）。
+- `lib/rewrite/`：降级改写器。`rules.ts` 五族规则（cli-path / ui-guidance / two-turn-protocol / question-form / media-missing）按资产代际分单（代际按文本标记探测，每条规则声明生效代际）；`apply.ts` 逐条应用并产出逐条命中记录——代际适用规则零命中即规则失配信号，是 OD 升级漂移的第一发现通道。
+- `lib/serve/`：产物伺服。`artifacts-route.ts` 注册 webServer 前缀路由 `/opendesign/artifacts/<sessionId>/<产物相对路径>`（伺服根 = 会话工作目录，不可得即 404，绝不回退部署级目录；每请求先过鉴权围栏，路径拼接后防穿越校验）；`session-cwd.ts` 是会话工作目录的唯一解析通道（材质化写入目标与伺服根共用同一函数）。
+- `lib/commands/doctor.ts`：`/opendesign-doctor` 诊断命令——八项结构化文本报告（安装形态与资源根、清单路径与版本、roster 完整性、改写规则命中清单、材质化状态、资产代际提示、逐项恢复动作、大面积失配的止损警示状态）。
+- `client/`：浏览器半场。`preview-tab/index.tsx` 注册右侧栏 design tab 与面板体（地址可解析为产物时呈现 iframe 视图，否则回落产物列表，行点击在本面板内载入）；`preview-tab/artifact-list.tsx` / `iframe-view.tsx` / `locales.ts` / `panel.css` 是面板的产物列表、iframe 视图、双语字典与样式；`present-card-link.ts` 是产物地址契约（present 交付卡片点击 → 设计面板的路由链路，tab 注册与面板体共用同一份解析判定）。
+
+用户侧说明（功能、安装、诊断命令、V1 边界）见 `packages/opendesign-design-mode/README.md`。
 
 ---
 
