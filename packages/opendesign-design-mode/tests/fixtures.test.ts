@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterAll, afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 /**
  * fixture 完整性断言（U0 验收）：两棵 fixture 树的子目录与关键文件存在性、清单样本可解析性、
@@ -95,18 +95,6 @@ function declaredRosterPaths(manifest: FixtureManifest): string[] {
 
 const miniManifestPath = join(scenarioDir, 'open-design.json')
 const miniManifest = readManifest(miniManifestPath)
-
-// 验收证据标记：本文件全部断言通过时输出 FIXTURES_OK（验收流水线 grep 用）。
-// 失败计数经 afterEach 钩子上下文的 task.result.state 判定——钩子上下文的 task 字段
-// 在 vitest 公开类型里未完整声明，这里用窄结构断言而非 any。
-let failedTests = 0
-afterEach((hookContext) => {
-  const state = (hookContext as { task?: { result?: { state?: string } } }).task?.result?.state
-  if (state === 'fail') failedTests += 1
-})
-afterAll(() => {
-  if (failedTests === 0) console.log('FIXTURES_OK')
-})
 
 describe('单测 fixture：mini-od 迷你资产树', () => {
   it('清单样本可 JSON 解析且身份特征齐备（od.kind=scenario、id 含 od-next-strategy）', () => {

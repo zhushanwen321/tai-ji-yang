@@ -27,5 +27,5 @@ e2e 场景专用 fixture（消费方：U8 双版本 e2e 套件，场景编号见
 
 ## resume-gen1 / resume-gen2 的可断言差异
 
-- 版本号：manifest `version` 3.3.7→3.3.9；core 资产 `od.strategy.assets.core.version` 3.2.0→3.2.1。
+- 版本类字段整体上调：manifest `version` 3.3.7→3.3.9；`publishedAt` 2026-08-01→2026-09-15；core / orchestration `od.strategy.assets.*.version` 3.2.0→3.2.1；`taskProfiles[0].version` 3.1.10→3.1.11。
 - 提示词内容：gen1 core 含句 A「For standalone image generation, deliver the actual image file. …」（OD 原文 L114-119 摘录）；gen2 core 以句 B（升级模拟句，**非 OD 原文**，文件头注释已标注）替换句 A。断言：resume 后注入文本含句 B、不含句 A。

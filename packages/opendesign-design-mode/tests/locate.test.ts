@@ -22,6 +22,7 @@ import { collectAssetCandidates, type LocateEnvHints } from '../lib/locate/platf
 import { collectMacOsCandidates } from '../lib/locate/platform-macos.js'
 import {
   discoverManifest,
+  listDeclaredRosterPaths,
   MANIFEST_SEARCH_MAX_DEPTH,
   ManifestValidationError,
 } from '../lib/locate/manifest-discovery.js'
@@ -40,6 +41,9 @@ const miniRoot = join(fixturesRoot, 'mini-od')
 const driftRoot = join(fixturesRoot, 'drift-od')
 const miniScenario = join(miniRoot, 'plugins', '_official', 'scenarios', 'od-next-strategy')
 const driftScenario = join(driftRoot, 'upgraded', 'v2', 'od-next-strategy')
+/** 真机清单 fixture 的资源根（real-od 默认布局形态；OpenDesign.app 安装版 2.0.4 场景包完整副本）。 */
+const realOdRoot = join(fixturesRoot, 'real-od')
+const realOdScenario = join(realOdRoot, 'plugins', '_official', 'scenarios', 'od-next-strategy')
 
 // —— 临时树：异常形态构造（用后统一清理）——
 const tempRoots: string[] = []
@@ -202,6 +206,58 @@ describe('roster 核验（SI2：清单存在 ≠ 资产可用）', () => {
 
   it('mini-od 全部声明在场 → found（发现成功即 roster 核验已通过）', () => {
     expect(discoverManifest(miniRoot).status).toBe('found')
+  })
+})
+
+describe('真机清单 fixture（real-od 安装版 2.0.4 完整副本，specVersion 实测锚定）', () => {
+  // OpenDesign.app 安装版 2.0.4 真机对账（2026-11-09）：清单实测 specVersion = 1.0.0、
+  // manifest version = 2.0.4、core 资产 2.2.1。本组用真机完整副本锁定定位链对真实装机
+  // 形态的行为（清单发现 / 特征校验 / roster 核验 / 版本画像），而非仅覆盖迷你模拟树。
+  it('清单发现：默认布局命中，特征校验通过（od.kind=scenario、strategy.id 含 od-next-strategy）', () => {
+    const result = discoverManifest(realOdRoot)
+    expect(result.status).toBe('found')
+    if (result.status !== 'found') return
+    expect(result.discovered.manifestPath).toBe(join(realOdScenario, 'open-design.json'))
+    expect(result.discovered.scenarioRoot).toBe(realOdScenario)
+    expect(result.discovered.manifest.od.kind).toBe('scenario')
+    expect(result.discovered.manifest.od.strategy?.id).toContain('od-next-strategy')
+  })
+
+  it('roster 核验：真机清单声明的全部文件在副本内真实在场（发现 found 即核验通过）', () => {
+    const manifest = JSON.parse(
+      readFileSync(join(realOdScenario, 'open-design.json'), 'utf8'),
+    ) as Parameters<typeof listDeclaredRosterPaths>[0]
+    const declared = listDeclaredRosterPaths(manifest)
+    // 真机 2.0.4 清单声明面：SKILL.md（compat/context 两处）、core/orchestration、
+    // 4 个任务档（prototype 含设备壳四件 resources）、task-profile-mapping。
+    for (const relative of [
+      './SKILL.md',
+      './assets/core-system-prompt.md',
+      './assets/general-orchestration.md',
+      './assets/task-profiles/prototype.md',
+      './assets/task-profiles/ppt.md',
+      './assets/task-profiles/marketing.md',
+      './assets/task-profiles/hyperframes.md',
+      './assets/task-profiles/prototype/device-frames/iphone.html',
+      './assets/task-profiles/prototype/device-frames/android.html',
+      './assets/task-profiles/prototype/device-frames/neutral.html',
+      './assets/task-profiles/prototype/layout.css',
+      './references/task-profile-mapping.md',
+    ]) {
+      expect(declared, relative).toContain(relative)
+      expect(existsSync(join(realOdScenario, relative.replace(/^\.\//, ''))), relative).toBe(true)
+    }
+  })
+
+  it('版本画像：三层版本 = 真机实测值（2.0.4 / 1.0.0 / 2.2.1），specVersion 已核实 verified=true', () => {
+    const profile = expectFound(buildVersionProfile([{ resourceRoot: realOdRoot, channel: 'stable' }]))
+    expect(profile.versions).toEqual({
+      manifestVersion: '2.0.4',
+      specVersion: '1.0.0',
+      assetVersion: '2.2.1',
+    })
+    expect(profile.verified).toBe(true)
+    expect(VERIFIED_SPEC_VERSIONS).toContain(profile.versions.specVersion)
   })
 })
 

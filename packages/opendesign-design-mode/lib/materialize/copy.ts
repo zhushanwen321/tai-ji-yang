@@ -11,8 +11,9 @@
  *     旧版本资产镜像；用户手写内容占用管理名被覆盖的概率极低，显式接受——
  *     感知通道 = doctor 材质化状态报告落点清单）。
  *
- * deck 指令供给形态（RR5，U5 实施期裁决）：**注指令块形态，不落盘**——本模块写清单恰
- * 4 文件（android.html / iphone.html / neutral.html / layout.css）。裁决依据（2026-11-09 亲读 OD 仓）：
+ * deck 指令供给形态（RR5，R-deck-degrade 已裁决）：**注指令块形态，不落盘**——本模块写清单恰
+ * 4 文件（android.html / iphone.html / neutral.html / layout.css），此为终态形态而非待定项。
+ * 裁决依据（2026-11-09 亲读 OD 仓）：
  *   - deck-framework.md 在 OD 源资产根不存在静态文件：清单 ppt 档 resources 为空（本仓 fixture
  *     与 OD 0.25.1 真实清单一致），该文件由 OD daemon 运行时动态生成
  *     （apps/daemon/src/strategies/od-next/device-frames.ts L121-126）——铺文件形态要求插件自产
@@ -24,9 +25,9 @@
  *   - 与 ppt.md 任务档原文兼容（OD 原文 L216）："use the host deck protocol if it is already in
  *     context; otherwise read .od-frames/deck-framework.md"——注入块在场即命中
  *     "already in context" 分支，模型不因文件缺失而降级。
- *   给 U3 的契约：deck 注入块内容由组装层供给；若 U3 按铺文件形态实现（自行生成
- *   deck-framework.md 并期望材质化落盘），写入清单变 5 文件——以引擎失败处理中心对账裁决
- *   （A15 断言按最终形态校验）。
+ *   终态结论：两形态纯 DSH 均无供给源，V1 deck 协议恒空槽（ppt 档按「protocol 不在场」分支
+ *   降级），协议级翻页/打印归 M2 后续版本；「组装层若按铺文件形态实现则变 5 文件」的条件
+ *   分支已随裁决排除，材质化器保持纯复制器语义。
  *
  * 管理名清单与 OD contracts 的 OD_NEXT_MANAGED_RESOURCE_FILES 同源，差 = deck-framework.md
  * （上条形态决策所致；OD 升级若把 deck-framework.md 变为静态清单资源，deck 供给形态随组装层
@@ -89,7 +90,8 @@ interface ScenarioManifestShape {
  * @param input.manifestPath open-design.json 清单绝对路径（资源相对路径以它所在目录为基准解析，
  *   与 OD 清单 schema 一致；调用方传 VersionProfile.manifestPath 或测试直传 fixture 路径）。
  * @param input.cwd 会话工作目录；写入落点恒为 `<cwd>/.od-frames/`（AX2：OD 安装目录零写入）。
- * @returns MaterializeManifest（落点根 + 写入文件清单，doctor 材质化状态与 V11 git 形态断言消费）。
+ * @returns MaterializeManifest（落点根 + 写入文件清单；实际消费方 = lib/index.js 的事件接线
+ *   与 tests/materialize.test.ts 的契约断言。doctor 第⑤项材质化状态按磁盘实态读取，不经本返回值）。
  */
 export async function materializeAssets(input: {
   manifestPath: string

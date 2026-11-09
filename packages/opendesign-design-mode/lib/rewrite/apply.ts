@@ -7,8 +7,8 @@
  * 发现通道，不静默跳过；代际外规则的零命中是预期形态，按 rules.ts 的 generation 字段解释）。
  * 资产代际探测基于改写前原文（改写会替换掉代际标记串），逐记录冗余携带使记录自包含。
  *
- * RewriteApplyRecord 的最终契约归 lib/types.ts（U1 范围）；U1 未就绪期此处内联最小定义，
- * types.ts 落地后迁移并对齐（见单元 deviations 登记）。
+ * RewriteApplyRecord 的权威定义在 apply.ts（本文件）；lib/types.ts re-export 本定义，
+ * 保持既有 import 路径兼容（types.ts 不再另持一份命中记录形状）。
  */
 
 import {

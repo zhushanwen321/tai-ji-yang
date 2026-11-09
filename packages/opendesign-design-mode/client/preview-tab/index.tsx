@@ -91,11 +91,14 @@ export interface PreviewApplyContext {
   /** workspace 文件列举 remote（产物列表兜底的数据源）。 */
   remote: {
     workspaceFiles: {
-      /** 列举会话 workspace 内一个目录的直接子项（scope = 会话 id，path = workspace 相对路径）。 */
+      /**
+       * 列举会话 workspace 内一个目录的直接子项（scope = 会话 id，path = workspace 相对路径）。
+       * 运行时实际返回 typert 结果包装 {ok, value}（宿主 face.ts:377 同款；esbuild 无类型门禁，
+       * 此处签名按解包后形态声明不逐字对齐 wire 类型），消费侧按 {ok, value} 解包。
+       */
       list(scope: string, path: string, signal: AbortSignal): Promise<WorkspaceListing>
     }
   }
-  logger?: { debug(message: string): void; warn(message: string): void; error(message: string): void }
 }
 
 /** 面板体读到的 tab 信息面（ui-sidebar-right tab-info 的局部同构；只取本包消费的字段）。 */

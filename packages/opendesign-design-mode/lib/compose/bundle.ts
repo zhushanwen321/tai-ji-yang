@@ -16,8 +16,10 @@
  *   6. 基本事实块（context-facts.ts，最小集合）；
  *   7. 路由指令段（task-routing.ts，含组装期 design-systems/ 目录名扫描）。
  *
- * 逐字纪律的验证口：拼接发生在改写之前、占位符与事实块路由段都在拼接之后追加——任何一段
- * 的内部顺序都不经本层重排。改写命中记录随产物返回（doctor 的改写命中清单数据源）。
+ * 逐字纪律的验证口：改写按资产先行（core / orchestration 分文本各自过改写器）、拼接其后，
+ * 占位符与事实块路由段都在拼接之后追加——任何一段的内部顺序都不经本层重排（改写与拼接
+ * 的先后对最终文本等价：规则不跨资产匹配）。改写命中记录随产物返回（doctor 的改写命中
+ * 清单数据源）。
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'

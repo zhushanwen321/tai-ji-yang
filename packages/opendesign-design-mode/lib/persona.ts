@@ -52,20 +52,12 @@ export const OD_PERSONA_SECTION_NAME = 'deployment:persona-prefix'
 export const OD_PERSONA_SECTION_ORDER_KEY = 'DEPLOYMENT_PERSONA_PREFIX'
 
 /**
- * 启动探测：产出三态结果（found / missing / error）。
+ * 定位链三态结局 → 探测三态（found 只保留探测契约需要的资源根；画像本体留在定位链）。
  *
- * 定位逻辑全量走 U2a 定位链（locateOdAssets：环境变量覆盖 + 四渠道枚举 + 清单特征校验 +
- * roster 核验），三态语义与 {@link OdProbeOutcome} 对齐——missing（零候选或全部无资产）与
- * error（存在损坏候选）的区分是 persona 诊断文案的契约。独立成导出函数是注入点：测试经
- * vi.mock 替换它模拟三种形态（e2e 的 SI3 fixture 同样走这个口）。
- *
- * @returns 探测结果。
+ * 探测链路无独立导出入口（apply 直调 locateOdAssets），测试注入走两条实际通道：
+ * 单测 = 模块级 vi.mock locateOdAssets（compose.test.ts 的注入点）；e2e = OD_RESOURCE_ROOT
+ * 环境变量覆盖（tests/e2e/web.spec.mjs）。
  */
-export function probeOdAssets(): OdProbeOutcome {
-  return toProbeOutcome(locateOdAssets())
-}
-
-/** 定位链三态结局 → 探测三态（found 只保留探测契约需要的资源根；画像本体留在定位链）。 */
 function toProbeOutcome(result: VersionProfileResult): OdProbeOutcome {
   if (result.status === 'found') return { status: 'found', resourceRoot: result.profile.resourceRoot }
   if (result.status === 'missing') return { status: 'missing' }

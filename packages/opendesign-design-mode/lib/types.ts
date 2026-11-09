@@ -92,15 +92,11 @@ export const ROUTED_TASK_PROFILES = [
 
 export type RoutedTaskProfile = (typeof ROUTED_TASK_PROFILES)[number]
 
-/** 改写器的一条命中记录（doctor 改写命中清单的逐条形态，设计 D9）。 */
-export interface RewriteApplyRecord {
-  /** 规则名（与 lib/rewrite/rules.ts 的规则清单一一对应）。 */
-  ruleName: string
-  /** 命中资产（文件与行段定位，如 core-system-prompt.md L114-119）。 */
-  hitAsset: string
-  /** 替换结果摘要。 */
-  summary: string
-}
+/**
+ * 改写器的一条命中记录（doctor 改写命中清单的逐条形态，设计 D9）。
+ * 命中记录契约唯一权威 = lib/rewrite/apply.ts；此处 re-export 保持 import 路径兼容。
+ */
+export type { RewriteApplyRecord } from './rewrite/apply.js'
 
 // ── 材质化（U5 消费；doctor 材质化状态报告落点清单，D8）───────────────────────
 
@@ -118,6 +114,6 @@ export interface MaterializedFile {
 export interface MaterializeManifest {
   /** 写入落点根（会话工作目录的 .od-frames/ 子目录）。 */
   targetRoot: string
-  /** 写入文件清单（≤5 文件；deck 指令按供给形态可能不落盘）。 */
+  /** 写入文件清单（恰 4 文件，终态形态；deck 指令为注入块供给不落盘，见 materialize/copy.ts 文件头）。 */
   files: MaterializedFile[]
 }

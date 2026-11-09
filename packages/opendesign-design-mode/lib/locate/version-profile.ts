@@ -11,9 +11,9 @@
  * 文本，无版本分支——V1 唯一读取路径就是它；OD 升级后的失配由 doctor 的版本警告与改写命中
  * 清单暴露（D9 止损位），不在读取层做版本分叉。
  *
- * 版本核实（UD2）：verified = 清单 specVersion ∈ VERIFIED_SPEC_VERSIONS（实施期对 OD 0.25.1
- * 真实清单核实过的规范版本）。verified=false 不是错误——画像照常产出，doctor 对未核实版本
- * 出警告（versionProfile 在手即可与已核实版本比对告警，无需注册表）。
+ * 版本核实（UD2）：verified = 清单 specVersion ∈ VERIFIED_SPEC_VERSIONS（对 OD 0.25.1 与
+ * OpenDesign.app 安装版 2.0.4 真机清单核实过的规范版本）。verified=false 不是错误——画像照常
+ * 产出，doctor 对未核实版本出警告（versionProfile 在手即可与已核实版本比对告警，无需注册表）。
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -33,10 +33,11 @@ import {
 import { collectAssetCandidates, locateEnvHints, OD_RESOURCE_ROOT_ENV, type LocateEnvHints } from './platform.js'
 
 /**
- * 已核实的 OD Next 规范版本（specVersion 值域）。'1.0.0' 来自 OD 0.25.1 真实清单
- * （fixture $fixtureSource 注明 0.25.1 检出核实，2026-11-09）。OD 0.27 的清单兼容性核对
- * 属实施期检查点，fixture 无法覆盖真实 0.27——真机核对通过后把新 specVersion 追加于此
- * （见 runlog「待真机核对」登记）。
+ * 已核实的 OD Next 规范版本（specVersion 值域）。'1.0.0' 两个真机来源核实：OD 0.25.1 真实
+ * 清单（fixture $fixtureSource 注明 0.25.1 检出核实）与 OpenDesign.app 安装版 2.0.4 清单
+ * 实测 specVersion = 1.0.0（2026-11-09 真机核对，tests/fixtures/real-od 完整副本锁定，
+ * locate.test.ts 真机断言组守护）。OD 后续版本清单的 specVersion 若变化，真机核对通过后
+ * 把新值追加于此。
  */
 export const VERIFIED_SPEC_VERSIONS: readonly string[] = ['1.0.0']
 

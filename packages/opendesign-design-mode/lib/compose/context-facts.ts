@@ -14,13 +14,13 @@
  *     （OD 把全文注入是 daemon 已持文本的顺带行为；DSH 模型有文件工具，指针 + 自读等价
  *     且省 50K 提示词）。
  *
- * deck-framework 注入块（RR5，与 U5 材质化器的供给形态裁决对账）：**注指令块形态**——
- * deck 协议以 `kind="instruction" name="deck-framework"` 注入块供给（OD daemon 同构，
- * 不落盘）。本模块只实现注入块接口（可选入参 {@link ContextFactsInput.deckFrameworkDirective}}）：
- * V1 组装链路暂不供给内容——deck 协议文本在 OD 侧由 daemon 代码动态渲染（无静态资产文件
- * 可读，AX3 禁止把渲染文本复刻进插件仓），内容来源是引擎对账的待裁决项（两形态内容同源，
- * 设计 AS9 已核实）；裁决落地前 ppt 档按其原文的「protocol 不在场」分支降级，材质化器
- * 写清单恒 4 文件。
+ * deck-framework 注入块（RR5，R-deck-degrade 已裁决）：**注指令块形态**——deck 协议以
+ * `kind="instruction" name="deck-framework"` 注入块供给（OD daemon 同构，不落盘）。
+ * 裁决结论：两形态（注入块 / 铺文件）纯 DSH 均无供给源——deck 协议文本由 OD daemon 动态渲染，
+ * 无静态资产文件可读（AX3 禁止把渲染文本复刻进插件仓），V1 组装链路恒空槽（ppt 档按其原文的
+ * 「protocol 不在场」分支降级，材质化器写清单恒 4 文件），协议能力归后续版本。
+ * 本模块保留注入块接口（可选入参 {@link ContextFactsInput.deckFrameworkDirective}}），
+ * 作为后续版本的接入点。
  */
 import { OD_FRAMES_DIR, MATERIALIZED_FILE_NAMES } from '../materialize/copy.js'
 

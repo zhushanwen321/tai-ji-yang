@@ -9,9 +9,6 @@ const name = "od-persona";
 const inject = ["systemPrompt"];
 const OD_PERSONA_SECTION_NAME = "deployment:persona-prefix";
 const OD_PERSONA_SECTION_ORDER_KEY = "DEPLOYMENT_PERSONA_PREFIX";
-function probeOdAssets() {
-  return toProbeOutcome(locateOdAssets());
-}
 function toProbeOutcome(result) {
   if (result.status === "found") return { status: "found", resourceRoot: result.profile.resourceRoot };
   if (result.status === "missing") return { status: "missing" };
@@ -47,6 +44,5 @@ export {
   apply,
   inject,
   name,
-  probeDiagnostic,
-  probeOdAssets
+  probeDiagnostic
 };
