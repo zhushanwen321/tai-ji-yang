@@ -18,9 +18,8 @@
  *   - cwd：resolveSessionCwdById（lib/serve/session-cwd.js，U6 检查点裁决的唯一通道）——
  *     sessions.get(sessionId) 取会话对象后 workingDirectory.get 优先（0.2.x）、header.cwd
  *     回退（两版本 header 均带 cwd 字段）。产物伺服路由（lib/serve/artifacts-route.ts）的
- *     伺服根消费同一函数，「伺服根 = 材质化目标」由结构承载，不靠两边各自约定（一致性
- *     审查 U1 修正 2026-11-09：旧形态材质化走 header.cwd、伺服根走部署级 defaultDirectory，
- *     两通道在多工作区形态下分叉）。sessions 服务必须经 inject 声明——cordis ctx 读未声明
+ *     伺服根消费同一函数，「伺服根 = 材质化目标」由结构承载，不靠两边各自约定。sessions
+ *     服务必须经 inject 声明——cordis ctx 读未声明
  *     服务即抛，preview-tab 同款纪律；
  *   - 失败语义：监听器的异步拒绝被宿主 per-listener containment 记 warn（dsh-session
  *     announce 语义），会话创建不因此回滚——材质化失败时本包侧以 logger.error 带恢复动作

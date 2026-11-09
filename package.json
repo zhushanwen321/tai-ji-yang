@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node scripts/build-client.mjs",
     "build:self-test": "node scripts/build-client.mjs --self-test",
-    "test": "node node_modules/vitest/vitest.mjs run --exclude \".agents/workflows/tests/**\"",
+    "test": "node node_modules/vitest/vitest.mjs run --exclude \".agents/workflows/tests/**\" --exclude \"packages/*/tests/e2e/**\"",
     "check": "node scripts/check-all.mjs",
     "check:static": "node scripts/check-all.mjs --static",
     "workflows:build": "node .agents/workflows/scripts/build-workflows.mjs",

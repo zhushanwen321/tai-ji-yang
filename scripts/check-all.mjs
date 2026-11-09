@@ -90,7 +90,19 @@ if (!staticOnly) {
     console.log('✘ node_modules/vitest/vitest.mjs 缺失——先执行 pnpm install')
     results.push({ label: 'vitest 入口', code: 1 })
   } else {
-    report({ label: 'vitest run（全仓）', ...run('test', [vitestEntry, 'run']) })
+    // exclude 与根 package.json 的 test 脚本同款：.agents/workflows/tests 走 workflows:test
+    // 自有通道，packages/*/tests/e2e 是 node 直跑形态——两者都不该进 vitest 收集
+    report({
+      label: 'vitest run（全仓）',
+      ...run('test', [
+        vitestEntry,
+        'run',
+        '--exclude',
+        '.agents/workflows/tests/**',
+        '--exclude',
+        'packages/*/tests/e2e/**',
+      ]),
+    })
   }
 }
 

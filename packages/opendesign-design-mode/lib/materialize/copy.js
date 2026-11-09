@@ -21,7 +21,7 @@ async function materializeAssets(input) {
     raw = await readFile(input.manifestPath, "utf8");
   } catch (err) {
     throw new MaterializeSourceError(
-      `无法读取 OD 资产清单 ${input.manifestPath}：${err.message}。恢复动作：运行 /opendesign:doctor 检查资产定位与完整性，确认 OpenDesign 安装未损坏。`
+      `无法读取 OD 资产清单 ${input.manifestPath}：${err.message}。恢复动作：运行 /opendesign-doctor 检查资产定位与完整性，确认 OpenDesign 安装未损坏。`
     );
   }
   let parsed;
@@ -29,13 +29,13 @@ async function materializeAssets(input) {
     parsed = JSON.parse(raw);
   } catch (err) {
     throw new MaterializeSourceError(
-      `OD 资产清单不是合法 JSON：${input.manifestPath}（${err.message}）。恢复动作：运行 /opendesign:doctor 检查清单完整性，确认 OpenDesign 安装未损坏。`
+      `OD 资产清单不是合法 JSON：${input.manifestPath}（${err.message}）。恢复动作：运行 /opendesign-doctor 检查清单完整性，确认 OpenDesign 安装未损坏。`
     );
   }
   const taskProfiles = parsed.od?.strategy?.assets?.taskProfiles;
   if (!Array.isArray(taskProfiles)) {
     throw new MaterializeSourceError(
-      `OD 资产清单结构漂移：od.strategy.assets.taskProfiles 缺失或非数组（${input.manifestPath}）。恢复动作：运行 /opendesign:doctor 检查清单版本，OD 升级后结构变化需适配本插件。`
+      `OD 资产清单结构漂移：od.strategy.assets.taskProfiles 缺失或非数组（${input.manifestPath}）。恢复动作：运行 /opendesign-doctor 检查清单版本，OD 升级后结构变化需适配本插件。`
     );
   }
   const plan = /* @__PURE__ */ new Map();
@@ -44,14 +44,14 @@ async function materializeAssets(input) {
     if (resources === void 0) continue;
     if (!Array.isArray(resources)) {
       throw new MaterializeSourceError(
-        `OD 资产清单结构漂移：taskProfiles[${profileIndex}].resources 非数组（${input.manifestPath}）。恢复动作：运行 /opendesign:doctor 检查清单版本。`
+        `OD 资产清单结构漂移：taskProfiles[${profileIndex}].resources 非数组（${input.manifestPath}）。恢复动作：运行 /opendesign-doctor 检查清单版本。`
       );
     }
     for (const [resourceIndex, resource] of resources.entries()) {
       const resourcePath = resource.path;
       if (typeof resourcePath !== "string" || resourcePath === "") {
         throw new MaterializeSourceError(
-          `OD 资产清单结构漂移：taskProfiles[${profileIndex}].resources[${resourceIndex}].path 缺失（${input.manifestPath}）。恢复动作：运行 /opendesign:doctor 检查清单版本。`
+          `OD 资产清单结构漂移：taskProfiles[${profileIndex}].resources[${resourceIndex}].path 缺失（${input.manifestPath}）。恢复动作：运行 /opendesign-doctor 检查清单版本。`
         );
       }
       const name = resourcePath.split("/").pop() ?? "";
@@ -60,7 +60,7 @@ async function materializeAssets(input) {
       const previous = plan.get(name);
       if (previous !== void 0 && previous !== sourcePath) {
         throw new MaterializeSourceError(
-          `OD 资产清单冲突：管理名 ${name} 被声明指向两个不同源（${previous} 与 ${sourcePath}）。落点唯一（${OD_FRAMES_DIR}/${name}），无法同时重铺两份内容。恢复动作：运行 /opendesign:doctor 检查清单，OD 升级后结构变化需适配本插件。`
+          `OD 资产清单冲突：管理名 ${name} 被声明指向两个不同源（${previous} 与 ${sourcePath}）。落点唯一（${OD_FRAMES_DIR}/${name}），无法同时重铺两份内容。恢复动作：运行 /opendesign-doctor 检查清单，OD 升级后结构变化需适配本插件。`
         );
       }
       plan.set(name, sourcePath);
@@ -76,7 +76,7 @@ async function materializeAssets(input) {
       content = await readFile(sourcePath);
     } catch (err) {
       throw new MaterializeSourceError(
-        `无法读取 OD 源资产 ${sourcePath}（清单声明的管理名 ${name}）：${err.message}。恢复动作：运行 /opendesign:doctor 检查资产完整性（roster 核验），确认 OpenDesign 安装未损坏。`
+        `无法读取 OD 源资产 ${sourcePath}（清单声明的管理名 ${name}）：${err.message}。恢复动作：运行 /opendesign-doctor 检查资产完整性（roster 核验），确认 OpenDesign 安装未损坏。`
       );
     }
     await writeFile(path.join(targetRoot, name), content);

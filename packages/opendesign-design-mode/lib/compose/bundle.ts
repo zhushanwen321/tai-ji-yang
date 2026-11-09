@@ -79,7 +79,7 @@ function requiredInjectionAssetPath(manifest: OdManifestShape, manifestPath: str
   if (typeof path !== 'string' || path === '') {
     throw new OdComposeSourceError(
       `OpenDesign 资产清单结构漂移：od.strategy.assets.${kind}.path 缺失（${manifestPath}）。`
-        + 'OD 升级后清单结构变化需适配本插件。恢复动作：运行 /opendesign:doctor 检查清单，'
+        + 'OD 升级后清单结构变化需适配本插件。恢复动作：运行 /opendesign-doctor 检查清单，'
         + '或向插件仓报告该 OD 版本的清单结构。',
     )
   }

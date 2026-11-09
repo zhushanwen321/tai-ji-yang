@@ -163,7 +163,7 @@ describe('源完整性 fail-fast（AX5 显式降级语义的支撑行为）', ()
       (e: unknown) => e,
     )
     expect(error).toBeInstanceOf(MaterializeSourceError)
-    expect((error as Error).message).toContain('/opendesign:doctor')
+    expect((error as Error).message).toContain('/opendesign-doctor')
     expect((error as Error).message).toContain(missing)
   })
 
@@ -177,7 +177,7 @@ describe('源完整性 fail-fast（AX5 显式降级语义的支撑行为）', ()
     )
     expect(error).toBeInstanceOf(MaterializeSourceError)
     expect((error as Error).message).toContain('neutral.html')
-    expect((error as Error).message).toContain('/opendesign:doctor')
+    expect((error as Error).message).toContain('/opendesign-doctor')
   })
 
   it('非管理名资源（任务档 md）不落盘：过滤语义与 OD daemon 同款', async () => {

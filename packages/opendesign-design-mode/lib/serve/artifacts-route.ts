@@ -23,8 +23,8 @@
  * 路由前缀 = /opendesign/artifacts（形态对齐 open-in-app shared 路由约定：PATH 供
  * webServer.register，ROUTE = 去前导斜杠的 document 相对形态供浏览器侧寻址）。U7 预览
  * 面板的 iframe 载入同一前缀 + 同一 session 段形态（client/present-card-link.ts 的
- * artifactRouteUrlFor / artifactRouteUrlForPath 构造；两侧形态由各自单测锁定，漂移在
- * U8 e2e 暴露）。
+ * artifactRouteUrlFor / artifactRouteUrlForPath 构造；U6 侧形态由 tests/serve.test.ts
+ * 锁定，client 侧漂移在 U8 e2e 暴露）。
  */
 
 import { readFile, realpath, stat } from 'node:fs/promises'

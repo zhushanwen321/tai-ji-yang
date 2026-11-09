@@ -7,7 +7,7 @@
 #   本包四子插件（本包内声明形态 = name 用本包 exports 子路径说明符，宿主 loader 按 ESM
 #   说明符解析到 lib/ 下对应入口）：
 #     persona（系统提示词注入 + 启动资产探测，探测失败抛 diagnostic → preset broken）
-#     /opendesign:doctor 诊断命令 / 设计面板 client / 产物伺服 host
+#     /opendesign-doctor 诊断命令 / 设计面板 client / 产物伺服 host
 #   DSH 原生四工具（包名为 DSH 仓 standard.patch.yml 实名）：tool-fs / tool-bash /
 #     tool-web（fetch 能力，web-clone 档读目标页面所需）/ tool-present（交付声明与卡片链路）
 #
