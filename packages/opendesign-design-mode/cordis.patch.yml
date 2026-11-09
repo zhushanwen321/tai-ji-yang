@@ -24,7 +24,7 @@
       config:
         id: opendesign
         name: OpenDesign 设计模式
-        description: 以本机 OpenDesign 资产驱动的设计会话：发现→计划→生产产出设计文件，右侧栏设计面板直接预览；未装 OpenDesign 时入口显式降级提示。
+        description: 以本机 OpenDesign 资产驱动的设计会话：发现→计划→生产产出八类 HTML 文件产物（原型/演示稿/文档/营销源码/动效源码/HyperFrames/网页复刻/webgl），右侧栏设计面板直接预览；图片/视频/音频成片生成不在 V1 范围（会如实说明并以 HTML 源码替代）；演示稿为普通单文件 HTML 预览（OD 协议级翻页/打印为后续版本）；未装 OpenDesign 时入口显式降级提示。
         order: 50
         plugins:
           # ── 本包子插件（name = 本包 exports 子路径）──────────────────────────

@@ -274,6 +274,14 @@ cd ~/.dsh/profiles/<profile> && pnpm install
 - **检查**：`pnpm check:static` / `pnpm check` 对每包执行同一套静态断言（包特有断言按包选择）；任一包红灯即整体红灯。
 - **安装**：每包是独立的 DSH 插件（各自的 `cordis.patch.yml` 与 `package.json` 双字段版本门禁），可独立安装到不同 profile；根包与子包互不牵连，卸载其一不影响另一包。
 
+### opendesign-design-mode 的 V1 边界与交付说明
+
+- **可交付范围（V1）**：八类 HTML 文件产物——原型、演示稿（ppt）、文档、营销源码、动效源码（HTML 部分）、HyperFrames 动效源码、网页复刻、webgl。**图片/视频/音频成片生成不在 V1 范围**（依赖 OpenDesign 自身的 media 管线，纯 DSH 环境无等价物）：会话中提出此类请求时模型会如实说明并以 HTML 源码形态替代交付。live-artifact（数据看板自动刷新类产物）同样归后续版本。
+- **演示稿形态**：V1 交付为普通单文件 HTML（含模型自带的翻页/打印脚本），OpenDesign 的 deck 宿主协议级翻页与打印分页为后续版本能力。
+- **`.od-frames/` 目录**：设计会话会向会话工作目录的 `.od-frames/` 子目录写入 OpenDesign 设备壳支撑文件（≤5 个小文件，会话创建时全量重铺）。它是产物运行时依赖：删除会断开既有原型对手持壳的引用。建议把 `.od-frames/` 加进项目 `.gitignore`（该目录可随时删除，下次设计会话自动重建）。
+- **诊断**：会话内执行 `/opendesign-doctor` 可查看资产定位结果、OpenDesign 版本画像、改写规则命中清单、材质化状态与逐项恢复动作；改写规则出现大面积失配（核心段失配 ≥3 条 / 默认读取器不可用 / 连续两版升级全量重写）时 doctor 会输出「建议方案级重审」警示。
+- **资产代际**：插件按文本标记自动识别安装版 OpenDesign 的资产代际并适配（已对 2.0.4 安装资产实测锚定）；doctor 对未能识别代际的版本给出警告。
+
 ## 开发约定（本包自身的边界）
 
 开发、审查与有意偏离的完整登记见 [docs/DSH-PLUGIN-RULES.md](docs/DSH-PLUGIN-RULES.md)；双半场与界面贡献的职责边界见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
