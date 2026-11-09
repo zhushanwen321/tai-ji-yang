@@ -105,7 +105,17 @@ export function contentTypeFor(fileName: string): string {
  *   process.cwd()）同语义，保证「伺服根 = 会话默认工作目录」在两种组合形态下都成立。
  */
 export function resolveServeRoot(ctx: unknown): string {
-  const workingDirectory = (ctx as { workingDirectory?: ServeWorkingDirectory } | null)?.workingDirectory
+  // 服务存在性探测必须 try/catch 包裹属性读取（0.1.7 e2e 实测，U8 修正 2026-11-09）：
+  // 0.1.7 无 working-directory 行，cordis ctx 读未在本行 inject 声明的服务属性即抛
+  // （可选链 `?.` 拦不住 proxy getter 的抛错），抛错会沿 webServer.handle 的兜底变成
+  // 空 400——「服务不在」按缺席语义回退 process.cwd()，与 workingDirectory 服务自身的
+  // 构造回退（config.defaultDirectory ?? process.cwd()）同语义。
+  let workingDirectory: ServeWorkingDirectory | undefined
+  try {
+    workingDirectory = (ctx as { workingDirectory?: ServeWorkingDirectory } | null)?.workingDirectory
+  } catch {
+    // 0.1.7：服务行不在 → 回退
+  }
   const directory = workingDirectory?.defaultDirectory
   return typeof directory === 'string' && directory.length > 0 ? directory : process.cwd()
 }

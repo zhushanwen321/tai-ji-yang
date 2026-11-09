@@ -397,11 +397,21 @@ function renderSection(index: number, title: string, lines: readonly string[]): 
  * 会话工作目录探测（跨版本形态，见文件头）：
  * workingDirectory 服务（0.2.x）在 → get(session)；否则 session.header.cwd（两版本 header 均带 cwd）。
  * 运行时可选探测，宿主对象形态不对（测试假 agent / 0.1.7 无服务）时一律 null，不抛错。
+ *
+ * 服务存在性探测必须走 try/catch 包裹的属性读取（0.1.7 实测）：cordis ctx 读未在本行
+ * inject 声明的服务属性即抛（不能 declare——0.1.7 无 working-directory 行，declare 会让
+ * 本行永久 pending），可选链 `?.` 拦不住 proxy getter 的抛错——「服务不在」与「服务在但
+ * 调用失败」都按探测失败处理，回退 header.cwd（U8 e2e 实测修正，2026-11-09）。
  */
 export function resolveSessionCwd(hostCtx: unknown, agent: unknown): string | null {
   const session = (agent as { session?: unknown } | undefined)?.session
-  const workingDirectory = (hostCtx as { workingDirectory?: { get?: (s: unknown) => unknown } } | undefined)
-    ?.workingDirectory
+  let workingDirectory: { get?: (s: unknown) => unknown } | undefined
+  try {
+    workingDirectory = (hostCtx as { workingDirectory?: { get?: (s: unknown) => unknown } } | undefined)
+      ?.workingDirectory
+  } catch {
+    // 0.1.7：服务行不在，ctx 属性读取即抛（cordis 未声明即读即抛）→ 视为服务缺席
+  }
   if (workingDirectory && typeof workingDirectory.get === 'function' && session !== undefined) {
     try {
       const cwd = workingDirectory.get(session)

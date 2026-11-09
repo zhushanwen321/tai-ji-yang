@@ -31,7 +31,11 @@ function contentTypeFor(fileName) {
   return CONTENT_TYPES[fileName.slice(dot).toLowerCase()] ?? "application/octet-stream";
 }
 function resolveServeRoot(ctx) {
-  const workingDirectory = ctx?.workingDirectory;
+  let workingDirectory;
+  try {
+    workingDirectory = ctx?.workingDirectory;
+  } catch {
+  }
   const directory = workingDirectory?.defaultDirectory;
   return typeof directory === "string" && directory.length > 0 ? directory : process.cwd();
 }

@@ -1,0 +1,83 @@
+<!doctype html>
+<!--
+  fixture 探针产物（V10 / RL8，设计 D7 影响分析的机器验证载体）。
+  产物脚本在载入后依次执行三组探针，把结果写进 DOM 便于 e2e 断言：
+    1. fetch 宿主 open-in-app 的 POST open 路由（路径实名：DSH 仓 packages/host/open-in-app/src/shared.ts
+       OPEN_IN_APP_OPEN_PATH = '/open-in-app/open'）；
+    2. fetch 伺服根内非产物文件 ./secret-note.txt（canary 串 SECRET-NOTE-CANARY）；
+    3. 读取 document.cookie。
+  DOM 契约（与 tests/e2e/fixtures/README.md 一致）：#probe-open / #probe-secret / #probe-cookie
+  三个独立节点 + #probe-results 聚合 JSON 节点，均为 textContent。
+  隔离生效预期：open 路由响应不可得或被围栏拒（无 status=200 泄漏）、secret 内容不可得
+  （无 canary 泄漏）、cookie 为空。本文件自身不断言——断言在 U8 e2e。
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>probe artifact</title>
+</head>
+<body>
+  <h1>probe-artifact</h1>
+  <pre id="probe-results">pending</pre>
+  <pre id="probe-open" hidden></pre>
+  <pre id="probe-secret" hidden></pre>
+  <pre id="probe-cookie" hidden></pre>
+  <script>
+    (function () {
+      function describeResponse(label, response, bodyText) {
+        return label + ': status=' + response.status + ' body=' + bodyText.slice(0, 120);
+      }
+      function describeRejection(label, error) {
+        return label + ': rejected ' + (error && error.name ? error.name + ': ' + error.message : String(error));
+      }
+      // 单次 fetch 探针：status 与响应体前 120 字符（可读即泄漏证据），拒绝则记 rejected 与错误名。
+      async function fetchProbe(label, url, init) {
+        try {
+          const response = await fetch(url, init);
+          const bodyText = await response.text();
+          return describeResponse(label, response, bodyText);
+        } catch (error) {
+          return describeRejection(label, error);
+        }
+      }
+      function put(id, text) {
+        const node = document.getElementById(id);
+        if (node !== null) {
+          node.hidden = false;
+          node.textContent = text;
+        }
+      }
+      (async function () {
+        // 探针 1：宿主 open-in-app POST open 路由（POST /open-in-app/open）。
+        const openRoute = await fetchProbe('open-route', '/open-in-app/open', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{}',
+        });
+        put('probe-open', openRoute);
+        // 探针 2：伺服根内非产物文件（与本产物同目录的 secret-note.txt）。
+        const secretFile = await fetchProbe('secret-file', './secret-note.txt');
+        put('probe-secret', secretFile);
+        // 探针 3：宿主 cookie 可见性。sandbox（无 allow-same-origin）下 Chromium 对
+        // document.cookie 的读取本身抛 SecurityError（比「返回空串」更强的隔离形态，
+        // 0.1.7 web + 0.2.2 桌面双版本实测）——两种形态都按隔离生效记录，异常文本入 DOM。
+        let cookieLine
+        try {
+          const cookie = document.cookie;
+          cookieLine = 'cookie: ' + (cookie === '' ? '(empty)' : cookie);
+        } catch (error) {
+          cookieLine = 'cookie: blocked ' + (error && error.name ? error.name + ': ' + error.message : String(error));
+        }
+        put('probe-cookie', cookieLine);
+        const results = JSON.stringify({
+          openRoute: openRoute,
+          secretFile: secretFile,
+          cookie: cookieLine,
+        });
+        put('probe-results', results);
+      })();
+    })();
+  </script>
+</body>
+</html>

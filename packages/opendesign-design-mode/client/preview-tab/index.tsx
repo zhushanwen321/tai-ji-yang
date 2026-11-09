@@ -117,8 +117,12 @@ interface DesignTabInfo {
 function createArtifactLister(ctx: PreviewApplyContext): ArtifactLister {
   return async (sessionId, signal) => {
     try {
-      const listing = await ctx.remote.workspaceFiles.list(sessionId, '.', signal)
+      // typert remote 返回 {ok, value} 结果包装（0.1.7 实测；宿主 sidebar-files 同款解包）——
+      // 直接把包装当 listing 解构会让 entries 落 undefined（U8 e2e 实测修正，2026-11-09）。
+      const outcome = await ctx.remote.workspaceFiles.list(sessionId, '.', signal)
       if (signal.aborted) return { ok: false, artifacts: [], truncated: false }
+      if (!outcome.ok) return { ok: false, artifacts: [], truncated: false }
+      const listing = outcome.value
       const artifacts = listing.entries
         // 目录列举返回的是裸文件名（无路径段、无编码形态），后缀判定即可，不必绕地址解析
         .filter(entry => entry.type === 'file' && isArtifactName(entry.name))

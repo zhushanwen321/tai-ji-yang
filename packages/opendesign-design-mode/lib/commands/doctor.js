@@ -260,7 +260,11 @@ function renderSection(index, title, lines) {
 }
 function resolveSessionCwd(hostCtx, agent) {
   const session = agent?.session;
-  const workingDirectory = hostCtx?.workingDirectory;
+  let workingDirectory;
+  try {
+    workingDirectory = hostCtx?.workingDirectory;
+  } catch {
+  }
   if (workingDirectory && typeof workingDirectory.get === "function" && session !== void 0) {
     try {
       const cwd = workingDirectory.get(session);
