@@ -1,19 +1,29 @@
 /**
- * doctor 诊断命令测试（U2b）。
+ * doctor 诊断命令测试（U2b 八节 + opendesign-assets-quality U6 扩十一节）。
  *
- * fixture：U0 共享 fixture（tests/fixtures/mini-od 默认布局、drift-od 漂移形态）；异常形态
- * （roster 缺件 / 失配文本 / 材质化空落点）在测试内以临时树构造（复制 fixture 场景包改内容），
- * 不落 tests/fixtures/ 目录——它们是 doctor 层的行为用例。
+ * fixture：U0 共享 fixture（tests/fixtures/mini-od 默认布局、drift-od 漂移形态）+ U1 资产
+ * 目录 fixture（asset-catalog/full 真机形态摘录、missing-dirs 缺失变体，第⑨节消费）；异常
+ * 形态（roster 缺件 / 失配文本 / 材质化空落点 / 第⑩节合成 git clone / 第⑪节 report.jsonl）
+ * 在测试内以临时树构造（复制 fixture 场景包改内容、git init 合成仓、appendQualityReportLine
+ * 真实写侧落行），不落 tests/fixtures/ 目录——它们是 doctor 层的行为用例。
  *
  * 断言结构（任务书验收条款对账）：
- * 1. 正常 fixture 资产根八项齐备（八个分节标题字面 = DOCTOR_SECTIONS 常量；各节内容锚点）
- * 2. 缺失项带恢复动作（未装形态 / roster 缺件 error 形态 / 材质化空落点与部分缺失形态）
- * 3. 命中清单与 apply 记录一致（doctor 第④节逐行 == 测试侧独立重放 applyRewrites 的记录行）
- * 4. 止损位触发形态构造（evaluateStopLoss 单元边界 + 失配文本 fixture 全链路「建议方案级重审」）
- * 5. 命令注册形态（apply 经假 ctx 断言 registry 契约：名字校验、definitionId、handler 返回）
- * 6. 会话工作目录探测的跨版本形态（0.2.x 服务 / 0.1.7 header.cwd / 都不可得 null）
+ * 1. 十一节结构断言（V1 八节零回归：前八节标题字面与次序不变 + 三新节标题 + 总数 11）
+ * 2. 正常 fixture 资产根十一项齐备（分节标题字面 = DOCTOR_SECTIONS 常量；各节内容锚点）
+ * 3. 缺失项带恢复动作（未装形态 / roster 缺件 error 形态 / 材质化空落点与部分缺失形态）
+ * 4. 命中清单与 apply 记录一致（doctor 第④节逐行 == 测试侧独立重放 applyRewrites 的记录行）
+ * 5. 止损位触发形态构造（evaluateStopLoss 单元边界 + 失配文本 fixture 全链路「建议方案级重审」）
+ * 6. 命令注册形态（apply 经假 ctx 断言 registry 契约：名字校验、definitionId、handler 返回）
+ * 7. 会话工作目录探测的跨版本形态（0.2.x 服务 / 0.1.7 header.cwd / 都不可得 null）
+ * 8. 第⑨节：丰富度计数 fixture 对账（craft 册数口径 / 解析异常包清单 / 注入行数）与
+ *    目录缺失降级恢复文案（任务书验收条款④）
+ * 9. 第⑩节：对账三态 fixture 断言（合成 git clone：ok / drift / 无法比对各自可证伪，
+ *    RL5；任务书验收条款②）与 clone 探测单元（GPK1 命令口径）
+ * 10. 第⑪节：report.jsonl 读侧断言（U5 三行型真写侧落行 + 损坏行容忍 + 无记录未启动
+ *     原因，RL9；任务书验收条款③）
  */
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -21,18 +31,25 @@ import { afterAll, describe, expect, it } from 'vitest'
 import {
   apply,
   buildDoctorReport,
+  buildProtocolAnchorChecks,
   DOCTOR_COMMAND_NAME,
   DOCTOR_DEFINITION_ID,
   DOCTOR_REPORT_TITLE,
   DOCTOR_RECOVERY_ACTIONS,
   DOCTOR_SECTIONS,
+  DOCTOR_SECTION_COUNT,
   doctorSectionLine,
   evaluateStopLoss,
+  FINDING_REASON_LABELS,
+  probeSourceClone,
+  reconcileProtocolAnchor,
   resolveSessionCwd,
   rewriteRecordLine,
+  type ProtocolAnchorCheck,
 } from '../lib/commands/doctor.js'
 import { buildVersionProfile, readRosterAsset, type VersionProfileResult } from '../lib/locate/version-profile.js'
 import { applyRewrites, type RewriteApplyRecord } from '../lib/rewrite/apply.js'
+import { appendQualityReportLine } from '../lib/quality/feedback.js'
 import { materializeAssets } from '../lib/materialize/copy.js'
 
 const fixturesRoot = resolve(dirname(fileURLToPath(import.meta.url)), 'fixtures')
@@ -41,6 +58,8 @@ const miniRoot = join(fixturesRoot, 'mini-od')
 /** drift-od 的场景包（最小 roster：4 项声明，复制改字段构造异常形态）。 */
 const driftScenario = join(fixturesRoot, 'drift-od', 'upgraded', 'v2', 'od-next-strategy')
 const miniScenario = join(miniRoot, 'plugins', '_official', 'scenarios', 'od-next-strategy')
+/** U1 资产目录 fixture：full = 三目录齐备（真机形态摘录 + 损坏变体），第⑨节丰富度计数用。 */
+const catalogFullRoot = join(fixturesRoot, 'asset-catalog', 'full')
 
 // —— 临时树：异常形态构造（用后统一清理）——
 const tempRoots: string[] = []
@@ -59,6 +78,60 @@ function copyDriftScenario(label: string): string {
   const tree = join(makeTempDir(label), 'od-next-strategy')
   cpSync(driftScenario, tree, { recursive: true })
   return tree
+}
+
+/**
+ * 富资产资源根（第⑨节丰富度计数 fixture）：mini-od（合法清单）+ U1 asset-catalog/full
+ * 的三目录并入（craft 2 册 / design-templates 3 包含 1 损坏 / design-systems 4 品牌含 2
+ * 损坏——计数口径与 locate.test.ts fixture 组一致，U1 登记点）。
+ */
+function makeEnrichedResourceRoot(label: string): string {
+  const root = makeTempDir(label)
+  cpSync(miniRoot, root, { recursive: true })
+  cpSync(join(catalogFullRoot, 'craft'), join(root, 'craft'), { recursive: true })
+  cpSync(join(catalogFullRoot, 'design-templates'), join(root, 'design-templates'), { recursive: true })
+  rmSync(join(root, 'design-systems'), { recursive: true, force: true })
+  cpSync(join(catalogFullRoot, 'design-systems'), join(root, 'design-systems'), { recursive: true })
+  return root
+}
+
+// —— 第⑩节合成 git clone（三态 fixture；git 不可用时显式播报跳过，不静默）——
+let gitAvailable: boolean | null = null
+
+function ensureGitAvailable(): boolean {
+  if (gitAvailable === null) {
+    try {
+      execFileSync('git', ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] })
+      gitAvailable = true
+    } catch {
+      gitAvailable = false
+    }
+  }
+  if (!gitAvailable) {
+    console.warn('[skip] git 命令不可用，第⑩节合成 clone 组跳过——无法比对态用例不依赖 git，仍在本组覆盖')
+  }
+  return gitAvailable
+}
+
+/** 合成 git clone：init + 两次独立 commit，返回 { 路径, 首次 HEAD, 二次 HEAD }（两 HEAD 必不等）。 */
+function makeSyntheticClone(label: string): { dir: string; firstHead: string; secondHead: string } {
+  const dir = makeTempDir(label)
+  const git = (args: string[]): string =>
+    execFileSync('git', ['-c', 'user.name=doctor-test', '-c', 'user.email=doctor-test@example.invalid', ...args], {
+      cwd: dir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  git(['init'])
+  writeFileSync(join(dir, 'panel.ts'), 'export const skeleton = "v1"\n')
+  git(['add', 'panel.ts'])
+  git(['commit', '-m', 'first'])
+  const firstHead = git(['rev-parse', 'HEAD'])
+  writeFileSync(join(dir, 'panel.ts'), 'export const skeleton = "v2 changed"\n')
+  git(['add', 'panel.ts'])
+  git(['commit', '-m', 'second'])
+  const secondHead = git(['rev-parse', 'HEAD'])
+  return { dir, firstHead, secondHead }
 }
 
 /** mini-od 单候选画像（found 形态）。 */
@@ -129,6 +202,54 @@ describe('命令注册形态（apply 经假 ctx 断言 registry 契约）', () =
   })
 })
 
+describe('十一节结构断言（V1 八节零回归 + U6 三新节）', () => {
+  /** V1 既有八节的标题字面（逐字锁——零回归面：字面、次序、键序都不得变化）。 */
+  const V1_EIGHT_SECTION_TITLES = [
+    '安装形态与资源根',
+    '清单路径与三层版本',
+    'roster 完整性核验',
+    '改写规则命中清单',
+    '材质化状态',
+    '资产代际提示',
+    '异常与恢复动作',
+    '止损位状态',
+  ] as const
+
+  it('分节常量共 11 键：前 8 键 = V1 原标题原序（零回归），后 3 键 = U6 新节标题', () => {
+    expect(DOCTOR_SECTION_COUNT).toBe(11)
+    const keys = Object.keys(DOCTOR_SECTIONS)
+    expect(keys).toHaveLength(11)
+    // 前 8 键逐字对账（V1 八节零回归：标题字面与键序不变）。
+    expect(keys.slice(0, 8)).toEqual(['install', 'manifest', 'roster', 'rewrite', 'materialize', 'generation', 'recovery', 'stopLoss'])
+    for (const [index, title] of V1_EIGHT_SECTION_TITLES.entries()) {
+      expect(DOCTOR_SECTIONS[keys[index] as keyof typeof DOCTOR_SECTIONS]).toBe(title)
+    }
+    // 新增三节（D10⑨⑩⑪）。
+    expect(DOCTOR_SECTIONS.assetRichness).toBe('资产丰富度')
+    expect(DOCTOR_SECTIONS.protocolAudit).toBe('协议与检查器对账')
+    expect(DOCTOR_SECTIONS.qualityFindings).toBe('质量发现')
+  })
+
+  it('标题行形态扩为 【N/11】：V1 节与新节同构渲染，编号连续', () => {
+    expect(doctorSectionLine(1, DOCTOR_SECTIONS.install)).toBe('【1/11】安装形态与资源根')
+    expect(doctorSectionLine(8, DOCTOR_SECTIONS.stopLoss)).toBe('【8/11】止损位状态')
+    expect(doctorSectionLine(9, DOCTOR_SECTIONS.assetRichness)).toBe('【9/11】资产丰富度')
+    expect(doctorSectionLine(10, DOCTOR_SECTIONS.protocolAudit)).toBe('【10/11】协议与检查器对账')
+    expect(doctorSectionLine(11, DOCTOR_SECTIONS.qualityFindings)).toBe('【11/11】质量发现')
+  })
+
+  it('任意定位结局都产出十一节：missing 形态报告仍含全部标题行（含三新节的降级形态）', () => {
+    const report = buildDoctorReport({ profileResult: { status: 'missing' }, sessionCwd: null })
+    for (const [index, title] of Object.values(DOCTOR_SECTIONS).entries()) {
+      expect(report).toContain(doctorSectionLine(index + 1, title))
+    }
+    // 三新节的降级形态随缺失结局就地呈现。
+    expect(report).toContain('资产未定位，无资产丰富度可报告（见第①节）')
+    expect(report).toContain('【10/11】协议与检查器对账')
+    expect(report).toContain('会话工作目录未知，无法读取检查记录')
+  })
+})
+
 describe('正常 fixture 资产根：八项齐备（八节标题 + 各节内容锚点）', () => {
   it('mini-od + 已预铺会话目录：八节全在，各节内容正确', async () => {
     const result = miniProfileResult()
@@ -136,10 +257,10 @@ describe('正常 fixture 资产根：八项齐备（八节标题 + 各节内容�
     if (result.status !== 'found') return
     const profile = result.profile
 
-    // 会话工作目录：真跑 U5 材质化（四文件落盘），doctor 第⑤节报告该落点清单。
+    // 会话工作目录：真跑材质化（5 文件完整写清单落盘），doctor 第⑤节报告该落点清单。
     const sessionCwd = makeTempDir('session')
     const materialized = await materializeAssets({ manifestPath: profile.manifestPath, cwd: sessionCwd })
-    expect(materialized.files).toHaveLength(4)
+    expect(materialized.files).toHaveLength(5)
 
     const report = buildDoctorReport({ profileResult: result, sessionCwd })
 
@@ -169,13 +290,13 @@ describe('正常 fixture 资产根：八项齐备（八节标题 + 各节内容�
     expect(report).toContain('- 规则应用记录共 ')
     expect(report).toContain('脆弱度')
 
-    // ⑤ 材质化状态：会话目录、落点、四管理名在场、结论。
+    // ⑤ 材质化状态：会话目录、落点、五管理名（完整写清单含 deck-framework.md）在场、结论。
     expect(report).toContain(`- 会话工作目录：${sessionCwd}`)
     expect(report).toContain(join(sessionCwd, '.od-frames'))
-    for (const fileName of ['android.html', 'iphone.html', 'neutral.html', 'layout.css']) {
+    for (const fileName of ['android.html', 'iphone.html', 'neutral.html', 'layout.css', 'deck-framework.md']) {
       expect(report).toContain(`✓ ${fileName}（`)
     }
-    expect(report).toContain('结论：4 个管理名全部在场（写入落点清单如上）。')
+    expect(report).toContain('结论：5 个管理名全部在场（写入落点清单如上）。')
 
     // ⑥ 资产代际提示：当前版本 + resume 不同代提示。
     expect(report).toContain('当前资产版本：core v3.2.0')
@@ -229,20 +350,20 @@ describe('缺失项带恢复动作', () => {
     const sessionCwd = makeTempDir('empty-frames')
     mkdirSync(join(sessionCwd, '.od-frames'), { recursive: true })
     const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd })
-    expect(report).toContain('材质化异常：落点目录存在但 4 个管理名全部缺失')
+    expect(report).toContain('材质化异常：落点目录存在但 5 个管理名全部缺失')
     expect(report).toContain(DOCTOR_RECOVERY_ACTIONS.restartDsh)
     expect(report).toContain(`【${DOCTOR_SECTIONS.materialize}】材质化异常`)
     expect(report).not.toContain('未发现异常。')
   })
 
-  it('材质化部分缺失（D8 全量重铺语义应四文件齐备）：逐文件标记 + 异常项', () => {
+  it('材质化部分缺失（全量重铺语义应写清单 5 文件齐备）：逐文件标记 + 异常项', () => {
     const sessionCwd = makeTempDir('partial-frames')
     mkdirSync(join(sessionCwd, '.od-frames'), { recursive: true })
     writeFileSync(join(sessionCwd, '.od-frames', 'android.html'), '<html></html>')
     const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd })
     expect(report).toContain('✓ android.html（')
-    expect(report).toContain('材质化异常：3 个管理名缺失')
-    expect(report).toContain('iphone.html、neutral.html、layout.css')
+    expect(report).toContain('材质化异常：4 个管理名缺失')
+    expect(report).toContain('iphone.html、neutral.html、layout.css、deck-framework.md')
   })
 
   it('未核实版本（specVersion 超集合）：第②节警告 + 升级本插件恢复动作', () => {
@@ -421,6 +542,237 @@ describe('止损位状态（D9 三判据）', () => {
     expect(rewriteRecordLine(syntheticRecord('r-miss-current', 0, 'current-only', 'legacy'))).toContain('[— 仅新代生效]')
     // regex 记录不受代际影响（防御性/残余兜底的零命中恒为正常形态）。
     expect(rewriteRecordLine(syntheticRecord('r1-defensive', 0, 'cross-generation', 'current'))).toContain('[—]')
+  })
+})
+
+describe('第⑨节 资产丰富度（fixture 计数对账 + 降级恢复文案，D10⑨）', () => {
+  it('富资产 fixture：craft 册数（排除两元文件）/ 形状包与解析异常 / manifest 命中 / 注入行数逐项对账', () => {
+    const root = makeEnrichedResourceRoot('doctor-rich')
+    const result = buildVersionProfile([{ resourceRoot: root, channel: 'stable' }])
+    expect(result.status).toBe('found')
+    if (result.status !== 'found') return
+    const report = buildDoctorReport({ profileResult: result, sessionCwd: null })
+
+    // craft 册数 = 规则书口径（anti-ai-slop.md + state-coverage.md；README/FUTURE_SECTIONS 排除，D10⑨）。
+    expect(report).toContain('- craft 手册：2 册（规则书口径，排除 README.md 与 FUTURE_SECTIONS.md 两个元文件）')
+    // 形状包 3 个（broken-skill / dashboard / web-prototype-taste-brutalist），解析异常 1 个（broken-skill）。
+    expect(report).toContain('- 形状包：3 个（解析异常 1 个）')
+    expect(report).toContain('- ⚠ 解析异常 1 个包（broken-skill；降级仅目录名）。')
+    expect(report).toContain(DOCTOR_RECOVERY_ACTIONS.catalogParseError)
+    // 设计系统 manifest 命中 4 个（airbnb / broken-brand / partial-brand / plain-brand），解析异常 2 个。
+    expect(report).toContain('- 设计系统 manifest 命中：4 个（解析异常 2 个）')
+    expect(report).toContain('- ⚠ 解析异常 2 个包（broken-brand、partial-brand；降级仅目录名）。')
+    // 各清单段注入行数（一行一包口径）+ craft 指路块在场。
+    expect(report).toContain('- 清单段注入行数：形状包清单段 3 行 / 设计系统清单段 4 行（一行一包口径）；craft 指路块：注入（craft/ 在场）。')
+  })
+
+  it('目录缺失降级（mini-od 无 craft/design-templates）：缺失行带资产根完整性恢复动作，注入行数计 0', () => {
+    const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd: null })
+    expect(report).toContain('- ✗ craft 手册：craft/ 目录缺失')
+    expect(report).toContain('craft 指路块整体省略')
+    expect(report).toContain('- ✗ 形状包：design-templates/ 目录缺失')
+    expect(report).toContain('形状包清单段降级为空（0 行）')
+    // 恢复动作文案（任务书验收条款④：目录缺失→检查资产根与 OD 安装完整性指引）。
+    expect(report).toContain(DOCTOR_RECOVERY_ACTIONS.checkAssetRoot)
+    expect(report).toContain('检查资产根（资源根见第①节）与 OD 安装完整性')
+    // design-systems 在场（sample-brand 无 manifest → 命中 0、异常 0，D3 分母口径）；注入行数如实计 0。
+    expect(report).toContain('- 设计系统 manifest 命中：0 个（解析异常 0 个）')
+    expect(report).toContain('- 清单段注入行数：形状包清单段 0 行 / 设计系统清单段 0 行（一行一包口径）；craft 指路块：省略（craft/ 缺失时整体省略，D1/AX5）。')
+    // 第⑨节降级不并入第⑦节汇总（V1「未发现异常」零回归面）。
+    expect(report).toContain('未发现异常。')
+  })
+
+  it('资产未定位（missing）：第⑨节报无资产丰富度可报告，不探测目录', () => {
+    const report = buildDoctorReport({ profileResult: { status: 'missing' }, sessionCwd: null })
+    expect(report).toContain('- 资产未定位，无资产丰富度可报告（见第①节）。')
+  })
+})
+
+describe('第⑩节 协议与检查器对账（三态 fixture + clone 探测单元，D7/D10⑩/GPK1）', () => {
+  /** 合成锚工厂：registeredCommit 由用例给定（合成 clone 的 HEAD），其余字段取登记形态。 */
+  function syntheticCheck(registeredCommit: string): ProtocolAnchorCheck {
+    return {
+      id: 'panel',
+      label: 'panel 评审团协议',
+      registeredCommit,
+      registeredSha256: '03efc005cedb33d61194b80b73f37d28dc517d762deff9f94fb3e575765569d0',
+      basis: '合成 fixture 骨架口径',
+    }
+  }
+
+  it('登记锚清单：两协议 + 检查项清单三行，字段来自登记处（PROTOCOL_VERSION_ANCHORS + LINT_SOURCE_ANCHOR）', () => {
+    const checks = buildProtocolAnchorChecks()
+    expect(checks.map((check) => check.id)).toEqual(['panel', 'deck', 'lint'])
+    for (const check of checks) {
+      expect(check.registeredCommit).toBe('20c49e75c9164bb592cfc299d366884ed79f9914')
+      expect(check.label.length).toBeGreaterThan(0)
+      expect(check.basis.length).toBeGreaterThan(0)
+    }
+    // 协议带骨架哈希；检查项清单移植无骨架哈希（比对基准 = commit）。
+    expect(checks[0]!.registeredSha256).toMatch(/^[0-9a-f]{64}$/u)
+    expect(checks[2]!.registeredSha256).toBeNull()
+  })
+
+  it('clone 探测单元（GPK1 口径）：git rev-parse --show-toplevel 退出 0 = available + HEAD；未登记 / 非 git 目录 = 不可用', () => {
+    if (!ensureGitAvailable()) return
+    const clone = makeSyntheticClone('doctor-probe')
+    const probe = probeSourceClone(clone.dir)
+    expect(probe.status).toBe('available')
+    expect(probe.head).toBe(clone.secondHead)
+    expect(probe.head).toMatch(/^[0-9a-f]{40}$/u)
+    // macOS TMPDIR 经 /var → /private/var 符号链接：双侧 realpath 规范化后比对。
+    expect(realpathSync(probe.toplevel ?? '/nonexistent')).toBe(realpathSync(clone.dir))
+
+    // 未登记 → unregistered（不带原因外泄路径）。
+    expect(probeSourceClone(null)).toMatchObject({ status: 'unregistered', head: null })
+    expect(probeSourceClone('   ')).toMatchObject({ status: 'unregistered' })
+    // 非 git 目录 → unavailable + 可行动原因。
+    const plain = makeTempDir('doctor-probe-plain')
+    const failed = probeSourceClone(plain)
+    expect(failed.status).toBe('unavailable')
+    expect(failed.head).toBeNull()
+    expect(failed.reason).toContain('路径不是 git 仓库目录')
+  })
+
+  it('三态单元：HEAD = 登记 commit → ok（内容寻址等价）；HEAD 已变化 → drift；探测未通过 → 无法比对', () => {
+    if (!ensureGitAvailable()) return
+    const clone = makeSyntheticClone('doctor-tri')
+    const probeNow = probeSourceClone(clone.dir)
+
+    // ok 支路：登记 commit == 探测 HEAD（真实场景 = clone 停在登记提取 commit；合成仓以
+    // 当前 HEAD 作登记值验证同一判定式——HEAD 相等即 ok，与 commit 来源无关）。
+    expect(reconcileProtocolAnchor(syntheticCheck(clone.secondHead), probeNow)).toMatchObject({
+      status: 'ok',
+      cloneHead: clone.secondHead,
+      cannotCompareReason: null,
+    })
+
+    // drift 态：登记 commit 停留在首次 HEAD（模拟提取时点锚），clone 已前进 → 正源已变化，保守判 drift。
+    const drifted = reconcileProtocolAnchor(syntheticCheck(clone.firstHead), probeNow)
+    expect(drifted.status).toBe('drift')
+    expect(drifted.cloneHead).toBe(clone.secondHead)
+    expect(drifted.cannotCompareReason).toBeNull()
+
+    // 无法比对态：未登记 / 非 git 目录。
+    expect(reconcileProtocolAnchor(syntheticCheck(clone.secondHead), probeSourceClone(null))).toMatchObject({
+      status: 'cannot-compare',
+      cloneHead: null,
+    })
+    expect(reconcileProtocolAnchor(syntheticCheck(clone.secondHead), probeSourceClone(join(clone.dir, 'nonexistent'))))
+      .toMatchObject({ status: 'cannot-compare' })
+  })
+
+  it('报告级三态·无法比对（未登记）：三行无法比对 + 登记路径恢复动作 + 已知信息行', () => {
+    const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd: null })
+    expect(report).toContain('- 源码仓 clone 探测：未登记。')
+    expect(report).toContain('- ⚠ panel 评审团协议：无法比对（未登记源码仓 clone 路径）。')
+    expect(report).toContain('- ⚠ deck 演示稿协议：无法比对（未登记源码仓 clone 路径）。')
+    expect(report).toContain('- ⚠ 反 AI 味检查项清单：无法比对（未登记源码仓 clone 路径）。')
+    expect(report).toContain(DOCTOR_RECOVERY_ACTIONS.registerSourceClone)
+    // 版本锚登记行（AX3：登记锚恒在场——无论 clone 状态）。
+    expect(report).toContain('panel 评审团协议：登记 commit 20c49e75c9164bb592cfc299d366884ed79f9914、骨架 sha256 03efc005')
+    expect(report).toContain('反 AI 味检查项清单：登记 commit 20c49e75c9164bb592cfc299d366884ed79f9914、无骨架哈希（比对基准 = commit）')
+    // clone HEAD 滞后已知信息行（任务书 ⑩ 字段）。
+    expect(report).toContain('clone HEAD 可能滞后于本机安装版本——ok 态以登记锚为准')
+  })
+
+  it('报告级三态·drift（合成 clone 已前进）：逐协议 drift 行 + 重新提取恢复动作', () => {
+    if (!ensureGitAvailable()) return
+    const clone = makeSyntheticClone('doctor-report-drift')
+    const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd: null, sourceClonePath: clone.dir })
+    expect(report).toContain(`- 源码仓 clone 探测：${clone.dir}（HEAD ${clone.secondHead}）`)
+    expect(report).toContain('- ✗ panel 评审团协议：drift（clone HEAD ')
+    expect(report).toContain('≠ 登记 commit 20c49e75c9164bb592cfc299d366884ed79f9914——正源已变化，登记骨架哈希不可再视为正源哈希）。')
+    expect(report).toContain(DOCTOR_RECOVERY_ACTIONS.reExtractAnchor)
+    expect(report).toContain('- 已知信息：clone HEAD 可能滞后于本机安装版本——ok 态以登记锚为准')
+  })
+
+  it('报告级三态·探测失败（非 git 目录登记）：无法比对行 + 失败原因', () => {
+    const plain = makeTempDir('doctor-report-plain')
+    const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd: null, sourceClonePath: plain })
+    expect(report).toContain(`- 源码仓 clone 探测：${plain}（探测失败：路径不是 git 仓库目录，或 git 命令不可用）。`)
+    expect(report).toContain('- ⚠ panel 评审团协议：无法比对（路径不是 git 仓库目录，或 git 命令不可用）。')
+    expect(report).toContain(DOCTOR_RECOVERY_ACTIONS.registerSourceClone)
+  })
+})
+
+describe('第⑪节 质量发现（report.jsonl 读侧 + 无记录降级，D10⑪/SC5/RL9）', () => {
+  /** 装饰用例会话目录：经 U5 真写侧（appendQualityReportLine）落三行型记录 + 一行损坏行。 */
+  async function makeSessionWithReport(label: string): Promise<string> {
+    const sessionCwd = makeTempDir(label)
+    await appendQualityReportLine(sessionCwd, { type: 'watcher', at: '2026-11-10T00:00:00.000Z', event: 'started' })
+    await appendQualityReportLine(sessionCwd, {
+      type: 'finding',
+      at: '2026-11-10T00:00:01.000Z',
+      path: 'src/dashboard.html',
+      severity: 'P0',
+      id: 'purple-gradient',
+      message: 'Purple/violet gradient background detected',
+      fix: 'Replace with the brand palette tokens',
+      reason: 'fed-back',
+    })
+    await appendQualityReportLine(sessionCwd, {
+      type: 'finding',
+      at: '2026-11-10T00:00:02.000Z',
+      path: 'src/dashboard.html',
+      severity: 'P1',
+      id: 'accent-overuse',
+      message: 'Accent color used for more than 10% of elements',
+      reason: 'p1p2',
+    })
+    await appendQualityReportLine(sessionCwd, { type: 'artifact', at: '2026-11-10T00:00:03.000Z', path: 'src/dashboard.html' })
+    // 损坏行（追加式记录容忍半行写入——U5 读侧同款口径）。
+    await appendQualityReportLine(sessionCwd, {
+      type: 'finding',
+      at: '2026-11-10T00:00:04.000Z',
+      path: 'other.html',
+      severity: 'P2',
+      id: 'missing-section-anchor',
+      message: 'x',
+      reason: 'unrecognized-existing',
+    })
+    const reportFile = join(sessionCwd, '.od-quality', 'report.jsonl')
+    const lines = readFileSync(reportFile, 'utf8').split('\n').filter((line) => line.trim() !== '')
+    writeFileSync(reportFile, `${lines.join('\n')}\n{"type":"finding","at":"trunc`)
+    return sessionCwd
+  }
+
+  it('读侧呈现：监听器状态 + 分级发现汇总与回注裁决 + 产物写盘身份记录；损坏行跳过并计数', async () => {
+    const sessionCwd = await makeSessionWithReport('doctor-qf-full')
+    const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd })
+    expect(report).toContain('- 监听器状态：运行中（最近 started 2026-11-10T00:00:00.000Z）；累计启动 1 次 / 自毁 0 次。')
+    expect(report).toContain('- 检查发现：共 3 条（P0 1 / P1 1 / P2 1）。')
+    expect(report).toContain('  - [P0] purple-gradient — src/dashboard.html（已回注送达会话）：Purple/violet gradient background detected')
+    expect(report).toContain('  - [P1] accent-overuse — src/dashboard.html（P1/P2 仅记录不回注）：')
+    expect(report).toContain('  - [P2] missing-section-anchor — other.html（陌生既有文件只记录不回注）：')
+    expect(report).toContain('- 产物写盘身份记录：1 条（快照豁免的回查数据源，D5④）。')
+    expect(report).toContain('  - src/dashboard.html（2026-11-10T00:00:03.000Z）')
+    expect(report).toContain('- ⚠ 1 行损坏已跳过（追加式记录容忍半行写入）。')
+  })
+
+  it('监听器自毁态：destroyed 事件带原因呈现；reason 词表七键齐备（契约锁）', async () => {
+    const sessionCwd = makeTempDir('doctor-qf-destroyed')
+    await appendQualityReportLine(sessionCwd, { type: 'watcher', at: '2026-11-10T01:00:00.000Z', event: 'started' })
+    await appendQualityReportLine(sessionCwd, { type: 'watcher', at: '2026-11-10T01:00:05.000Z', event: 'destroyed', reason: 'watch-error' })
+    const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd })
+    expect(report).toContain('- 监听器状态：已自毁（最近 destroyed 2026-11-10T01:00:05.000Z；原因：watch-error）；累计启动 1 次 / 自毁 1 次。')
+
+    // U5 FindingRecordReason 词表与 doctor 呈现词表逐键对账（新裁决值漏登记即红灯）。
+    expect(Object.keys(FINDING_REASON_LABELS).sort()).toEqual(
+      ['duplicate', 'fed-back', 'inject-error', 'limit', 'no-agent', 'p1p2', 'unrecognized-existing'].sort(),
+    )
+  })
+
+  it('无记录降级（文件不存在）：报无检查记录 + 监听器未启动原因（任务书验收条款④）', () => {
+    const sessionCwd = makeTempDir('doctor-qf-empty')
+    const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd })
+    expect(report).toContain(`- 本轮会话无检查记录（${join(sessionCwd, '.od-quality', 'report.jsonl')} 不存在）。`)
+    expect(report).toContain('- 监听器未启动原因：质量环监听器仅随设计 preset 会话启动（agent-preset/selected 事件按 presetId 过滤）；普通会话零监听零检查（V7 零侵入形态），监听器启动即失败自毁且记录未落盘时同样表现为本形态。')
+  })
+
+  it('会话工作目录未知：第⑪节报目录未知，不抛错', () => {
+    const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd: null })
+    expect(report).toContain('- 会话工作目录未知，无法读取检查记录（不影响本报告其余各项）。')
   })
 })
 

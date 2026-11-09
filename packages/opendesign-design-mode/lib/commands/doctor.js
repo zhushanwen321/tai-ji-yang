@@ -1,10 +1,20 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { applyRewrites } from "../rewrite/apply.js";
 import { ruleAppliesToGeneration } from "../rewrite/rules.js";
 import { listDeclaredRosterPaths } from "../locate/manifest-discovery.js";
-import { locateOdAssets, readRosterAsset } from "../locate/version-profile.js";
-import { MATERIALIZED_FILE_NAMES, OD_FRAMES_DIR } from "../materialize/copy.js";
+import { locateOdAssets, readRosterAsset, deriveCatalogDirs } from "../locate/version-profile.js";
+import { buildAssetCatalog } from "../locate/asset-catalog.js";
+import { MATERIALIZED_WRITE_LIST, OD_FRAMES_DIR } from "../materialize/copy.js";
+import {
+  PROTOCOL_VERSION_ANCHORS,
+  PROTOCOL_SOURCE_REPO_URL
+} from "../protocols/anchors.js";
+import { LINT_SOURCE_ANCHOR } from "../quality/lint.js";
+import {
+  qualityReportPath
+} from "../quality/feedback.js";
 const name = "od-doctor";
 const inject = ["commands"];
 const DOCTOR_COMMAND_NAME = "opendesign-doctor";
@@ -18,15 +28,27 @@ const DOCTOR_SECTIONS = {
   materialize: "材质化状态",
   generation: "资产代际提示",
   recovery: "异常与恢复动作",
-  stopLoss: "止损位状态"
+  stopLoss: "止损位状态",
+  assetRichness: "资产丰富度",
+  protocolAudit: "协议与检查器对账",
+  qualityFindings: "质量发现"
 };
+const DOCTOR_SECTION_COUNT = Object.keys(DOCTOR_SECTIONS).length;
 function doctorSectionLine(index, title) {
-  return `【${index}/8】${title}`;
+  return `【${index}/${DOCTOR_SECTION_COUNT}】${title}`;
 }
 const DOCTOR_RECOVERY_ACTIONS = {
   reinstallOd: "恢复动作：重装 OpenDesign，然后重启 DSH。",
   upgradePlugin: "恢复动作：升级本插件到适配当前 OpenDesign 资产的版本（改写规则随插件版本更新），然后重启 DSH。",
-  restartDsh: "恢复动作：重启 DSH（材质化在新会话创建时无条件全量重铺；.od-frames/ 目录可安全删除后重建）。"
+  restartDsh: "恢复动作：重启 DSH（材质化在新会话创建时无条件全量重铺；.od-frames/ 目录可安全删除后重建）。",
+  /** D10⑨ 目录缺失降级：资产根完整性指引。 */
+  checkAssetRoot: "恢复动作：检查资产根（资源根见第①节）与 OD 安装完整性——重装 OpenDesign 后重启 DSH。",
+  /** D10⑨ 解析异常降级：包清单 + 升级对账指引。 */
+  catalogParseError: "恢复动作：核对上述包的清单文件（SKILL.md frontmatter / manifest.json），并做升级对账（OD 升级引入新 frontmatter 或 manifest 形态时升级本插件适配），然后重启 DSH。",
+  /** D10⑩ clone 未登记 / 探测失败：登记路径指引（GPK1）。 */
+  registerSourceClone: "恢复动作：重新运行 /opendesign-doctor 并附 OpenDesign 源码仓 clone 路径参数（例：/opendesign-doctor <clone 路径>），登记后本节按 git 内容寻址逐协议比对。",
+  /** D10⑩ 漂移态：重新提取登记指引。 */
+  reExtractAnchor: "恢复动作：升级本插件（新版随插件重新提取登记版本锚），或按登记锚重新提取正源骨架并重登记版本锚，然后重启 DSH。"
 };
 function evaluateStopLoss(records, readerUnavailable) {
   const misfires = records.filter(
@@ -103,7 +125,7 @@ function renderMaterializeSection(sessionCwd, issues) {
   }
   const present = [];
   const missingNames = [];
-  for (const fileName of MATERIALIZED_FILE_NAMES) {
+  for (const fileName of MATERIALIZED_WRITE_LIST) {
     const absolute = join(targetRoot, fileName);
     let bytes = 0;
     let exists = false;
@@ -120,16 +142,16 @@ function renderMaterializeSection(sessionCwd, issues) {
     }
   }
   lines.push(...present);
-  if (missingNames.length === MATERIALIZED_FILE_NAMES.length) {
-    const message = `材质化异常：落点目录存在但 ${MATERIALIZED_FILE_NAMES.length} 个管理名全部缺失（预铺后为空即异常）。${DOCTOR_RECOVERY_ACTIONS.restartDsh}`;
+  if (missingNames.length === MATERIALIZED_WRITE_LIST.length) {
+    const message = `材质化异常：落点目录存在但 ${MATERIALIZED_WRITE_LIST.length} 个管理名全部缺失（预铺后为空即异常）。${DOCTOR_RECOVERY_ACTIONS.restartDsh}`;
     issues.push({ section: DOCTOR_SECTIONS.materialize, message });
     lines.push(`- ✗ ${message}`);
   } else if (missingNames.length > 0) {
-    const message = `材质化异常：${missingNames.length} 个管理名缺失（${missingNames.join("、")}；D8 为无条件全量重铺，四文件应齐备）。${DOCTOR_RECOVERY_ACTIONS.restartDsh}`;
+    const message = `材质化异常：${missingNames.length} 个管理名缺失（${missingNames.join("、")}；D8/D9 为无条件全量重铺，写清单 ${MATERIALIZED_WRITE_LIST.length} 文件应齐备）。${DOCTOR_RECOVERY_ACTIONS.restartDsh}`;
     issues.push({ section: DOCTOR_SECTIONS.materialize, message });
     lines.push(`- ✗ ${message}`);
   } else {
-    lines.push(`- 结论：${MATERIALIZED_FILE_NAMES.length} 个管理名全部在场（写入落点清单如上）。`);
+    lines.push(`- 结论：${MATERIALIZED_WRITE_LIST.length} 个管理名全部在场（写入落点清单如上）。`);
   }
   return lines;
 }
@@ -185,6 +207,213 @@ function renderStopLossSection(evaluation) {
     lines.push("- 结论：可观测判据均未触发。");
   }
   return lines;
+}
+function renderAssetRichnessSection(profile) {
+  if (profile === null) {
+    return ["- 资产未定位，无资产丰富度可报告（见第①节）。"];
+  }
+  const catalog = buildAssetCatalog(deriveCatalogDirs(profile.resourceRoot));
+  const lines = [];
+  if (catalog.craft.present) {
+    lines.push(`- craft 手册：${catalog.craft.manualFiles.length} 册（规则书口径，排除 README.md 与 FUTURE_SECTIONS.md 两个元文件）`);
+  } else {
+    lines.push(`- ✗ craft 手册：craft/ 目录缺失（${catalog.craft.craftRoot}），册数不可清点、craft 指路块整体省略。${DOCTOR_RECOVERY_ACTIONS.checkAssetRoot}`);
+  }
+  if (catalog.shapeTemplates.present) {
+    lines.push(`- 形状包：${catalog.shapeTemplates.entries.length} 个（解析异常 ${catalog.shapeTemplates.parseErrorCount} 个）`);
+    appendParseErrorLine(lines, catalog.shapeTemplates.parseErrorCount, degradedNames(catalog.shapeTemplates.entries));
+  } else {
+    lines.push(`- ✗ 形状包：design-templates/ 目录缺失（${catalog.shapeTemplates.root}），形状包清单段降级为空（0 行）。${DOCTOR_RECOVERY_ACTIONS.checkAssetRoot}`);
+  }
+  if (catalog.designSystems.present) {
+    lines.push(`- 设计系统 manifest 命中：${catalog.designSystems.entries.length} 个（解析异常 ${catalog.designSystems.parseErrorCount} 个）`);
+    appendParseErrorLine(lines, catalog.designSystems.parseErrorCount, degradedNames(catalog.designSystems.entries));
+  } else {
+    lines.push(`- ✗ 设计系统：design-systems/ 目录缺失（${catalog.designSystems.root}），manifest 感知清单段降级为空（0 行）。${DOCTOR_RECOVERY_ACTIONS.checkAssetRoot}`);
+  }
+  const shapeRows = catalog.shapeTemplates.present ? catalog.shapeTemplates.entries.length : 0;
+  const systemRows = catalog.designSystems.present ? catalog.designSystems.entries.length : 0;
+  const craftBlock = catalog.craft.present ? "注入（craft/ 在场）" : "省略（craft/ 缺失时整体省略，D1/AX5）";
+  lines.push(`- 清单段注入行数：形状包清单段 ${shapeRows} 行 / 设计系统清单段 ${systemRows} 行（一行一包口径）；craft 指路块：${craftBlock}。`);
+  return lines;
+}
+function degradedNames(entries) {
+  return entries.filter((entry) => entry.degraded).map((entry) => entry.dirName);
+}
+function appendParseErrorLine(lines, count, names) {
+  if (count > 0) {
+    lines.push(`- ⚠ 解析异常 ${count} 个包（${names.join("、")}；降级仅目录名）。${DOCTOR_RECOVERY_ACTIONS.catalogParseError}`);
+  }
+}
+function probeSourceClone(clonePath) {
+  const trimmed = clonePath === null ? "" : clonePath.trim();
+  if (trimmed === "") {
+    return { status: "unregistered", clonePath: "", head: null, toplevel: null, reason: "未登记源码仓 clone 路径" };
+  }
+  try {
+    const toplevel = execFileSync("git", ["-C", trimmed, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    const head = execFileSync("git", ["-C", trimmed, "rev-parse", "HEAD"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    return { status: "available", clonePath: trimmed, head, toplevel };
+  } catch {
+    return {
+      status: "unavailable",
+      clonePath: trimmed,
+      head: null,
+      toplevel: null,
+      reason: "路径不是 git 仓库目录，或 git 命令不可用"
+    };
+  }
+}
+function reconcileProtocolAnchor(check, probe) {
+  if (probe.status !== "available" || probe.head === null) {
+    return {
+      check,
+      status: "cannot-compare",
+      cloneHead: null,
+      cannotCompareReason: probe.reason ?? "clone 探测未通过"
+    };
+  }
+  return {
+    check,
+    status: probe.head === check.registeredCommit ? "ok" : "drift",
+    cloneHead: probe.head,
+    cannotCompareReason: null
+  };
+}
+function buildProtocolAnchorChecks() {
+  const protocolLabels = { panel: "panel 评审团协议", deck: "deck 演示稿协议" };
+  const rows = PROTOCOL_VERSION_ANCHORS.map((anchor) => ({
+    id: anchor.protocol,
+    label: protocolLabels[anchor.protocol] ?? anchor.protocol,
+    registeredCommit: anchor.commit,
+    registeredSha256: anchor.skeletonSha256,
+    basis: anchor.skeletonBasis
+  }));
+  rows.push({
+    id: "lint",
+    label: "反 AI 味检查项清单",
+    registeredCommit: LINT_SOURCE_ANCHOR.commit,
+    registeredSha256: null,
+    basis: `${LINT_SOURCE_ANCHOR.upstreamPath}（检查项清单移植，无骨架哈希——比对基准 = commit；${LINT_SOURCE_ANCHOR.license}）`
+  });
+  return rows;
+}
+function renderProtocolAuditSection(sourceClonePath) {
+  const checks = buildProtocolAnchorChecks();
+  const lines = [
+    `- 版本锚登记（AX3 例外：本仓派生副本的登记锚；正源仓 ${PROTOCOL_SOURCE_REPO_URL}）：`
+  ];
+  for (const check of checks) {
+    const sha = check.registeredSha256 === null ? "无骨架哈希（比对基准 = commit）" : `骨架 sha256 ${check.registeredSha256}`;
+    lines.push(`  - ${check.label}：登记 commit ${check.registeredCommit}、${sha}（${check.basis}）`);
+  }
+  const probe = probeSourceClone(sourceClonePath);
+  if (probe.status === "available") {
+    lines.push(`- 源码仓 clone 探测：${probe.clonePath}（HEAD ${probe.head}）`);
+  } else if (probe.status === "unregistered") {
+    lines.push("- 源码仓 clone 探测：未登记。");
+  } else {
+    lines.push(`- 源码仓 clone 探测：${probe.clonePath}（探测失败：${probe.reason}）。${DOCTOR_RECOVERY_ACTIONS.registerSourceClone}`);
+  }
+  lines.push(
+    "- 逐协议比对（比对口径 = git 内容寻址：clone HEAD 与登记 commit 逐字一致 ⟺ 同口径提取的骨架哈希与登记哈希一致；HEAD 已变化时保守判定漂移）："
+  );
+  for (const check of checks) {
+    const outcome = reconcileProtocolAnchor(check, probe);
+    if (outcome.status === "ok") {
+      lines.push(`  - ✓ ${check.label}：ok（clone HEAD = 登记提取 commit，骨架哈希比对一致）`);
+    } else if (outcome.status === "drift") {
+      lines.push(`  - ✗ ${check.label}：drift（clone HEAD ${outcome.cloneHead} ≠ 登记 commit ${check.registeredCommit}——正源已变化，登记骨架哈希不可再视为正源哈希）。${DOCTOR_RECOVERY_ACTIONS.reExtractAnchor}`);
+    } else {
+      lines.push(`  - ⚠ ${check.label}：无法比对（${outcome.cannotCompareReason}）。`);
+    }
+  }
+  if (probe.status === "unregistered") {
+    lines.push(`- ${DOCTOR_RECOVERY_ACTIONS.registerSourceClone}`);
+  }
+  lines.push("- 已知信息：clone HEAD 可能滞后于本机安装版本——ok 态以登记锚为准（本节比对的是用户登记的 clone，非 /Applications 安装盘资产）。");
+  return lines;
+}
+const FINDING_REASON_LABELS = {
+  "fed-back": "已回注送达会话",
+  p1p2: "P1/P2 仅记录不回注",
+  duplicate: "内容指纹去重未再回注",
+  limit: "超每文件回注上限仅记录",
+  "no-agent": "查无活 Agent 放弃回注",
+  "inject-error": "注入失败放弃回注",
+  "unrecognized-existing": "陌生既有文件只记录不回注"
+};
+function readQualityReportLines(sessionCwd) {
+  const file = qualityReportPath(sessionCwd);
+  let raw;
+  try {
+    raw = readFileSync(file, "utf8");
+  } catch {
+    return { lines: [], corruptCount: 0, fileExists: false };
+  }
+  const lines = [];
+  let corruptCount = 0;
+  for (const lineText of raw.split("\n")) {
+    const trimmed = lineText.trim();
+    if (trimmed === "") continue;
+    try {
+      lines.push(JSON.parse(trimmed));
+    } catch {
+      corruptCount += 1;
+    }
+  }
+  return { lines, corruptCount, fileExists: true };
+}
+function renderQualityFindingsSection(sessionCwd) {
+  if (sessionCwd === null) {
+    return ["- 会话工作目录未知，无法读取检查记录（不影响本报告其余各项）。"];
+  }
+  const { lines: reportLines, corruptCount, fileExists } = readQualityReportLines(sessionCwd);
+  if (!fileExists || reportLines.length === 0) {
+    const where = fileExists ? `${qualityReportPath(sessionCwd)} 为空或全部行损坏` : `${qualityReportPath(sessionCwd)} 不存在`;
+    return [
+      `- 本轮会话无检查记录（${where}）。`,
+      "- 监听器未启动原因：质量环监听器仅随设计 preset 会话启动（agent-preset/selected 事件按 presetId 过滤）；普通会话零监听零检查（V7 零侵入形态），监听器启动即失败自毁且记录未落盘时同样表现为本形态。"
+    ];
+  }
+  const out = [];
+  if (corruptCount > 0) {
+    out.push(`- ⚠ ${corruptCount} 行损坏已跳过（追加式记录容忍半行写入）。`);
+  }
+  const watcherEvents = reportLines.filter((line) => line.type === "watcher");
+  if (watcherEvents.length === 0) {
+    out.push("- 监听器状态：记录中无监听器生命周期事件（检查记录由其他通道写入或插件版本较早）。");
+  } else {
+    const starts = watcherEvents.filter((event) => event.event === "started").length;
+    const destroys = watcherEvents.filter((event) => event.event === "destroyed").length;
+    const last = watcherEvents[watcherEvents.length - 1];
+    const lastText = last.event === "started" ? `运行中（最近 started ${last.at}）` : `已自毁（最近 destroyed ${last.at}${typeof last.reason === "string" && last.reason !== "" ? `；原因：${last.reason}` : ""}）`;
+    out.push(`- 监听器状态：${lastText}；累计启动 ${starts} 次 / 自毁 ${destroys} 次。`);
+  }
+  const findings = reportLines.filter((line) => line.type === "finding");
+  const countBySeverity = { P0: 0, P1: 0, P2: 0 };
+  for (const finding of findings) {
+    if (finding.severity === "P0") countBySeverity.P0 += 1;
+    else if (finding.severity === "P1") countBySeverity.P1 += 1;
+    else if (finding.severity === "P2") countBySeverity.P2 += 1;
+  }
+  out.push(`- 检查发现：共 ${findings.length} 条（P0 ${countBySeverity.P0} / P1 ${countBySeverity.P1} / P2 ${countBySeverity.P2}）。`);
+  for (const finding of findings) {
+    const reasonLabel = FINDING_REASON_LABELS[finding.reason] ?? finding.reason;
+    out.push(`  - [${finding.severity}] ${finding.id} — ${finding.path}（${reasonLabel}）：${finding.message}`);
+  }
+  const artifacts = reportLines.filter((line) => line.type === "artifact");
+  out.push(`- 产物写盘身份记录：${artifacts.length} 条（快照豁免的回查数据源，D5④）。`);
+  for (const artifact of artifacts) {
+    out.push(`  - ${artifact.path}（${artifact.at}）`);
+  }
+  return out;
 }
 function buildDoctorReport(input) {
   const issues = [];
@@ -253,6 +482,9 @@ function buildDoctorReport(input) {
   sections.push(renderSection(7, DOCTOR_SECTIONS.recovery, recoveryLines));
   const evaluation = evaluateStopLoss(records, readerUnavailable);
   sections.push(renderSection(8, DOCTOR_SECTIONS.stopLoss, renderStopLossSection(evaluation)));
+  sections.push(renderSection(9, DOCTOR_SECTIONS.assetRichness, renderAssetRichnessSection(profile)));
+  sections.push(renderSection(10, DOCTOR_SECTIONS.protocolAudit, renderProtocolAuditSection(input.sourceClonePath ?? null)));
+  sections.push(renderSection(11, DOCTOR_SECTIONS.qualityFindings, renderQualityFindingsSection(input.sessionCwd)));
   return [
     DOCTOR_REPORT_TITLE,
     `（生成时间：${(/* @__PURE__ */ new Date()).toISOString()}；求助时请附本报告全文）`,
@@ -285,11 +517,14 @@ function apply(ctx) {
   ctx.commands.register({
     definitionId: DOCTOR_DEFINITION_ID,
     name: DOCTOR_COMMAND_NAME,
-    description: "诊断 OpenDesign 设计模式：资产定位、清单版本、roster 完整性、改写命中、材质化与止损位状态",
+    description: "诊断 OpenDesign 设计模式：资产定位、清单版本、roster 完整性、改写命中、材质化、资产丰富度、协议对账、质量发现与止损位状态",
     handler: (invocation) => {
+      const rawInput = invocation?.rawInput;
+      const sourceClonePath = typeof rawInput === "string" && rawInput.trim() !== "" ? rawInput.trim() : null;
       const text = buildDoctorReport({
         profileResult: locateOdAssets(),
-        sessionCwd: resolveSessionCwd(ctx, invocation?.agent)
+        sessionCwd: resolveSessionCwd(ctx, invocation?.agent),
+        sourceClonePath
       });
       return { kind: "success", text };
     }
@@ -301,12 +536,17 @@ export {
   DOCTOR_RECOVERY_ACTIONS,
   DOCTOR_REPORT_TITLE,
   DOCTOR_SECTIONS,
+  DOCTOR_SECTION_COUNT,
+  FINDING_REASON_LABELS,
   apply,
   buildDoctorReport,
+  buildProtocolAnchorChecks,
   doctorSectionLine,
   evaluateStopLoss,
   inject,
   name,
+  probeSourceClone,
+  reconcileProtocolAnchor,
   resolveSessionCwd,
   rewriteRecordLine
 };
