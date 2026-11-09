@@ -14,13 +14,13 @@
  *     （OD 把全文注入是 daemon 已持文本的顺带行为；DSH 模型有文件工具，指针 + 自读等价
  *     且省 50K 提示词）。
  *
- * deck-framework 注入块（RR5，R-deck-degrade 已裁决）：**注指令块形态**——deck 协议以
- * `kind="instruction" name="deck-framework"` 注入块供给（OD daemon 同构，不落盘）。
- * 裁决结论：两形态（注入块 / 铺文件）纯 DSH 均无供给源——deck 协议文本由 OD daemon 动态渲染，
- * 无静态资产文件可读（AX3 禁止把渲染文本复刻进插件仓），V1 组装链路恒空槽（ppt 档按其原文的
- * 「protocol 不在场」分支降级，材质化器写清单恒 4 文件），协议能力归后续版本。
- * 本模块保留注入块接口（可选入参 {@link ContextFactsInput.deckFrameworkDirective}}），
- * 作为后续版本的接入点。
+ * deck-framework 槽（D9）：deck 协议的实际供给形态 = 材质化铺盘文件——材质化器把
+ * lib/protocols/deck.ts 派生的协议登记文本铺进 `.od-frames/deck-framework.md`（材质化器
+ * 写清单第 5 个文件，AX3 范围化例外：版本锚 + doctor 对账），协议文本含整页骨架 HTML、
+ * 不进提示词注入，模型经任务档路由段 ppt 条目指针（task-routing.ts D9 段）自读全文——
+ * 体积分档裁决见 copy.ts 文件头 D9 段。本模块的注入块接口（可选入参
+ * {@link ContextFactsInput.deckFrameworkDirective}）保留为不供给的备用槽：组装链路
+ * （bundle.ts）不传该入参，deck 注入块不出现在提示词。
  *
  * craft 指路块（D1 指路自读形态，opendesign-assets-quality U2）：`kind="fact" name="craft"`
  * 事实块给 craft/ 根绝对路径 + 消费指引（读形状包 SKILL.md 的 craft.requires → 逐册自读
@@ -65,7 +65,8 @@ function stableJson(value: Record<string, unknown>): string {
 export interface ContextFactsInput {
   /**
    * deck 协议指令文本（注指令块形态的内容槽；缺省 = 不出 deck 注入块）。
-   * V1 组装链路不供给——内容来源待引擎对账裁决，见文件头注释。
+   * deck 协议供给已定档材质化铺文件形态（D9，见文件头注释）——组装链路不传该入参，
+   * 本槽保留为不供给的备用槽。
    */
   deckFrameworkDirective?: string
   /**
@@ -117,7 +118,8 @@ export function renderContextFacts(input: ContextFactsInput = {}): string {
     })
   }
   if (input.deckFrameworkDirective !== undefined && input.deckFrameworkDirective.trim() !== '') {
-    // 注指令块形态的 deck 槽（RR5）：OD 同构守卫句 + 指令文本。V1 缺省不供给（文件头注释）。
+    // deck 备用槽（D9：实际供给走材质化铺文件，本注入块槽不供给，见文件头注释）：
+    // OD 同构守卫句 + 指令文本。
     blocks.push({
       kind: 'instruction',
       name: 'deck-framework',

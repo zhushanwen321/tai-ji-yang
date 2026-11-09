@@ -13,8 +13,9 @@
  *      cordis.patch.yml od-persona 行 config 的缺省兜底值）；插值点以 {{token}} 标记
  *      承载于 {@link PANEL_PROTOCOL_SKELETON}（该常量即版本锚的哈希基准）。
  *   ② brand/skill 槽转占位指引：正源渲染期注入两个必需输入（空输入抛错），DSH 无
- *      渲染期注入通道——槽位以 {{skillId}}/{{brandName}}/{{brandBody}} 占位标记保留在
- *      段内，填写指引（{@link PANEL_SLOT_GUIDANCE}）随段注入，模型自演时自填：
+ *      渲染期注入通道——占位标记以双方括号 [[skillId]]/[[brandName]]/[[brandBody]] 形态
+ *      保留在段内（{{token}} 形态进宿主插值会被拒，见渲染处形态纪律注释），与正源标记
+ *      一一对应；填写指引（{@link PANEL_SLOT_GUIDANCE}）随段注入，模型自演时自填：
  *      选定设计系统 DESIGN.md 填品牌源位（未选定则声明无品牌源）、形状包或任务档 id
  *      填技能位（daemon 渲染期注入 → 会话内模型自填的等价形态）。
  *
