@@ -19,7 +19,7 @@ function probeDiagnostic(outcome) {
   if (outcome.status === "missing") return OD_MISSING_MESSAGE;
   return `${OD_PROBE_FAILED_MESSAGE}（探测错误：${outcome.reason}）`;
 }
-function apply(ctx) {
+function apply(ctx, config) {
   const located = locateOdAssets();
   const diagnostic = probeDiagnostic(toProbeOutcome(located));
   if (diagnostic !== void 0) {
@@ -28,7 +28,13 @@ function apply(ctx) {
   if (located.status !== "found") {
     throw new OdProbeError(OD_PROBE_FAILED_MESSAGE + "（探测结局与诊断判定不一致）");
   }
-  const bundle = composeSystemPrompt({ profile: located.profile });
+  const bundle = composeSystemPrompt({
+    profile: located.profile,
+    panelParams: {
+      ...config?.panelScoreThreshold !== void 0 ? { scoreThreshold: config.panelScoreThreshold } : {},
+      ...config?.panelMaxRounds !== void 0 ? { maxRounds: config.panelMaxRounds } : {}
+    }
+  });
   ctx.effect(() => ctx.systemPrompt.section({
     name: OD_PERSONA_SECTION_NAME,
     order: ctx.systemPrompt.getSectionOrder(OD_PERSONA_SECTION_ORDER_KEY),

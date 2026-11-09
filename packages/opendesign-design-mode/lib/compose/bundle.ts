@@ -15,7 +15,11 @@
  *   5. 占位符替换（OD 升级防御，渲染白名单与路由过滤共用，见 placeholders.ts）；
  *   6. 基本事实块（context-facts.ts，最小集合 + craft 指路块，D1）；
  *   7. 路由指令段（task-routing.ts，含形状包清单段，D2）；
- *   8. 设计系统清单段（design-systems.ts，manifest 感知形态，D3）。
+ *   8. 设计系统清单段（design-systems.ts，manifest 感知形态，D3）；
+ *   9. panel 评审团协议段（protocols/panel.ts 派生文本，D8）：数值经入参 panelParams
+ *      进（persona 行 od-persona config 的传入通道，U3a 移交），缺省兜底
+ *      PANEL_PROTOCOL_DEFAULTS（= OD defaultCritiqueConfig）；brand/skill 槽保留占位
+ *      标记由模型自演时自填（DSH 无渲染期注入通道，静态一次注册同 persona 机制）。
  *
  * 逐字纪律的验证口：改写按资产先行（core / orchestration 分文本各自过改写器）、拼接其后，
  * 占位符与事实块、路由段、清单段都在拼接之后追加——任何一段的内部顺序都不经本层重排
@@ -31,6 +35,7 @@ import type { OdManifestShape } from '../locate/manifest-discovery.js'
 import { buildAssetCatalog } from '../locate/asset-catalog.js'
 import { deriveCatalogDirs, readRosterAsset } from '../locate/version-profile.js'
 import type { VersionProfile } from '../types.js'
+import { renderPanelProtocolSection, type PanelProtocolParams } from '../protocols/panel.js'
 import { renderContextFacts } from './context-facts.js'
 import { renderDesignSystemsSegment } from './design-systems.js'
 import { replaceInjectionPlaceholders } from './placeholders.js'
@@ -56,6 +61,12 @@ export interface ComposedBundle {
 /** 组装入参（profile = U2a 定位链的 found 产物）。 */
 export interface ComposeBundleInput {
   profile: VersionProfile
+  /**
+   * panel 协议段数值参数（D8；od-persona 行 config 的传入通道）。
+   * 省略的键兜底 {@link PANEL_PROTOCOL_DEFAULTS}；传入对象不得携带 undefined 值键
+   * （展开覆盖会把缺省冲成 undefined——调用方按「传有效值或省略键」构造）。
+   */
+  panelParams?: Partial<PanelProtocolParams>
 }
 
 /** 从清单取注入资产声明路径（core/orchestration 的 "./assets/..." 相对路径）。 */
@@ -112,6 +123,9 @@ export function composeSystemPrompt(input: ComposeBundleInput): ComposedBundle {
     shapeTemplates: catalog.shapeTemplates,
   })
   const designSystems = renderDesignSystemsSegment(catalog.designSystems)
-  const text = [injected, facts, routing, designSystems].join(SECTION_SEPARATOR)
+  // panel 协议段（D8）：静态一次追加在编排区尾部；数值从入参进（od-persona config 通道）、
+  // 缺省兜底由 renderPanelProtocolSection 承担；brand/skill 槽位占位标记保留（DSH 生产形态）。
+  const panel = renderPanelProtocolSection(input.panelParams)
+  const text = [injected, facts, routing, designSystems, panel].join(SECTION_SEPARATOR)
   return { text, rewriteRecords: records }
 }

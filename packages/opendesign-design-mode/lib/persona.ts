@@ -71,13 +71,24 @@ export function probeDiagnostic(outcome: OdProbeOutcome): string | undefined {
   return `${OD_PROBE_FAILED_MESSAGE}（探测错误：${outcome.reason}）`
 }
 
+/** od-persona 行 config 消费的键（cordis.patch.yml preset 行显式声明的两键，D8）。 */
+export interface OdPersonaConfig {
+  /** panel 评审团收敛阈值（compose panelParams.scoreThreshold 的 config 通道）。 */
+  panelScoreThreshold?: number
+  /** panel 评审轮数上限（compose panelParams.maxRounds 的 config 通道）。 */
+  panelMaxRounds?: number
+}
+
 /**
  * persona 行装配入口：探测失败即激活失败（preset broken）；成功则静态注册一个 section，
  * 文本 = 组装器对当前资产的完整组装产物。
  *
  * @param ctx - Cordis 插件上下文（preset 组合 scope）；systemPrompt 服务经 inject 注入。
+ * @param config - patch.yml od-persona 行 config（D8：panel 数值可配，缺省键由
+ *   lib/protocols/panel.ts 的 PANEL_PROTOCOL_DEFAULTS 兜底；undefined 键剔除后才传——
+ *   展开覆盖会把缺省冲掉）。
  */
-export function apply(ctx: PersonaContext): void {
+export function apply(ctx: PersonaContext, config?: OdPersonaConfig): void {
   const located = locateOdAssets()
   const diagnostic = probeDiagnostic(toProbeOutcome(located))
   if (diagnostic !== undefined) {
@@ -88,7 +99,15 @@ export function apply(ctx: PersonaContext): void {
     // 类型收窄守卫（diagnostic 已判 found，运行时不可达）。
     throw new OdProbeError(OD_PROBE_FAILED_MESSAGE + '（探测结局与诊断判定不一致）')
   }
-  const bundle = composeSystemPrompt({ profile: located.profile })
+  const bundle = composeSystemPrompt({
+    profile: located.profile,
+    panelParams: {
+      ...(config?.panelScoreThreshold !== undefined
+        ? { scoreThreshold: config.panelScoreThreshold }
+        : {}),
+      ...(config?.panelMaxRounds !== undefined ? { maxRounds: config.panelMaxRounds } : {}),
+    },
+  })
   ctx.effect(() => ctx.systemPrompt.section({
     name: OD_PERSONA_SECTION_NAME,
     order: ctx.systemPrompt.getSectionOrder(OD_PERSONA_SECTION_ORDER_KEY),

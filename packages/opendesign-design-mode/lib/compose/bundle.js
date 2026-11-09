@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { applyRewrites } from "../rewrite/apply.js";
 import { buildAssetCatalog } from "../locate/asset-catalog.js";
 import { deriveCatalogDirs, readRosterAsset } from "../locate/version-profile.js";
+import { renderPanelProtocolSection } from "../protocols/panel.js";
 import { renderContextFacts } from "./context-facts.js";
 import { renderDesignSystemsSegment } from "./design-systems.js";
 import { replaceInjectionPlaceholders } from "./placeholders.js";
@@ -47,7 +48,8 @@ function composeSystemPrompt(input) {
     shapeTemplates: catalog.shapeTemplates
   });
   const designSystems = renderDesignSystemsSegment(catalog.designSystems);
-  const text = [injected, facts, routing, designSystems].join(SECTION_SEPARATOR);
+  const panel = renderPanelProtocolSection(input.panelParams);
+  const text = [injected, facts, routing, designSystems, panel].join(SECTION_SEPARATOR);
   return { text, rewriteRecords: records };
 }
 export {

@@ -7,21 +7,25 @@
  * 改写器 → 占位符防御 → 事实块（含 craft 指路块）→ 路由段（含形状包清单段与 ppt 协议
  * 指针）→ 设计系统清单段。
  *
- * 断言结构（两单元任务书验收条款对账）：
- * 1. 拼接顺序与 OD 组装契约同构（core → orchestration → 事实块 → 路由段 → 设计系统段；
- *    逐字纪律抽查）
- * 2. 占位符零残留（组装产物 + 占位符替换逻辑的白名单过滤行为——RL3 断言对象）
+ * 断言结构（单元任务书验收条款对账）：
+ * 1. 拼接顺序与 OD 组装契约同构（core → orchestration → 事实块 → 路由段 → 设计系统段
+ *    → panel 协议段；逐字纪律抽查）
+ * 2. 占位符零残留（组装产物 + 占位符替换逻辑的白名单过滤行为——RL3 断言对象；panel
+ *    槽位三标记是 D8 有意形态，单列断言）
  * 3. 路由段含八类任务档绝对路径、不含排除五档路径（D6 白名单）
  * 4. media 段报缺语义在组装产物中在场（D6 ①④⑤ 抽样 + motion-design 条目级压制指令）
  * 5. 注入文本特征串全量清零（$OD_BIN / Integration 视图——RL3 的组装管线断言，
  *    fixture 含完整 D6④ 段供段锚命中；自产段由 4/5 的分组断言分别覆盖）
  * 6. 事实块形态（od-next-context 格式、结束标签转义、最小集合两字段 + deck 槽接口）
- * 7. persona 静态注册一次（found 注册 / missing 与 error 激活失败）
+ * 7. persona 静态注册一次（found 注册 / missing 与 error 激活失败；od-persona config
+ *    两键通道 = U3b）
  * 8.（U2）craft 指路块（D1：根路径 + 消费指引；目录缺失整体省略）
  * 9.（U2）形状包清单段（D2：一行一包 + 根路径声明 + 中文项摘录 + ppt 条目协议指针）
  * 10.（U2）设计系统清单段（D3：manifest 感知 name/category + 深层文件指路）
  * 11.（U2）降级空段形态（mini-od 无三目录：craft 块省略 + 两清单段空指引，AX5）
- * 12.（U2）注入体积断言（RL7：真机组装全文行数 ≤ N，N=1500 由真机实测校准登记 runlog）
+ * 12.（U2）注入体积断言（RL7：真机组装全文行数 ≤ N，N=1700 由真机实测校准登记 runlog）
+ * 13.（U3b）panel 评审团协议段（D8：段序尾部追加、缺省兜底 PANEL_PROTOCOL_DEFAULTS、
+ *    panelParams 数值通道、槽位占位标记保留 + 自填指引在场）
  */
 import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -79,10 +83,12 @@ const profile = fixtureProfile()
 const composed = composeSystemPrompt({ profile })
 const routingStart = composed.text.indexOf('## Task routing (design mode)')
 const designSystemsStart = composed.text.indexOf('### Design systems installed on this machine')
+/** panel 协议段锚（U3b 编排区尾段；设计系统段切片的下界）。 */
+const panelStart = composed.text.indexOf('[Panel jury protocol — DSH session form]')
 /** 路由段（本单元自产内容，U2 起不含设计系统清单节）——特征串清零断言的作用域。 */
 const ROUTING_TEXT = composed.text.slice(routingStart, designSystemsStart)
-/** 设计系统清单段（本单元自产内容，独立注入段）。 */
-const DESIGN_SYSTEMS_TEXT = composed.text.slice(designSystemsStart)
+/** 设计系统清单段（本单元自产内容，独立注入段；U3b 起 panel 段在其后，切片止于段锚）。 */
+const DESIGN_SYSTEMS_TEXT = composed.text.slice(designSystemsStart, panelStart)
 /** 事实块段（本单元自产内容），位于注入文本与路由段之间。 */
 const FACTS_TEXT = composed.text.slice(composed.text.indexOf('<od-next-context'), routingStart)
 /** 注入文本（core + orchestration 的改写产物），位于组装产物开头与事实块之间。 */
@@ -92,8 +98,8 @@ const catalogFull = buildAssetCatalog(deriveCatalogDirs(catalogFullRoot))
 /** 真机 OD 资产根（对账锚，同 locate.test.ts；impl-plan 风险表：OD 升级后复跑对账）。 */
 const realAssetRoot = '/Applications/Open Design.app/Contents/Resources/open-design'
 const hasRealAssetRoot = existsSync(realAssetRoot)
-/** RL7 体积断言基准：真机 2.0.4 实测 1263 行（2026-11-10），+19% 余量容纳 OD 升级包数增长（runlog 登记）。 */
-const RL7_MAX_TOTAL_LINES = 1500
+/** RL7 体积断言基准：真机 2.0.4 实测 1421 行（2026-11-10，U2 基线 1263 + U3b panel 段常量 155），+19% 余量容纳 OD 升级包数增长（runlog 登记；panel 段为派生常量不占漂移余量）。 */
+const RL7_MAX_TOTAL_LINES = 1700
 
 // —— 临时树：缺档降级用例（用后清理）——
 const tempRoots: string[] = []
@@ -103,22 +109,24 @@ afterEach(() => {
   vi.mocked(locateOdAssets).mockReset()
 })
 
-describe('组装顺序与 OD 组装契约同构（core → orchestration → 事实块 → 路由段 → 设计系统段）', () => {
-  it('五段先后序正确（marker 索引单调递增）', () => {
+describe('组装顺序与 OD 组装契约同构（core → orchestration → 事实块 → 路由段 → 设计系统段 → panel 协议段）', () => {
+  it('六段先后序正确（marker 索引单调递增；panel 段 = U3b 编排区尾部追加）', () => {
     const coreAt = composed.text.indexOf('# OD Next Core System Prompt（fixture 摘录）')
     const orchAt = composed.text.indexOf('# OD Next General Orchestration（fixture 摘录）')
     const factsAt = composed.text.indexOf('<od-next-context kind="fact" name="device-frames">')
     const routingAt = routingStart
     const designSystemsAt = designSystemsStart
+    const panelAt = composed.text.indexOf('[Panel jury protocol — DSH session form]')
     expect(coreAt).toBeGreaterThanOrEqual(0)
     expect(orchAt).toBeGreaterThan(coreAt)
     expect(factsAt).toBeGreaterThan(orchAt)
     expect(routingAt).toBeGreaterThan(factsAt)
     expect(designSystemsAt).toBeGreaterThan(routingAt)
+    expect(panelAt).toBeGreaterThan(designSystemsAt)
   })
 
-  it('段间连接形态 = OD 组装的 sections.join 分隔（恰 4 处）', () => {
-    expect((composed.text.match(/\n\n---\n\n/g) ?? []).length).toBe(4)
+  it('段间连接形态 = OD 组装的 sections.join 分隔（恰 5 处）', () => {
+    expect((composed.text.match(/\n\n---\n\n/g) ?? []).length).toBe(5)
   })
 
   it('逐字纪律：core/orchestration 未被组装层重排（保留段原文在场）', () => {
@@ -138,11 +146,19 @@ describe('组装顺序与 OD 组装契约同构（core → orchestration → 事
   })
 })
 
-describe('占位符零残留（RL3 断言对象）', () => {
-  it('组装产物不含占位符字面（fixture 基线文本本无占位符）', () => {
+describe('占位符零残留（RL3 断言对象；panel 槽位标记是 D8 有意形态，单列断言）', () => {
+  it('组装产物不含 OD 注入资产占位符字面（SKILL_CATALOG / SKILL_ROOT，全文域）', () => {
     expect(composed.text).not.toContain('{{SKILL_CATALOG}}')
     expect(composed.text).not.toContain('{{SKILL_ROOT}}')
-    expect(composed.text).not.toContain('{{')
+  })
+
+  it('注入资产域泛化 {{ 清零（RL3 防御域 = core/orchestration 改写产物）', () => {
+    expect(INJECTED_TEXT).not.toContain('{{')
+  })
+
+  it('全文 {{ 字面仅限 panel 槽位三标记（槽位模型自填 = D8 有意保留，其余域零残留）', () => {
+    const tokens = [...new Set(composed.text.match(/\{\{[a-zA-Z]+\}\}/g) ?? [])].sort()
+    expect(tokens).toEqual(['{{brandBody}}', '{{brandName}}', '{{skillId}}'])
   })
 
   it('替换逻辑：占位符文本经白名单过滤渲染（OD 升级防御行为）', () => {
@@ -356,6 +372,16 @@ describe('persona 静态注册一次（found 注册 / missing 与 error 激活�
     expect(probeDiagnostic({ status: 'missing' })).toBe(OD_MISSING_MESSAGE)
     expect(probeDiagnostic({ status: 'error', reason: 'boom' })).toContain('boom')
   })
+
+  it('od-persona config 两键进组装产物（U3b：panelScoreThreshold / panelMaxRounds 通道）', () => {
+    const { ctx, effects } = makeCtx()
+    personaApply(ctx, { panelScoreThreshold: 9.5, panelMaxRounds: 5 })
+    effects[0]?.fn()
+    const section = ctx.systemPrompt.section as ReturnType<typeof vi.fn>
+    const arg = section.mock.calls[0]?.[0] as { text: string }
+    expect(arg.text).toContain('threshold="9.5"')
+    expect(arg.text).toContain('maxRounds="5"')
+  })
 })
 
 // ── opendesign-assets-quality U2：craft 指路块 / 形状包清单段 / ppt 协议指针 / 设计系统段 ──
@@ -483,8 +509,61 @@ describe('设计系统清单段（D3 manifest 感知，U2）', () => {
   })
 })
 
+// ── opendesign-assets-quality U3b：panel 评审团协议段接线（D8，编排在 bundle.ts）──
+
+describe('panel 评审团协议段（D8 接线，U3b）', () => {
+  it('组装产物含 panel 协议段：指引块先于骨架，CRITIQUE_RUN 标记在场（验收条款①）', () => {
+    const guidanceAt = composed.text.indexOf('[Panel jury protocol — DSH session form]')
+    const skeletonAt = composed.text.indexOf('# Critique Theater (active skill: {{skillId}})')
+    expect(guidanceAt).toBeGreaterThanOrEqual(0)
+    expect(skeletonAt).toBeGreaterThan(guidanceAt)
+    expect(composed.text).toContain('<CRITIQUE_RUN version="1" maxRounds="3" threshold="8" scale="10">')
+    expect(composed.text).toContain('<SHIP round="K" composite="N" status="shipped">')
+  })
+
+  it('缺省兜底 = PANEL_PROTOCOL_DEFAULTS 数值（阈值 8 / 轮数 3 / 刻度 10 / OD 权重行）', () => {
+    expect(composed.text).toContain('maxRounds="3"')
+    expect(composed.text).toContain('threshold="8"')
+    expect(composed.text).toContain('scale="10"')
+    expect(composed.text).toContain('up to maxRounds=3')
+    expect(composed.text).toContain('composite >= 8 (on a 0-10 scale)')
+    expect(composed.text).toContain('weights: designer=0, critic=0.4, brand=0.2, a11y=0.2, copy=0.2')
+  })
+
+  it('config 传入形态：panelParams 数值进产物（od-persona config 的传入通道）', () => {
+    const { text } = composeSystemPrompt({
+      profile,
+      panelParams: { scoreThreshold: 9.5, maxRounds: 5 },
+    })
+    expect(text).toContain('maxRounds="5"')
+    expect(text).toContain('threshold="9.5"')
+    expect(text).toContain('composite >= 9.5')
+    // 未传的键维持缺省兜底（刻度 10），且缺省阈值形态不再在场。
+    expect(text).toContain('scale="10"')
+    expect(text).not.toContain('threshold="8"')
+  })
+
+  it('config 部分键形态：只传轮数时阈值维持缺省兜底', () => {
+    const { text } = composeSystemPrompt({ profile, panelParams: { maxRounds: 2 } })
+    expect(text).toContain('maxRounds="2"')
+    expect(text).toContain('threshold="8"')
+  })
+
+  it('越界参数显式失败：接线层透传 RangeError 不吞错（fail-fast，非 AX5 降级场景）', () => {
+    expect(() => composeSystemPrompt({ profile, panelParams: { maxRounds: 0 } })).toThrow(RangeError)
+  })
+
+  it('brand/skill 槽位占位标记保留 + 模型自填指引在场（D8 DSH 生产形态）', () => {
+    expect(composed.text).toContain('# Critique Theater (active skill: {{skillId}})')
+    expect(composed.text).toContain('<BRAND_SOURCE name="{{brandName}}">')
+    expect(composed.text).toContain('the selected design-template directory name')
+    expect(composed.text).toContain('No brand source selected for this run.')
+    expect(composed.text).toContain('ship-on-write')
+  })
+})
+
 describe('注入体积断言（RL7：真机实测校准，U2）', () => {
-  it('真机 2.0.4 资产：组装全文行数 ≤ 1500（N 由实测 1263 校准，runlog 登记）+ 新段真机形态实锚', () => {
+  it('真机 2.0.4 资产：组装全文行数 ≤ 1700（N 由实测 1421 校准，runlog 登记）+ 新段真机形态实锚', () => {
     if (!hasRealAssetRoot) {
       // 跳过不是静默：CI / 无 OD 机器上播报说明——体积基准与行形态锚以 runlog 实测登记为准。
       console.warn(`[skip] 真机 OD 资产根不在场（${realAssetRoot}），体积断言跳过`)
@@ -505,5 +584,7 @@ describe('注入体积断言（RL7：真机实测校准，U2）', () => {
     )
     expect(text).toContain('<od-next-context kind="fact" name="craft">')
     expect(text).toContain('.od-frames/deck-framework.md')
+    // panel 协议段真机落点（U3b）：缺省数值形态在真机组装产物同样在场。
+    expect(text).toContain('<CRITIQUE_RUN version="1" maxRounds="3" threshold="8" scale="10">')
   })
 })
