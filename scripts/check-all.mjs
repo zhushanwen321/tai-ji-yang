@@ -22,6 +22,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { workspacePackages } from './workspace-packages.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = join(here, '..')
@@ -76,10 +77,17 @@ if (!staticOnly && !skipBuild) {
   console.log('── 构建 ─────────────────────────────────')
   report({ label: 'scripts/build-client.mjs', ...run('build', [join('scripts', 'build-client.mjs')]) })
 } else if (!staticOnly && skipBuild) {
-  const hasArtifact = existsSync(join(root, 'lib', 'client.js'))
   console.log(`── 构建 ─────────────────────────────────`)
-  console.log(`  ${hasArtifact ? '✔' : '✘'} lib/client.js 存量产物${hasArtifact ? '存在，跳过构建' : '缺失（--skip-build 无产物可检）'}`)
-  results.push({ label: 'lib/client.js 存量', code: hasArtifact ? 0 : 1 })
+  // 逐包检查存量产物：--skip-build 只跳过构建动作，被检对象仍是全部包的 lib/——只看根包
+  // 会让子包产物缺失静默漏网（多包改造前的单包残留）
+  let missing = 0
+  for (const pkg of workspacePackages()) {
+    const pkgLabel = pkg.dir === '.' ? pkg.name : pkg.dir
+    const hasArtifact = existsSync(join(root, pkg.dir, 'lib', 'client.js'))
+    if (!hasArtifact) missing += 1
+    console.log(`  ${hasArtifact ? '✔' : '✘'} ${pkgLabel} lib/client.js 存量产物${hasArtifact ? '存在，跳过构建' : '缺失（--skip-build 无产物可检）'}`)
+  }
+  results.push({ label: '各包 lib/client.js 存量', code: missing === 0 ? 0 : 1 })
 }
 
 // ── 3. 全仓单测 ────────────────────────────────────────────────

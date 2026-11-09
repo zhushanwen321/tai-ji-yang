@@ -14,8 +14,8 @@
  * （ctx 读取门控）。两者同名不同义，不可互相替代——声明了浏览器半场的包两个都要。
  *
  * 只依赖 node 内置模块（不引 js-yaml，保持零依赖前提）：cordis.patch.yml 的合法性以「非空
- * 且首行为 `- ` 条目」这一最小结构检查替代完整 YAML 解析；preset 注册面断言同样是文本级
- * （见 PER_PACKAGE_CHILD_ASSERTIONS 的注释）。
+ * 且首行为 `- ` 条目」这一最小结构检查替代完整 YAML 解析；preset 注册断言同样是文本级
+ * （见 checkPresetRegistration 的注释，按 workspace-packages.mjs 的 preset 登记执行）。
  * 退出码 0 = 全部通过，1 = 至少一项失败（失败项逐条打到 stderr）。
  */
 import { existsSync, readFileSync } from 'node:fs'
@@ -56,7 +56,10 @@ const REQUIRED_SERVICE_INJECT = ['slots', 'locale', 'theme', 'configForms', 'rem
 const ROOT_ONLY_CHECKS = new Set(['tai-ji-yang-shell'])
 
 /**
- * 子包特有：preset 注册面（U1 验收条款③ / RL1 的注册面机器化）。
+ * preset 注册断言（U1 验收条款③ / RL1 的注册面机器化）：**按登记执行**——只有
+ * scripts/workspace-packages.mjs 登记了 `preset` 字段的包才跑本断言（config.id 裁决值取
+ * 自登记，单一权威）；未登记的子包显式播报不适用，避免「所有子包都被假定有 preset」的
+ * 误伤（未来出现无 preset 的功能子包时无需改本文件）。
  *
  * 断言 cordis.patch.yml 含一行 `@deepseek-ai/dsh-agent-preset` 声明，其 config 内
  * id/name/description/order 齐备，且 config.plugins 显式声明「standard 全量基线 + 本包四
@@ -101,8 +104,7 @@ const PRESET_PLUGINS_REQUIRED = [
   '@deepseek-ai/dsh-plugin-market/tools',
 ]
 
-/** preset config.id 的裁决值（roster / 新会话选择器 / 会话归属记录用它作标识）。 */
-const PRESET_ID = 'opendesign'
+/** preset config.id 的裁决值不在本文件写死：取自 workspace-packages.mjs 的 preset 登记（单一权威）。 */
 
 function presetConfigBlock(patchPath, patchLines) {
   const presetIndex = patchLines.findIndex((line) => line.includes("name: '@deepseek-ai/dsh-agent-preset'"))
@@ -135,8 +137,8 @@ function checkPresetRegistration(pkg, patchPath, patchLines) {
       throw new Error(`preset config.${fieldName} 缺失（agent-preset schema 要求 id/name/description/order/plugins，0.1.7 与 0.2.x 双版本包内 lib 实读一致）`)
     }
   }
-  if (!configFields.some((line) => line.trim() === `id: ${PRESET_ID}`)) {
-    throw new Error(`preset config.id 应为 ${PRESET_ID}（roster 与会话归属记录以它为标识）`)
+  if (!configFields.some((line) => line.trim() === `id: ${pkg.preset.id}`)) {
+    throw new Error(`preset config.id 应为 ${pkg.preset.id}（roster 与会话归属记录以它为标识；裁决值登记在 scripts/workspace-packages.mjs 的 preset 字段）`)
   }
 
   const pluginsIndent = block[pluginsIndex].match(/^\s*/)[0].length
@@ -330,11 +332,20 @@ function checkPackage(pkg) {
         throw new Error(`inject 缺少本包实际消费的宿主服务: ${missing.join(', ')}（已声明: ${declared.join(', ') || '无'}）`)
       }
     })
+  } else if (pkg.preset) {
+    if (typeof pkg.preset.id !== 'string' || pkg.preset.id === '') {
+      check(label('preset 登记合法'), () => {
+        throw new Error('scripts/workspace-packages.mjs 的 preset 登记缺少非空 id 字符串')
+      })
+    } else {
+      const patchPath = field(manifest, 'dsh.bundle.patch')
+      check(label('preset 注册面：agent-preset 行 + config.plugins standard 全量基线显式声明'), () => {
+        checkPresetRegistration(pkg, patchPath, patchLines(pkg, manifest))
+      })
+    }
   } else {
-    const patchPath = field(manifest, 'dsh.bundle.patch')
-    check(label('preset 注册面：agent-preset 行 + config.plugins standard 全量基线显式声明'), () => {
-      checkPresetRegistration(pkg, patchPath, patchLines(pkg, manifest))
-    })
+    // 无 preset 登记的子包：preset 断言不适用（登记表是判定权威，未登记 ≠ 漏检）
+    console.log(`  — [${pkgLabel}] preset 注册断言不适用（未登记 preset；登记后自动纳入本断言）`)
   }
 }
 

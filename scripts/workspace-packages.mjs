@@ -42,6 +42,11 @@ export const CHILD_PACKAGES = [
     dir: 'packages/opendesign-design-mode',
     clientEntry: 'client/preview-tab/index.tsx',
     nodeHalf: { kind: 'transpile-lib' },
+    // preset 登记：该包 cordis.patch.yml 声明 agent-preset 行时在此登记其 config.id 裁决值
+    // （roster / 新会话选择器 / 会话归属记录以它作标识）。check-manifest 的 preset 注册断言
+    // 按本字段判定与取值；无 preset 的子包不登记本字段，断言显式播报不适用——判定权威在
+    // 登记表，不在「是否根包」的二分。
+    preset: { id: 'opendesign' },
   },
 ]
 
@@ -98,7 +103,7 @@ function readWorkspaceGlobs() {
  * workspace 全部包（根包在前、子包按登记序），并把本文件登记与 pnpm-workspace.yaml 声明
  * 对账——不一致即抛（可行动信息指名缺哪侧登记）。
  *
- * @returns {Array<{name: string, dir: string, clientEntry: string, nodeHalf: object, manifest: object}>}
+ * @returns {Array<{name: string, dir: string, clientEntry: string, nodeHalf: object, preset?: {id: string}, manifest: object}>}
  */
 export function workspacePackages() {
   const declared = new Set(readWorkspaceGlobs().flatMap((glob) => expandPattern(glob)))
