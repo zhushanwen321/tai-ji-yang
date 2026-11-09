@@ -117,7 +117,7 @@ function renderMaterializeSection(sessionCwd, issues) {
   const targetRoot = join(sessionCwd, OD_FRAMES_DIR);
   const lines = [
     `- 会话工作目录：${sessionCwd}`,
-    `- 写入落点（D8 约定子目录）：${targetRoot}`
+    `- 写入落点（V1 设计包 D8 约定子目录）：${targetRoot}`
   ];
   if (!existsSync(targetRoot)) {
     lines.push("- 状态：尚未预铺（落点目录不存在；材质化在会话创建时无条件全量重铺，新会话首轮前执行本命令即此形态）。");

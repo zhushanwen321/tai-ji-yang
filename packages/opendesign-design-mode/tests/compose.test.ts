@@ -11,7 +11,7 @@
  * 1. 拼接顺序与 OD 组装契约同构（core → orchestration → 事实块 → 路由段 → 设计系统段
  *    → panel 协议段；逐字纪律抽查）
  * 2. 占位符零残留（组装产物 + 占位符替换逻辑的白名单过滤行为——V1 设计包 RL3 断言对象；panel
- *    槽位三标记是 D8 有意形态，单列断言）
+ *    槽位三标记是 opendesign-assets-quality D8 有意形态，单列断言）
  * 3. 路由段含八类任务档绝对路径、不含排除五档路径（V1 设计包 D6 白名单）
  * 4. media 段报缺语义在组装产物中在场（V1 设计包 D6 ①④⑤ 抽样 + motion-design 条目级压制指令）
  * 5. 注入文本特征串全量清零（$OD_BIN / Integration 视图——V1 设计包 RL3 的组装管线断言，
@@ -24,7 +24,7 @@
  * 10.（U2）设计系统清单段（D3：manifest 感知 name/category + 深层文件指路）
  * 11.（U2）降级空段形态（mini-od 无三目录：craft 块省略 + 两清单段空指引，AX5）
  * 12.（U2）注入体积断言（RL7：真机组装全文行数 ≤ N，N=1700 由真机实测校准登记 runlog）
- * 13.（U3b）panel 评审团协议段（D8：段序尾部追加、缺省兜底 PANEL_PROTOCOL_DEFAULTS、
+ * 13.（U3b）panel 评审团协议段（opendesign-assets-quality D8：段序尾部追加、缺省兜底 PANEL_PROTOCOL_DEFAULTS、
  *    panelParams 数值通道、槽位占位标记保留 + 自填指引在场）
  */
 import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
@@ -146,7 +146,7 @@ describe('组装顺序与 OD 组装契约同构（core → orchestration → 事
   })
 })
 
-describe('占位符零残留（V1 设计包 RL3 断言对象；panel 槽位标记是 D8 有意形态，单列断言）', () => {
+describe('占位符零残留（V1 设计包 RL3 断言对象；panel 槽位标记是 opendesign-assets-quality D8 有意形态，单列断言）', () => {
   it('组装产物不含 OD 注入资产占位符字面（SKILL_CATALOG / SKILL_ROOT，全文域）', () => {
     expect(composed.text).not.toContain('{{SKILL_CATALOG}}')
     expect(composed.text).not.toContain('{{SKILL_ROOT}}')
@@ -449,7 +449,7 @@ describe('形状包清单段（D2 一行一包，U2）', () => {
   })
 })
 
-describe('ppt 条目 deck 协议指针（D9，U2）', () => {
+describe('ppt 条目 deck 协议指针（opendesign-assets-quality D9，U2）', () => {
   it('ppt 条目附 .od-frames/deck-framework.md 协议文件指针（上游约定名，材质化铺文件自读）', () => {
     expect(ROUTING_TEXT).toContain('2. Presentation (HTML slides / deck)')
     expect(ROUTING_TEXT).toContain('.od-frames/deck-framework.md')
@@ -511,7 +511,7 @@ describe('设计系统清单段（D3 manifest 感知，U2）', () => {
 
 // ── opendesign-assets-quality U3b：panel 评审团协议段接线（D8，编排在 bundle.ts）──
 
-describe('panel 评审团协议段（D8 接线，U3b）', () => {
+describe('panel 评审团协议段（opendesign-assets-quality D8 接线，U3b）', () => {
   it('组装产物含 panel 协议段：指引块先于骨架，CRITIQUE_RUN 标记在场（验收条款①）', () => {
     const guidanceAt = composed.text.indexOf('[Panel jury protocol — DSH session form]')
     const skeletonAt = composed.text.indexOf('# Critique Theater (active skill: [[skillId]])')
@@ -553,7 +553,7 @@ describe('panel 评审团协议段（D8 接线，U3b）', () => {
     expect(() => composeSystemPrompt({ profile, panelParams: { maxRounds: 0 } })).toThrow(RangeError)
   })
 
-  it('brand/skill 槽位占位标记保留（[[token]] 形态，宿主插值安全）+ 模型自填指引在场（D8 DSH 生产形态）', () => {
+  it('brand/skill 槽位占位标记保留（[[token]] 形态，宿主插值安全）+ 模型自填指引在场（opendesign-assets-quality D8 DSH 生产形态）', () => {
     expect(composed.text).toContain('# Critique Theater (active skill: [[skillId]])')
     expect(composed.text).toContain('<BRAND_SOURCE name="[[brandName]]">')
     expect(composed.text).toContain('the selected design-template directory name')
