@@ -1,6 +1,6 @@
 # tests/fixtures/lint-cases/ 目录索引
 
-反 AI 味检查器（`lib/quality/lint.ts`，U4）逐检查项 fixture 对账样本（RL4）。消费方：`tests/quality/lint.test.ts` 的 `CHECK_CASES` 注册表循环——每个检查项一对文件：`<检查项 id>.hit.html`（命中样例，断言该 id 以期望 severity 命中）+ `<检查项 id>.clean.html`（非命中反例，断言全检查项零发现）。
+反 AI 味检查器（`lib/quality/lint.ts`，本轮 U4）逐检查项 fixture 对账样本（本轮 RL4）。消费方：`tests/quality/lint.test.ts` 的 `CHECK_CASES` 注册表循环——每个检查项一对文件：`<检查项 id>.hit.html`（命中样例，断言该 id 以期望 severity 命中）+ `<检查项 id>.clean.html`（非命中反例，断言全检查项零发现）。
 
 ## 来源与对账方法
 

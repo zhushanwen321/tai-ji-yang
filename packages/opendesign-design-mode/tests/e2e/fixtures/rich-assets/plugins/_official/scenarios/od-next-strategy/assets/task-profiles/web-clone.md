@@ -1,7 +1,7 @@
 <!--
   fixture 摘录：OD 仓 .../assets/task-profiles/web-clone.md（0.25.1 检出原文，2026-11-09）。
   八类路由之网页复刻档；收录开头两段（原文 L3-5）——「用运行时既有 browser/fetch 工具
-  读目标页、不装浏览器」语义是 U1 子插件清单声明 tool-web 的依据（设计 D6）。
+  读目标页、不装浏览器」语义是 V1·U1 子插件清单声明 tool-web 的依据（设计 V1·D6）。
 -->
 # OD Next Web Clone Task Profile v3.1.1（fixture 摘录）
 
