@@ -28,6 +28,7 @@
  * 源清单/源资源缺失或清单结构漂移时 fail-fast 抛错（AX5 显式降级语义——材质化失败抛错由
  * lib/index.js 的 agent-preset/selected 事件监听捕获记 logger.error（不阻断会话），落点
  * 状态由 doctor 第⑤项感知，绝不静默产出残缺副本）。
+ * 编号口径：本文件编号跨两代设计包——V1 设计包（opendesign-design-mode）域编号带「V1 设计包 / V1·」前缀；裸编号默认属 opendesign-assets-quality 设计包（本轮）。
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'

@@ -16,6 +16,7 @@
  * fixture 消费纪律：tests/fixtures/mini-od 共享树只读；「源变更」断言不触碰共享树
  * （改共享 fixture 会污染 fixtures.test.ts 与并行消费方断言），在 tmpdir 深拷贝源上模拟——
  * 语义等价：材质化器对源的唯一假设是「清单 + 资源在盘可读」，与具体目录无关。
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
  */
 
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'

@@ -26,6 +26,7 @@
  * 12.（U2）注入体积断言（RL7：真机组装全文行数 ≤ N，N=1700 由真机实测校准登记 runlog）
  * 13.（U3b）panel 评审团协议段（opendesign-assets-quality D8：段序尾部追加、缺省兜底 PANEL_PROTOCOL_DEFAULTS、
  *    panelParams 数值通道、槽位占位标记保留 + 自填指引在场）
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
  */
 import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -238,17 +239,17 @@ describe('路由段：八类路径 + 排除五档不进清单（V1 设计包 D6 
 })
 
 describe('media 段报缺语义在组装产物中在场（V1 设计包 D6 抽样）', () => {
-  it('D6① core 独立图片交付段替换语义在场', () => {
+  it('V1 设计包 D6① core 独立图片交付段替换语义在场', () => {
     expect(composed.text).toContain('Design mode V1 has no image, video, or audio production pipeline')
     expect(composed.text).not.toContain('deliver the actual image file')
   })
 
-  it('D6⑤a core 媒体 production-step 句反转为源码即交付物', () => {
+  it('V1 设计包 D6⑤a core 媒体 production-step 句反转为源码即交付物', () => {
     expect(composed.text).toContain('source code is the deliverable for motion and media-adjacent work')
     expect(composed.text).not.toContain('Source code alone is not rendered media')
   })
 
-  it('D6④ orchestration Media input Skill 段整段报缺化（段锚在 fixture 上命中）', () => {
+  it('V1 设计包 D6④ orchestration Media input Skill 段整段报缺化（段锚在 fixture 上命中）', () => {
     const record = composed.rewriteRecords.find(
       (entry) => entry.ruleId === 'r5-orch-media-input-skill-section',
     )
@@ -264,7 +265,7 @@ describe('media 段报缺语义在组装产物中在场（V1 设计包 D6 抽样
 })
 
 describe('注入文本特征串全量清零（V1 设计包 RL3 的组装管线断言）', () => {
-  it('注入文本无 od CLI 特征串（$OD_BIN 域；fixture 含完整 D6④ 段供段锚命中）', () => {
+  it('注入文本无 od CLI 特征串（$OD_BIN 域；fixture 含完整 V1 设计包 D6④ 段供段锚命中）', () => {
     expect(INJECTED_TEXT).not.toContain('$OD_BIN')
     expect(INJECTED_TEXT).not.toContain('$OD_NODE_BIN')
     expect(INJECTED_TEXT).not.toContain('$OD_WORKSPACE')

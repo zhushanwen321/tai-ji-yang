@@ -32,6 +32,7 @@
  *    按设计 D5 自建（来源标记 + 作用域句 + 修复指引），移植它会留下死导出且与 D5
  *    消息契约冲突；
  * 3. 正源 lintArtifact 内声明后未使用的局部变量 `lower` 不移植（死变量，无行为）。
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
  */
 
 /** 发现严重级（正源 ArtifactLintSeverity 的内联等价）。 */

@@ -18,6 +18,7 @@
  * 7. 三目录派生与资产摘要扫描（impl-plan U1：deriveCatalogDirs + buildAssetCatalog 三态
  *    降级；fixture asset-catalog/full + missing-dirs + 真机对账组——full 被 compose.test
  *    共享消费）
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
  */
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'

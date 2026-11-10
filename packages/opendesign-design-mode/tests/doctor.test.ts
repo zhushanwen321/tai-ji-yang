@@ -21,6 +21,7 @@
  *    RL5；任务书验收条款②）与 clone 探测单元（GPK1 命令口径）
  * 10. 第⑪节：report.jsonl 读侧断言（U5 三行型真写侧落行 + 损坏行容忍 + 无记录未启动
  *     原因，RL9；任务书验收条款③）
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
  */
 import { execFileSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'

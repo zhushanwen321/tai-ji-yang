@@ -1,5 +1,5 @@
 /*
- * opendesign-design-mode 设计预览面板样式（U7）。
+ * opendesign-design-mode 设计预览面板样式（V1 设计包 impl-plan U7）。
  *
  * 类名前缀 odp-（opendesign design panel）做包内隔离——构建器把 client/ 下全部 CSS 按
  * 目录扫描拼成单一 <style id="opendesign-design-mode-styles"> 注入，类名前缀是唯一的

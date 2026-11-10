@@ -13,6 +13,7 @@
  *     deck-framework.md 全文（评估值）。
  *
  * 语义权威：opendesign-assets-quality 设计 §3.3 D7/D8/D9 + §5.1 U3 验收条款①②③；AX3 版本锚对账义务。
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
  */
 
 import { readFileSync } from 'node:fs'

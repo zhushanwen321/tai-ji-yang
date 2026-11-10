@@ -1,5 +1,5 @@
 {
-  "$fixtureSource": "资产漂移形态：与 ../mini-od 同源的迷你清单放在非默认相对位置，模拟 OD 升级后目录迁移（设计 V6/A6——搜索式清单发现仍应在 glob 范围内定位到它）。默认相对位置参照 mini-od = plugins/_official/scenarios/od-next-strategy/open-design.json；本树迁移到 upgraded/v2/od-next-strategy/。版本字段整体上调一档（manifest 3.3.8→3.4.0、core/orchestration 3.2.0→3.2.1）供版本画像断言「报告实际版本」。roster 裁至 4 项声明（漂移场景只验证定位与画像，不承载材质化/改写语义）。OD 升级后按本注释对账更新。",
+  "$fixtureSource": "资产漂移形态：与 ../mini-od 同源的迷你清单放在非默认相对位置，模拟 OD 升级后目录迁移（设计 V1·V6/V1·A6——搜索式清单发现仍应在 glob 范围内定位到它）。默认相对位置参照 mini-od = plugins/_official/scenarios/od-next-strategy/open-design.json；本树迁移到 upgraded/v2/od-next-strategy/。版本字段整体上调一档（manifest 3.3.8→3.4.0、core/orchestration 3.2.0→3.2.1）供版本画像断言「报告实际版本」。roster 裁至 4 项声明（漂移场景只验证定位与画像，不承载材质化/改写语义）。OD 升级后按本注释对账更新。",
   "specVersion": "1.0.0",
   "name": "od-next-strategy",
   "title": "OD Next Strategy V2",

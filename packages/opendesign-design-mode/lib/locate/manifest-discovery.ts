@@ -12,6 +12,7 @@
  * 会话就是「提示词残缺的坏会话」（公理 AX5 的探测层形态）。
  *
  * 零第三方依赖：遍历用 node:fs 手写受限 DFS，不引 glob 库（本包零 npm 运行时依赖纪律）。
+ * 编号口径：本文件编号默认属 V1 设计包（opendesign-design-mode impl-plan）；其他设计包域编号带包名前缀（opendesign-assets-quality / p1-shell-identity）。
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'

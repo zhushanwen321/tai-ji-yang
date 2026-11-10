@@ -13,6 +13,7 @@
  * 4. 其余 13 项语义锁定：上游无测试的检查项按实现语义派生正反用例（阈值边界、作用域
  *    门、单信号 break 语义）；
  * 5. 出处锚：LINT_SOURCE_ANCHOR 字段与 runlog 登记的正源 commit 锚一致（AX3 对账通道）。
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
  */
 
 import { readFileSync } from 'node:fs'

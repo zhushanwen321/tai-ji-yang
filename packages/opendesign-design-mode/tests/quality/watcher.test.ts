@@ -19,6 +19,7 @@
  * 真实性口径：监听/防抖/哨兵/快照全部走真实 fs.watch 与真实写盘（RL2 的「真实写盘触发」
  * 本体）；检查函数用 lintArtifact 正源注入，回注器在第 5/7 组用真实 createQualityFeedbackHandler
  * 接线（agents 服务缺席 → 放弃回注仅落记录，恰好验证记录面）。
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
  */
 
 import { readFileSync } from 'node:fs'

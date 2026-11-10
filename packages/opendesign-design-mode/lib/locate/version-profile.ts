@@ -17,6 +17,7 @@
  * 版本核实（V1 设计包 UD2）：verified = 清单 specVersion ∈ VERIFIED_SPEC_VERSIONS（对 OD 0.25.1 与
  * OpenDesign.app 安装版 2.0.4 真机清单核实过的规范版本）。verified=false 不是错误——画像照常
  * 产出，doctor 对未核实版本出警告（versionProfile 在手即可与已核实版本比对告警，无需注册表）。
+ * 编号口径：本文件编号跨两代设计包——V1 设计包（opendesign-design-mode）域编号带「V1 设计包 / V1·」前缀；裸编号默认属 opendesign-assets-quality 设计包（本轮）。
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'

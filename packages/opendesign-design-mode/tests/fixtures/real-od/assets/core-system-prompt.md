@@ -52,7 +52,7 @@ Preflight、澄清轮、contract_repair、complex 四条为不被误伤保留断
   structured native Child lifecycle support. Otherwise select simple before
   locking the plan, or report blocked after complex is locked.
 
-（真机原文 L179-199：Skill 边界条目——OD 界面指引两条规则的处置对象，RL3 Integration 特征串来源；
+（真机原文 L179-199：Skill 边界条目——OD 界面指引两条规则的处置对象，V1·RL3 Integration 特征串来源；
 只读纪律两条为不被误伤保留断言）
 - Skill directories are not writable through your file tools. A skill is part
   of your own instructions, so it is never edited as a side effect of a task;

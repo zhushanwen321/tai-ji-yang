@@ -17,6 +17,7 @@
  * 读未在本行 inject 声明的服务属性即抛，可选链 `?.` 拦不住 proxy getter 的抛错。
  * workingDirectory 因此不作 inject 依赖（0.1.7 上会让消费行永久 pending）；sessions 是
  * 两版本都有的基础服务，消费行（本包主行与 od-serve 行）正常 inject 声明。
+ * 编号口径：本文件编号默认属 V1 设计包（opendesign-design-mode impl-plan）；其他设计包域编号带包名前缀（opendesign-assets-quality / p1-shell-identity）。
  */
 
 /** 伺服路由 / 材质化消费的宿主 ctx 面（最小结构类型；完整服务见各 dsh 包）。 */

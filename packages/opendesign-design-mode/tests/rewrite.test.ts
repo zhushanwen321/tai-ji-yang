@@ -18,6 +18,7 @@
  * 4. 命中记录契约（逐规则逐资产记录、零命中可见、规则元数据齐备、代际字段自包含）
  * 5. R1 CLI 路径化行为（防御性规则，构造样本测行为）
  * 6. 资产代际探测与规则代际适用性（detectAssetGeneration / ruleAppliesToGeneration）
+ * 编号口径：本文件编号默认属 V1 设计包（opendesign-design-mode impl-plan）；其他设计包域编号带包名前缀（opendesign-assets-quality / p1-shell-identity）。
  */
 
 import { readFileSync } from 'node:fs'

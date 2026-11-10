@@ -47,7 +47,7 @@ inspect bounded references needed by the contract, but must not mutate or
 dispatch deliverables. Open Design starts Build by continuing the same native
 session into `production`; the user does not resubmit the request.
 
-（真机原文 L487-509：媒体 Skill 加载段整段——D6④ 2.x 段规则处置对象，命令特征串载体）
+（真机原文 L487-509：媒体 Skill 加载段整段——V1·D6④ 2.x 段规则处置对象，命令特征串载体）
 ### Media input Skill
 
 Only when the task needs media acquisition, generation, localization, or

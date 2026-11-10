@@ -7,7 +7,7 @@
  * （材质化根）− .od-quality/（检查记录目录）；同文件事件防抖合并（缺省 800ms，实施期可调
  * 参数）；完整性哨兵 = 文末 </html> 判定（缺失视为可能半写：跳过本次、不耗回注额度、
  * 留待下次事件重查——SI1 ②）；监听启动快照（盘上既有 .html 清单 − report.jsonl 产物身份
- * 豁免集）驱动三类命中分类（D5④，R L10）：
+ * 豁免集）驱动三类命中分类（D5④，RL10）：
  *   - resume-artifact：持身份记录（上一代产物）→ 豁免出快照、照常回注；
  *   - unrecognized-existing：快照内且无身份记录（用户项目页面/构建产物/vendored 文件）
  *     → 只记录不回注（防驱动模型改它从未写过的文件）；
@@ -20,6 +20,7 @@
  * 查无活 Agent 放弃回注仅落记录；0.2.2 会话中切工作目录（working-directory/change）后监听器
  * 固定旧目录（UD7，登记不消费该事件）；Linux 内核旧版 fs.watch 无递归支持时启动自毁降级
  * （AX5 显式降级：destroyed 行 + onDestroyed 回调，不静默假活）。
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
  */
 
 import { watch, type FSWatcher } from 'node:fs'

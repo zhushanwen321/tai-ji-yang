@@ -12,6 +12,7 @@
  * 终态职责（U7 填实）：面板 client 的 host 侧协调（交付卡片点击路由到面板的 patterns
  * 接线等）；届时本入口登记的贡献点一律挂 `ctx.effect` 并返回 disposer。本单元（U1）
  * 保持最小可加载骨架——零贡献点、零副作用，保证装入即无装配错误（U1 验收条款②）。
+ * 编号口径：本文件编号默认属 V1 设计包（opendesign-design-mode impl-plan）；其他设计包域编号带包名前缀（opendesign-assets-quality / p1-shell-identity）。
  */
 
 /** Cordis 插件名（preset plugins 行的行内标识）。 */

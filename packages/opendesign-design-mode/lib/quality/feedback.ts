@@ -28,6 +28,7 @@
  * 宿主 UserMessage 是开放字面量（role/content/source 三件，AS2 实读：llm message.ts 的
  * MessageBase + 宿主 webhook/time-context 插件先例）——本包零 npm 运行时依赖，直接构造
  * 字面量不经宿主工厂，id 用 node:crypto randomUUID。
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
  */
 
 import { createHash, randomUUID } from 'node:crypto'

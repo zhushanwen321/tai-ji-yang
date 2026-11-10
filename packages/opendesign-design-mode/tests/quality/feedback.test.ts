@@ -16,6 +16,7 @@
  *
  * 检查函数不注入：回注器消费的是 LintFinding[] 结构契约（lint.ts 导出类型），发现用例
  * 直接构造——本套件测回注裁决，检查行为归 lint.test.ts（RL4）。
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
  */
 
 import { mkdtemp, readFile, rm } from 'node:fs/promises'

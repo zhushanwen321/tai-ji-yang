@@ -27,6 +27,7 @@
  * （如 triggers flow 化——assignScalar 无 triggers 分支，值被忽略）按字段缺席
  * 静默降级为空数组，不经异常计数（设计口径：字段缺席不计解析异常，U1 检查点）。
  * 全部只读直读（AX2），零 npm 依赖（node:fs / node:path）。
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'

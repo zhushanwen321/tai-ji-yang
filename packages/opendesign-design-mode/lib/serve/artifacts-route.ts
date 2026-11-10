@@ -25,6 +25,7 @@
  * 面板的 iframe 载入同一前缀 + 同一 session 段形态（client/present-card-link.ts 的
  * artifactRouteUrlFor / artifactRouteUrlForPath 构造；U6 侧形态由 tests/serve.test.ts
  * 锁定，client 侧漂移在 U8 e2e 暴露）。
+ * 编号口径：本文件编号默认属 V1 设计包（opendesign-design-mode impl-plan）；其他设计包域编号带包名前缀（opendesign-assets-quality / p1-shell-identity）。
  */
 
 import { readFile, realpath, stat } from 'node:fs/promises'
