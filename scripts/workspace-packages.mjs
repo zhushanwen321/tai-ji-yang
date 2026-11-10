@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 多包 workspace 的包枚举单源（设计 D10：单包仓 → 多包容器）。
+ * 多包 workspace 的包枚举单源（opendesign-design-mode 设计 D10：单包仓 → 多包容器）。
  *
  * 仓根 = tai-ji-yang-shell；功能型子包逐个落 `packages/<name>/`。构建（build-client.mjs）
  * 与六个静态检查脚本（check-*.mjs）都从这里拿包清单与每包的构建声明——清单改动只动本

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
  * 最小 manifest 自检：package.json 契约（五字段齐备 + exports 各条件路径存在）+ cordis.patch.yml 结构
- * + 依赖键集边界 + **浏览器半场的宿主服务声明**。多包适配（设计 D10）：对 workspace 每个包
+ * + 依赖键集边界 + **浏览器半场的宿主服务声明**。多包适配（opendesign-design-mode 设计 D10）：对 workspace 每个包
  * 逐包执行（包清单来自 scripts/workspace-packages.mjs，与 pnpm-workspace.yaml 声明对账）；
  * 断言逻辑仍单处归属本文件——通用断言逐包跑，包特有断言按包声明选择。
  *
- * 最后一项通用断言（版本门禁双字段）源自 2026-11-07 真机验收的发现（见 ledger「D3 真机验收」）：
+ * 最后一项通用断言（版本门禁双字段）源自 2026-11-07 真机验收的发现（见 p1-shell-identity ledger「D3 真机验收」）：
  * 宿主版本门禁只读 peerDependencies 里名为 @deepseek-ai/dsh（或 dsh- 前缀）的键，engines.dsh
  * 不被读取——只写 engines.dsh 等于没有门禁。
  *
@@ -56,7 +56,7 @@ const REQUIRED_SERVICE_INJECT = ['slots', 'locale', 'theme', 'configForms', 'rem
 const ROOT_ONLY_CHECKS = new Set(['tai-ji-yang-shell'])
 
 /**
- * preset 注册断言（U1 验收条款③ / RL1 的注册面机器化）：**按登记执行**——只有
+ * preset 注册断言（opendesign-design-mode U1 验收条款③ / p1-shell-identity RL1 的注册面机器化）：**按登记执行**——只有
  * scripts/workspace-packages.mjs 登记了 `preset` 字段的包才跑本断言（config.id 裁决值取
  * 自登记，单一权威）；未登记的子包显式播报不适用，避免「所有子包都被假定有 preset」的
  * 误伤（未来出现无 preset 的功能子包时无需改本文件）。
@@ -254,7 +254,7 @@ function checkPackage(pkg) {
   })
 
   check(label('版本门禁真生效：peerDependencies 含 @deepseek-ai/dsh 且与 engines.dsh 同范围'), () => {
-    // 2026-11-07 真机验收发现（D3 / V6）：宿主的版本门禁读的是 **peerDependencies**，
+    // 2026-11-07 真机验收发现（p1-shell-identity ledger「D3 真机验收」/ V6 版本门禁两侧）：宿主的版本门禁读的是 **peerDependencies**，
     // 不是 engines.dsh。实装证据（dsh-app-boot 的 evaluatePluginCompatibility）：
     //   if (!Object.hasOwn(fields, "peerDependencies")) return void 0
     //   for (const [name, range] of Object.entries(dependencies)) {

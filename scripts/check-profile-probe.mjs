@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * V8 自检：装错 profile 时 Node 半场给出可行动诊断，装在 web profile 时不误报。
- * 多包适配（设计 D10）：包清单来自 scripts/workspace-packages.mjs；profile 探针机制
+ * p1-shell-identity 验收 V8 自检：装错 profile 时 Node 半场给出可行动诊断，装在 web profile 时不误报。
+ * 多包适配（opendesign-design-mode 设计 D10）：包清单来自 scripts/workspace-packages.mjs；profile 探针机制
  * （NO_WEB_CARRIER 诊断）是 tai-ji-yang-shell 的契约——按「入口是否导出探针标志
  * NO_WEB_CARRIER_MESSAGE」逐包判定：有探针的包跑六场景断言，无探针的包显式播报跳过
  * （设计模式包的降级形态是 preset broken 诊断，归 persona 探测，不经本机制）。
@@ -22,7 +22,7 @@
  *   E. 无 Loader（手工装配树即完整树）→ 立即报一条；
  *   F. 负对照：把「无条件报」的假实现喂给 C 的断言，必须被拒——证明 C 不是恒绿的空检查。
  *
- * 另一个副作用断言（D9 的「不注册任何会失败的槽位贡献」）：缺 web 承载时 `apply` 不抛，且
+ * 另一个副作用断言（p1-shell-identity D9 的「不注册任何会失败的槽位贡献」）：缺 web 承载时 `apply` 不抛，且
  * `webserver/index-inject` 订阅照旧在（注入表照旧推一行、事件永不 emit 也不产生错误）。
  *
  * 只依赖 node 内置模块与本仓的 `@deepseek-ai/cordis` peer（devDependencies 未装时给出可行动失败）。

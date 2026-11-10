@@ -1,5 +1,5 @@
 <!--
-  fixture：resume 资产变更第一代的 core 资产（V9/RL7）。升级对账基准 = tests/fixtures/mini-od 同名文件。
+  fixture：resume 资产变更第一代的 core 资产（本轮 V9 / V1·RL7）。升级对账基准 = tests/fixtures/mini-od 同名文件。
   代际断言句 A（OD 原文 L114-119 摘录，gen2 中被替换）与句 B 的差异清单见
   tests/e2e/fixtures/README.md「可断言差异」。
 -->

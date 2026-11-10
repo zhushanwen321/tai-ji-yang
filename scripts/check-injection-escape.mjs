@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * RL6 / V10 静态自检：Node 半场推入注入表的行不含结束标签。多包适配（设计 D10）：包清单
+ * p1-shell-identity 红灯 RL6 / 验收 V10 静态自检：Node 半场推入注入表的行不含结束标签。多包适配（opendesign-design-mode 设计 D10）：包清单
  * 来自 scripts/workspace-packages.mjs，逐包加载 Node 半场入口——有 index-inject 注入贡献的
  * 包按注入行契约断言（根包形态），无注入贡献的包显式播报跳过（不冒充覆盖）。
  *
- * 为什么需要这条断言（设计 AS5 / D6）：宿主的注入行 `style` 分支把 text 原样嵌进一个 style
+ * 为什么需要这条断言（p1-shell-identity 设计 AS5 / D6）：宿主的注入行 `style` 分支把 text 原样嵌进一个 style
  * 元素（`packages/host/webserver/src/injections.ts` 的 `renderRow`），
  * 因此 text 里一旦出现该元素的结束标签，页面解析会在该处提前封住元素，后续 CSS
  * 变成页面文本、页面结构被破坏。`IndexInjection` 的类型注释对 style / script 两种行都有

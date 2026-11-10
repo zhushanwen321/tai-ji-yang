@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 /**
- * RL1 / RL2 / RL3 / RL9 静态自检：本包的源码不得触碰的五类宿主领地。
+ * p1-shell-identity 红灯 RL1 / RL2 / RL3 / RL9 静态自检：本包的源码不得触碰的五类宿主领地。
  *
- * 五类禁止（设计 §4.2 断言红灯表 + §3.3 决策 D2/D7）：
+ * 五类禁止（p1-shell-identity 设计 §4.2 断言红灯表 + §3.3 决策 D2/D7）：
  *   ① 宿主字族 / 字号轴：`--font-*` 槽位、`--dsw-font-family*`，以及 `textFontFamily` /
  *      `codeFontFamily` / `terminalFontFamily` 三个配置字段的写入 → 用户选的字体与 ⌘+/⌘- 字号
- *      会被本包吃掉（RL2）。
+ *      会被本包吃掉（p1-shell-identity RL2）。
  *   ② `--dsw-font-*` 复合简写覆盖：**只放行安全重写形态**——size/family 段保留宿主 var()
  *      引用、行高 unitless、weight 三位数字（外观深化层 3 的契约，宿主源逐段一致由
  *      client/theme/host-font-sheet.spec.ts 对账看守）；整串写死（字面 family / 缺行高分隔）
- *      仍越界（RL9）。
+ *      仍越界（p1-shell-identity RL9）。
  *   ③ 以 `-font-size` / `-font-family` 结尾的子 token 覆盖：同上。只允许 `*-font-weight` /
- *      `*-line-height` 两类独立子 token（RL9，D7 明示放行且仅放行这两类）。
+ *      `*-line-height` 两类独立子 token（p1-shell-identity RL9 / D7——D7 明示放行且仅放行这两类）。
  *   ④ 宿主私有几何变量 `--dsh-frame-top-clearance` / `--dsh-windows-titlebar-height`：写它们等于
- *      改写窗口顶条几何，而布局几何归宿主（RL3）。
+ *      改写窗口顶条几何，而布局几何归宿主（p1-shell-identity RL3）。
  *   ⑤ `theme.register(` 调用：注册第三方主题 id 会让宿主把 `html[data-ds-theme-source]` 固定成该 id
- *      的 scheme 并镜像到系统 `nativeTheme.themeSource`，「跟随系统」永久失效（RL1）。
+ *      的 scheme 并镜像到系统 `nativeTheme.themeSource`，「跟随系统」永久失效（p1-shell-identity RL1）。
  *
  * 判定口径 = **写入形态**，不是「字面出现」。token 只有以声明形态出现才算写入：
  *   · 作为键（`"--font-x":` / `--font-x:`，对象字面量或 CSS 文本都走这一条）
@@ -50,7 +50,7 @@ const ROOT = WORKSPACE_ROOT
 const SELF = fileURLToPath(import.meta.url)
 
 /**
- * 默认扫描根（相对仓库根），按包枚举（设计 D10）：每包扫「真实会被装载的源码」——
+ * 默认扫描根（相对仓库根），按包枚举（opendesign-design-mode 设计 D10）：每包扫「真实会被装载的源码」——
  * 根包的 Node 半场入口与浏览器半场目录；子包为 lib/（host 半源码与产物同批入库，内容
  * 等价）与 client/（浏览器半场源）。包清单来自 scripts/workspace-packages.mjs，新包落盘
  * 后自动进入扫描范围，无需改本脚本。也可在命令行追加路径供人工核对。
@@ -85,7 +85,7 @@ const TOKEN_RULES = [
       '覆盖 --dsw-font-* 复合简写必须保留宿主 size/family 的 var() 引用（安全重写形态：weight 三位数字 + size 段任意 + /unitless 行高 + family 只能 var(--dsw-font-family) 或 var(--ds-font-family-code)）；整串写死仍越界——那会冻结字号与字族轴',
     // 命中本规则（token 名是复合简写主体）后由 safeShorthandOnLine 做值形态校验：安全形态
     // 放行（层 3 的重写载体），其余（字面 family、缺行高分隔、非数字 weight、未知插值）拦。
-    // 以 `-font-weight` / `-line-height` 结尾的独立子 token 不进本规则（D7 放行的两类）。
+    // 以 `-font-weight` / `-line-height` 结尾的独立子 token 不进本规则（p1-shell-identity D7 放行的两类）。
     test: (token) =>
       token.startsWith('--dsw-font-') &&
       !/-(?:font-weight|line-height)$/.test(token),
@@ -272,7 +272,7 @@ const POSITIVE_SAMPLE = [
   '  "--dsw-alias-label-primary-font-weight": { light: "500", dark: "500" },',
   '  "--dsw-alias-body-line-height": { light: "1.6", dark: "1.6" },',
   // 宿主真实子 token 名（--dsw-font- 命名空间下）：证明 RL9:font-shorthand 的排除项真的放行
-  // D7 允许的 *-font-weight / *-line-height 覆盖，而不是只对合成名有效。
+  // p1-shell-identity D7 允许的 *-font-weight / *-line-height 覆盖，而不是只对合成名有效。
   '  "--dsw-font-markdown-base-font-weight": { light: "500", dark: "500" },',
   '  "--dsw-font-markdown-h1-line-height": { light: "1.32", dark: "1.32" },',
   // 安全重写形态的复合简写（层 3 载体）：family 是宿主 var() 引用、行高 unitless、weight

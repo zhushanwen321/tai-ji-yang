@@ -1,5 +1,5 @@
 {
-  "$fixtureSource": "resume 资产变更 fixture 第一代（V9/RL7，e2e 用法见同目录 README）。与 tests/fixtures/mini-od 同源语义的迷你清单：od.kind=scenario、strategy.id=od-next-strategy、三层版本（manifest 3.3.7 / specVersion 1.0.0 / core 3.2.0）。第二代 resume-gen2 将 manifest 上调至 3.3.9、core 上调至 3.2.1，并替换 core 中一处可断言句子。roster 裁至 3 项声明（resume 场景只验证提示词重组与代际提示）。",
+  "$fixtureSource": "resume 资产变更 fixture 第一代（本轮 V9 / V1·RL7，e2e 用法见同目录 README）。与 tests/fixtures/mini-od 同源语义的迷你清单：od.kind=scenario、strategy.id=od-next-strategy、三层版本（manifest 3.3.7 / specVersion 1.0.0 / core 3.2.0）。第二代 resume-gen2 将 manifest 上调至 3.3.9、core 上调至 3.2.1，并替换 core 中一处可断言句子。roster 裁至 3 项声明（resume 场景只验证提示词重组与代际提示）。",
   "specVersion": "1.0.0",
   "name": "od-next-strategy",
   "title": "OD Next Strategy V2",

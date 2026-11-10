@@ -11,10 +11,10 @@
  * lib/ 改动即生效）。
  *
  * 核心组（本轮 impl-plan 验收项 A9 的 L3 段；模型行为段归本轮 A11/A12/L4）：roster（选择器菜单 + 芯片选择）→
- * 注入（会话日志 system 节点特征句）→ doctor 十一分节（V5 的 0.2.2 形态，前八节零回归）→
+ * 注入（会话日志 system 节点特征句）→ doctor 十一分节（本轮 V5 的 0.2.2 形态，前八节零回归）→
  * 材质化恰 5 管理名（V1 设计包 D8 + opendesign-assets-quality D9）→ 预览面板 iframe 产物载入 + 探针（V1·RL6/V1·RL8 的 0.2.2 形态）→
- * 检查环桌面宿主可用性（V2 的 0.2.2 形态：真机写盘 P0 产物 → 回注消息 source.kind
- * 协议信号形态断言 + report.jsonl fed-back 记录——RL1 的 0.2.2 半场）。
+ * 检查环桌面宿主可用性（本轮 V2 的 0.2.2 形态：真机写盘 P0 产物 → 回注消息 source.kind
+ * 协议信号形态断言 + report.jsonl fed-back 记录——本轮 RL1 的 0.2.2 半场）。
  *
  * V1·AS7 混合内容（桌面 dsh-app:// 嵌 http://127.0.0.1 iframe，V1 设计包前提编号）：实测已于
  * V1·U6 交付门完成并关闭（V1 复审决议 RR3）：裸 iframe 与 sandbox="allow-scripts" 均触发 load、
@@ -66,7 +66,7 @@ const MINI_OD_SCENARIO = path.join(MINI_OD_ROOT, 'plugins', '_official', 'scenar
 const DESIGN_INJECTION_MARK = '## Task routing (design mode)'
 const MINI_OD_PROFILE_PATH = path.join(MINI_OD_SCENARIO, 'assets', 'task-profiles', 'prototype.md')
 const OD_FRAMES_FILES = ['android.html', 'iphone.html', 'neutral.html', 'layout.css']
-/** 质量环回注消息的 source.kind（lib/quality/feedback.js LINT_SOURCE_KIND 同值；AX7）。 */
+/** 质量环回注消息的 source.kind（lib/quality/feedback.js LINT_SOURCE_KIND 同值；本轮 AX7）。 */
 const LINT_SOURCE_KIND = 'opendesign-design-mode/lint'
 /** P0 命中特征（purple-gradient：线性渐变含紫 hex，lint.ts PURPLE_HEXES 命中形态）。 */
 const DIRTY_GRADIENT = 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)'
@@ -77,7 +77,7 @@ const { MATERIALIZED_WRITE_LIST, DECK_FRAMEWORK_FILE_NAME } = await import(
 )
 const { renderDeckFrameworkFile } = await import(path.join(PKG_ROOT, 'lib', 'protocols', 'deck.js'))
 
-/** doctor 十一分节标题（lib/commands/doctor.ts DOCTOR_SECTIONS 字面对账；U6 扩展后形态）。 */
+/** doctor 十一分节标题（lib/commands/doctor.ts DOCTOR_SECTIONS 字面对账；本轮 impl-plan U6 扩展后形态）。 */
 const DOCTOR_SECTIONS_11 = [
   '安装形态与资源根',
   '清单路径与三层版本',
@@ -346,7 +346,7 @@ try {
   }
   await clearModalGates()
 
-  await step('roster：选择器菜单含设计模式卡片（RL1 的 0.2.2 形态）', async () => {
+  await step('roster：选择器菜单含设计模式卡片（V1·RL1 的 0.2.2 形态）', async () => {
     await page.getByRole('button', { name: 'Choose workspace' }).click()
     await sleep(600)
     await page.locator('[role="menuitem"]', { hasText: path.basename(workspace) }).first().click()
@@ -362,7 +362,7 @@ try {
     await sleep(300)
   })
 
-  await step('注入：设计会话 system 节点含 OD 资产特征句（V1 的 0.2.2 形态）', async () => {
+  await step('注入：设计会话 system 节点含 OD 资产特征句（V1·V1 的 0.2.2 形态）', async () => {
     const chip = page.locator('button[aria-haspopup="menu"][title*="agent preset"]').first()
     await chip.click()
     await sleep(400)
@@ -385,7 +385,7 @@ try {
     assert(!sys.includes('$OD_BIN'), '注入文本含 $OD_BIN 特征串（V1·RL3 命令清零失效）')
     // 本轮四新段的桌面注入特征（设计 §4.3 desktop 行「persona 组装含新段」；web spec 对
     // rich-assets 全量断言四新段——本 spec 的 fixtureRoot 是 mini-od（无 craft/design-templates/
-    // design-systems 三目录），形状包清单/craft 指路/manifest 感知三段按 AX5 设计性降级省略，
+    // design-systems 三目录），形状包清单/craft 指路/manifest 感知三段按本轮 AX5 设计性降级省略，
     // 可断言的新段 = panel 评审团协议段 + ppt 条目 deck 协议指针（两段无条件注入，随 compose
     // 单源进桌面 systemPrompt；特征串与 web spec 断言同源）。
     assert(sys.includes('# Critique Theater'), '注入文本缺 panel 评审团协议段标题（本轮新段）')
@@ -412,7 +412,7 @@ try {
     assert(expected.includes('## New deck only') && expected.includes('## Existing deck or selected template'), 'deck 铺盘文本应含三段结构')
   })
 
-  await step('doctor：十一分节齐全（V5 的 0.2.2 形态，前八节零回归）', async () => {
+  await step('doctor：十一分节齐全（本轮 V5 的 0.2.2 形态，前八节零回归）', async () => {
     const composer = page.locator('[contenteditable="true"]').first()
     await composer.click()
     await page.keyboard.type('/opendesign-doctor')
@@ -454,27 +454,27 @@ try {
     assert(/^cookie: \(empty\)|^cookie: blocked SecurityError/.test(parsed.cookie), `cookie 形态不对：${parsed.cookie}`)
   })
 
-  await step('检查环可用性：真机写盘 P0 产物 → followup 回注消息 source.kind 协议信号形态（V2/RL1 的 0.2.2 形态）', async () => {
+  await step('检查环可用性：真机写盘 P0 产物 → followup 回注消息 source.kind 协议信号形态（本轮 V2/本轮 RL1 的 0.2.2 形态）', async () => {
     const workspaceReal = fs.realpathSync(workspace)
     await waitForReportLine((line) => line.type === 'watcher' && line.event === 'started')
     fs.writeFileSync(path.join(workspaceReal, 'landing.html'), dirtyArtifactHtml('Landing'))
     await waitForLintFeedbackCount(1)
     const messages = collectLintFeedbackMessages()
     const message = messages[0]
-    assert(message.text.includes('[opendesign-design-mode 质量环]'), '回注文本开头应自报质量环身份（AX7）')
+    assert(message.text.includes('[opendesign-design-mode 质量环]'), '回注文本开头应自报质量环身份（本轮 AX7）')
     assert(message.text.includes('purple-gradient'), '回注文本缺检查项 id')
     assert(message.text.includes('修复指引'), '回注文本缺修复指引')
     assert(message.text.includes('仅修复你本会话产出的 HTML'), '回注文本缺作用域句')
     const fedBack = readQualityReport().filter((line) => line.type === 'finding' && line.id === 'purple-gradient' && line.reason === 'fed-back')
     assert(fedBack.length === 1, `landing.html 的 purple-gradient fed-back finding 应恰 1 行：${JSON.stringify(fedBack)}`)
-    assert(readQualityReport().some((line) => line.type === 'artifact' && line.path === 'landing.html'), '快照外新写产物应落身份行（D5④）')
+    assert(readQualityReport().some((line) => line.type === 'artifact' && line.path === 'landing.html'), '快照外新写产物应落身份行（本轮 D5④）')
   })
 
   await step('V1·AS7 衔接结论：asar 宿主 http 形态 iframe 隔离语义复核通过（dsh-app:// 壳层形态以 V1·U6 交付门实测为准：无混合内容阻拦，V1 复审决议 RR3 关闭）', async () => {
     // 本 spec 的宿主 = app 内嵌 0.2.2 宿主（http 形态）。上一断言的探针已复核 sandbox
     // 隔离（open 路由拒、非产物不可读、cookie SecurityError）。桌面壳（dsh-app:// 源嵌
     // http://127.0.0.1 iframe）的混合内容实测由 V1·U6 交付门探针完成：load 触发、脚本执行、
-    // Origin: null、宿主不可读 iframe——结论「无阻拦」已在 U6 runlog 登记，此处不重复实测。
+    // Origin: null、宿主不可读 iframe——结论「无阻拦」已在 V1·U6 runlog 登记，此处不重复实测。
   })
 
   const failed = stepOut.filter((entry) => !entry.ok)

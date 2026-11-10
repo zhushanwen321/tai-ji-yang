@@ -9,24 +9,29 @@
  *   - 本文件是包级生命周期的宿主侧锚点：承载跨子插件协调。本文件登记材质化触发（V1 设计包 D8）：
  *     会话选定设计 preset 的时点（宿主 `agent-preset/selected` 事件）把设备壳支撑文件
  *     无条件全量重铺进会话工作目录。同一事件（独立监听、presetId 过滤同款）登记质量环
- *     触发（U5 / D4 / D5）：起 fs.watch 递归监听（lib/quality/watcher.js）→ 写盘事件经
- *     防抖 + 完整性哨兵 → lib/quality/lint.js 检查 → lib/quality/feedback.js 仅 P0 回注
- *     （steer/followup 双通道）+ .od-quality/report.jsonl 记录。监听器集合挂进程 effect
+ *     触发（opendesign-assets-quality impl-plan U5 / 设计 D4/D5）：起 fs.watch 递归
+ *     监听（lib/quality/watcher.js）→ 写盘事件经防抖 + 完整性哨兵 → lib/quality/lint.js
+ *     检查 → lib/quality/feedback.js 仅 P0 回注（steer/followup 双通道）+
+ *     .od-quality/report.jsonl 记录。监听器集合挂进程 effect
  *     （卸载即撤）；同会话重复 selected 先撤旧监听再起新一代——新一代
- *     快照 + 产物身份豁免集即 resume 语义（D5④）。该换代路径的宿主实态分版本登记（上游
- *     依赖 UD8，0.1.7-rc.2 构建产物亲读）：0.1.7 的 resume 重组不发 selected 事件
+ *     快照 + 产物身份豁免集即 resume 语义（opendesign-assets-quality 设计 D5④）。该换代
+ *     路径的宿主实态分版本登记（上游依赖登记 opendesign-assets-quality UD8，
+ *     0.1.7-rc.2 构建产物亲读）：0.1.7 的 resume 重组不发 selected 事件
  *     （registry select() 对有历史回合的会话 locked），换代逻辑在 0.1.7 不触发、为事件
  *     发射形态宿主（0.2.2+）预留——0.1.7 resume 后监听器不启动、上一代产物改写零检查
- *     零回注（已知边界；感知与补跑路径见设计 D4/UD8 与 e2e S7 分版本实态断言）。
+ *     零回注（已知边界；感知与补跑路径见 opendesign-assets-quality 设计 D4/UD8 与
+ *     e2e S7 分版本实态断言）。
  *     非设计会话零监听零注入（preset 过滤）。
  *
  * 材质化触发点的宿主契约（0.1.7-rc.2 亲读核实，V1 设计包 impl-plan U8 接线时定案）：
  *   - 事件：agent-preset-registry 对会话事件 `agent-preset/selected` 的转发
  *     （ctx.emit('agent-preset/selected', sessionId, presetId)）——preset 应答到会话的时点，
- *     覆盖「blank 会话经芯片 staged pick 应用设计 preset」路径与 resume 重组路径（后者 0.1.7
- *     实态不发事件、事件发射形态宿主才覆盖，分版本登记见 UD8 与上方换代注释），即 V1 设计包 D8 的
+ *     覆盖「blank 会话经芯片 staged pick 应用设计 preset」路径与 resume 重组路径（后者
+ *     0.1.7 实态不发事件、事件发射形态宿主才覆盖，分版本登记见
+ *     opendesign-assets-quality UD8 与上方换代注释），即 V1 设计包 D8 的
  *     「会话创建时」（doctor 文案同口径：新会话首轮前已重铺）；
- *   - cwd：resolveSessionCwdById（lib/serve/session-cwd.js，U6 检查点裁决的唯一通道）——
+ *   - cwd：resolveSessionCwdById（lib/serve/session-cwd.js，V1 设计包 impl-plan U6
+ *     检查点裁决的唯一通道）——
  *     sessions.get(sessionId) 取会话对象后 workingDirectory.get 优先（0.2.x）、header.cwd
  *     回退（两版本 header 均带 cwd 字段）。产物伺服路由（lib/serve/artifacts-route.ts）的
  *     伺服根消费同一函数，「伺服根 = 材质化目标」由结构承载，不靠两边各自约定。sessions
@@ -70,9 +75,10 @@ export function apply(ctx) {
   ctx.effect(() => ctx.on('agent-preset/selected', (sessionId, presetId) => {
     materializeForSession(ctx, sessionId, presetId)
   }), 'opendesign-design-mode: 材质化触发（agent-preset/selected）')
-  // 质量环监听器集合（U5/D4）：每设计会话一个监听器，同会话 selected 重复先撤旧起新
-  // （Map 键 = sessionId）；进程卸载统一撤除。监听器自毁（错误/目录不可达）从集合出清
-  // 由自毁侧完成（controller.destroyed 后 dispose 为 no-op，残留在集合内无害）。
+  // 质量环监听器集合（opendesign-assets-quality U5/D4）：每设计会话一个监听器，同会话
+  // selected 重复先撤旧起新（Map 键 = sessionId）；进程卸载统一撤除。监听器自毁
+  // （错误/目录不可达）从集合出清由自毁侧完成（controller.destroyed 后 dispose 为
+  // no-op，残留在集合内无害）。
   const qualityWatchers = new Map()
   ctx.effect(() => () => {
     for (const watcher of qualityWatchers.values()) watcher.dispose()
@@ -99,8 +105,9 @@ function materializeForSession(ctx, sessionId, presetId) {
   }
   const located = locateOdAssets()
   if (located.status !== 'found') {
-    // preset 激活时点的探测（persona 行）已把资产不可用挡在 preset broken（AX5）；本分支是
-    // 运行期资产被移除的旁路形态：报错不重铺，落点保持旧态由 doctor 感知，不静默伪造清单。
+    // preset 激活时点的探测（persona 行）已把资产不可用挡在 preset broken
+    // （opendesign-assets-quality AX5）；本分支是运行期资产被移除的旁路形态：
+    // 报错不重铺，落点保持旧态由 doctor 感知，不静默伪造清单。
     ctx.logger.error(`opendesign-design-mode: 会话 ${sessionId} 材质化失败——资产不可用（${located.status === 'missing' ? '未检测到 OpenDesign' : located.reason}）。恢复动作：运行 /opendesign-doctor 检查资产定位。`)
     return
   }
@@ -111,7 +118,8 @@ function materializeForSession(ctx, sessionId, presetId) {
 }
 
 /**
- * 设计 preset 应答到会话时点的质量环监听启动（U5/D4；非设计会话零监听）。
+ * 设计 preset 应答到会话时点的质量环监听启动（opendesign-assets-quality U5/D4；
+ * 非设计会话零监听）。
  *
  * @param ctx - Cordis 插件上下文（包主行 scope）。
  * @param sessionId - 选定了 preset 的会话 id。
@@ -125,10 +133,11 @@ function startQualityWatchForSession(ctx, sessionId, presetId, qualityWatchers) 
     ctx.logger.warn(`opendesign-design-mode: 会话 ${sessionId} 选定设计 preset 但工作目录不可得，质量环监听跳过（落点未知；/opendesign-doctor 第⑪节按监听未启动报告）`)
     return
   }
-  // 同会话重复 selected（resume 重组路径）：先撤上一代监听再起新一代——新一代的启动快照
-  // + 产物身份豁免集（report.jsonl 回查）承载 resume 语义（D5④）。条目同步创建：监听启动
-  // 是异步的（快照扫描先行），换代若发生在启动完成前，条目 disposed 旗标会在完成时把
-  // 刚落定的控制器立即撤除——不存在「旧代启动完才入集合」的双监听竞态。
+  // 同会话重复 selected（resume 重组路径）：先撤上一代监听再起新一代——新一代的启动
+  // 快照 + 产物身份豁免集（report.jsonl 回查）承载 resume 语义
+  // （opendesign-assets-quality D5④）。条目同步创建：监听启动是异步的（快照扫描先行），
+  // 换代若发生在启动完成前，条目 disposed 旗标会在完成时把刚落定的控制器立即撤除——
+  // 不存在「旧代启动完才入集合」的双监听竞态。
   const previous = qualityWatchers.get(sessionId)
   if (previous !== undefined) {
     previous.dispose()
@@ -147,8 +156,9 @@ function startQualityWatchForSession(ctx, sessionId, presetId, qualityWatchers) 
   startSessionWatcher({
     cwd,
     lintArtifact,
-    // SC7 进程级观测（回注放弃口）：放弃回注的裁决（no-agent / inject-error）各写一行——
-    // 发现已落 report.jsonl（doctor 第⑪节读侧），宿主进程日志补跨进程排障通道（D4 残存期
+    // opendesign-assets-quality SC7 进程级观测（回注放弃口）：放弃回注的裁决
+    // （no-agent / inject-error）各写一行——发现已落 report.jsonl（doctor 第⑪节读侧），
+    // 宿主进程日志补跨进程排障通道（opendesign-assets-quality 设计 D4 残存期
     // 「report.jsonl 一行 + ctx.logger 一行」的后半句）。每事件一行、不含产物内容；级别按
     // 分级契约：no-agent 是残存期查无活 Agent 的声明行为（debug）、inject-error 是注入
     // 调用异常（warn 带恢复动作）。
@@ -170,8 +180,9 @@ function startQualityWatchForSession(ctx, sessionId, presetId, qualityWatchers) 
       return
     }
     entry.controller = controller
-    // SC7 进程级观测（监听器启动口）：启动成功且存活一行 debug；自毁口在 onDestroyed、
-    // 换代撤销的代未存活（disposed 分支）不记启动行，避免「已启动即撤」的误导观测行。
+    // opendesign-assets-quality SC7 进程级观测（监听器启动口）：启动成功且存活一行
+    // debug；自毁口在 onDestroyed、换代撤销的代未存活（disposed 分支）不记启动行，
+    // 避免「已启动即撤」的误导观测行。
     ctx.logger.debug(`opendesign-design-mode: 会话 ${sessionId} 质量环监听已启动（${cwd}）`)
   }, (error) => {
     ctx.logger.error(`opendesign-design-mode: 会话 ${sessionId} 质量环监听启动异常：${error instanceof Error ? error.message : String(error)}。恢复动作：运行 /opendesign-doctor 检查会话目录状态。`)

@@ -1,5 +1,5 @@
 <!--
-  fixture：resume 资产变更第二代的 core 资产（V9/RL7）。
+  fixture：resume 资产变更第二代的 core 资产（本轮 V9 / V1·RL7）。
   句 B 是升级模拟句——人为改写以承载「resume 后注入文本反映变更后资产」的断言，
   不是 OD 原文，也不是 V1 报缺语义的定稿措辞；gen1 的句 A（OD 原文 L114-119）在本代被本句替换。
   断言契约：resume 后注入文本含句 B、不含句 A（清单见 tests/e2e/fixtures/README.md）。

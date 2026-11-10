@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * 浏览器半场构建：esbuild 打包为单文件 CJS + 宿主 factory 壳（设计 D1 / §3.3.1）。
- * 多包适配（设计 D10）：包清单与每包构建声明来自 scripts/workspace-packages.mjs，
+ * 浏览器半场构建：esbuild 打包为单文件 CJS + 宿主 factory 壳（p1-shell-identity 设计 D1 / §3.3.1）。
+ * 多包适配（opendesign-design-mode 设计 D10）：包清单与每包构建声明来自 scripts/workspace-packages.mjs，
  * 逐包构建——每包产出各自的 lib/client.js（浏览器半场）与 Node 半场产物；断言逻辑
  * （壳结构断言 + 模块基线审计）仍单处归属，逐包复用同一套。
  *
- * 产物形态（与宿主内置包的实测形态对齐，AS13）：
+ * 产物形态（与宿主内置包的实测形态对齐，p1-shell-identity AS13）：
  *
  *   window.__ModuleLoader__.load({
  *     id: "<包名>",

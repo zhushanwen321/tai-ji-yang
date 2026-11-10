@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * RL5 静态自检：每个包浏览器半场产物 `lib/client.js` 里的 `require("…")` 字面量集合 ⊆ 宿主
- * 模块表基线。多包适配（设计 D10）：包清单来自 scripts/workspace-packages.mjs，逐包审计
+ * p1-shell-identity 红灯 RL5 静态自检：每个包浏览器半场产物 `lib/client.js` 里的 `require("…")` 字面量集合 ⊆ 宿主
+ * 模块表基线。多包适配（opendesign-design-mode 设计 D10）：包清单来自 scripts/workspace-packages.mjs，逐包审计
  * 同一基线（宿主模块表是仓级契约，各包共用）。
  *
- * 为什么需要这条断言（设计 AS7 / D1 / D3）：宿主只 seed 11 个平台模块（`PLATFORM_MODULES`）。
+ * 为什么需要这条断言（p1-shell-identity 设计 AS7 / D1 / D3）：宿主只 seed 11 个平台模块（`PLATFORM_MODULES`）。
  * bundle 里任何超出这 11 项、又没在 `dsh.client.external` 声明并有供给方的 require，组合期直接
  * 被拒（或运行时解析失败）。本仓裁决为「零 npm 运行时依赖」，因此基线就是全部合法取值。
  *
@@ -30,7 +30,7 @@ import { pathToFileURL } from 'node:url'
 import { workspacePackages, WORKSPACE_ROOT } from './workspace-packages.mjs'
 
 /**
- * 宿主冻结模块表基线（11 项，AS7 实证：`packages/client/web/src/platform.ts` 的 PLATFORM_MODULES）。
+ * 宿主冻结模块表基线（11 项，p1-shell-identity AS7 实证：`packages/client/web/src/platform.ts` 的 PLATFORM_MODULES）。
  * 这是本仓与宿主之间唯一的模块契约，也是 `scripts/build-client.mjs` 的 external 清单唯一来源。
  * 增删必须先改宿主侧事实，不接受「先加一项试试」。
  */
@@ -173,7 +173,7 @@ function main() {
       console.error(`✘ [${pkgLabel}] ${join(pkg.dir, 'lib', 'client.js')} 的 require 集合越过宿主模块基线:`)
       for (const violation of result.violations) console.error(`  - ${violation}`)
       console.error(`  基线: ${BASELINE_MODULES.join(', ')}`)
-      console.error('  依据: 设计 AS7 / D1 / D3——宿主只 seed 11 个平台模块，超出即需 dsh.client.external 供给方。')
+      console.error('  依据: p1-shell-identity 设计 AS7 / D1 / D3——宿主只 seed 11 个平台模块，超出即需 dsh.client.external 供给方。')
       hardFailures += 1
       continue
     }
