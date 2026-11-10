@@ -169,7 +169,7 @@ dsh --version        # 确认
 npm 的 `latest` dist-tag 当前指向 0.2.2-rc.1，落在本包范围内（门禁放行）。落在范围内的已发布版本族：`0.1.7-rc.2` / `0.2.0-rc.*` / `0.2.1-*` / `0.2.2-*`。**升级后必须重启正在运行的 DSH**（web profile 的 HMR 只覆盖应用内容，不覆盖宿主本体）。两点提醒：
 
 - 升级 DSH 后 profile 里已装的插件**不需要重装**（依赖与组合层不受宿主升级影响），但建议升级后看一眼启动日志有没有 `did not activate` 一类条目；
-- 本包的真机验收在 0.1.7-rc.2 上完成，对 0.2.x 只做过源码级核对（用到的能力都在，见设计文档 AS23）。升级后若发现配色不对/白屏，回退稳定版本：`npm i -g @deepseek-ai/dsh@0.1.7-rc.2`。
+- 本包的真机验收在 0.1.7-rc.2 上完成，对 0.2.x 只做过源码级核对（用到的能力都在，见设计文档 p1·AS23）。升级后若发现配色不对/白屏，回退稳定版本：`npm i -g @deepseek-ai/dsh@0.1.7-rc.2`。
 
 桌面版的宿主升级随应用（App Store / 官网下载）走，不走 npm；应用内 CLI 的版本即判定基准。
 
@@ -317,7 +317,7 @@ node scripts/check-no-host-deps.mjs      # 不含 @deepseek-ai/dsh-client-* 依�
 node scripts/check-require-baseline.mjs  # 产物 require 字面量 ⊆ 宿主模块基线
 node scripts/check-injection-escape.mjs  # 注入行不含结束标签
 node scripts/check-forbidden-tokens.mjs  # 字族 / 字号 / 复合简写 / 宿主几何变量 / theme.register
-node scripts/check-profile-probe.mjs     # V8 自检：装错 profile 时 Node 半场报可行动诊断、不误报
+node scripts/check-profile-probe.mjs     # p1·V8 自检：装错 profile 时 Node 半场报可行动诊断、不误报
 ```
 
 构建入口（`check-all.mjs` 的构建段即调它）：

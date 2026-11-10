@@ -29,4 +29,4 @@
 
 ## 与 e2e fixture 的边界
 
-e2e 场景专用 fixture（无资产环境、SI3 假阳性形态、探针产物、resume 两代树）在 `tests/e2e/fixtures/`，索引见其 README；漂移场景 e2e（V1·V6）复用本目录 `drift-od/`。
+e2e 场景专用 fixture（无资产环境、V1·SI3 假阳性形态、探针产物、resume 两代树）在 `tests/e2e/fixtures/`，索引见其 README；漂移场景 e2e（V1·V6）复用本目录 `drift-od/`。
