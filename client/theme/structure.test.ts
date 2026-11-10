@@ -5,7 +5,7 @@ import { FONT_SHORTHAND_TOKENS, RADIUS_TOKENS, STRUCTURE_TOKENS } from './struct
  * 复合简写安全重写的形态契约（层 3）：
  *   `[italic ]<weight> <宿主 size 表达式逐字>/<taiji unitless 行高> <宿主 family 引用逐字>`
  * size/family 表达式必须与宿主 gradient-shadow-text.css 当前字面逐段一致（本测试固定期望集
- * + scripts/check-host-font-tokens.mjs 对宿主源对账，双保险）；weight/行高只写 taiji 三档。
+ * + host-font-sheet.spec.ts 对宿主源对账，双保险）；weight/行高只写 taiji 三档。
  */
 const SHORTHAND_RE =
   /^(?:italic )?(500|600|700) (.+)\/(\d+(?:\.\d+)?) (var\(--dsw-font-family\)|var\(--ds-font-family-code\))$/

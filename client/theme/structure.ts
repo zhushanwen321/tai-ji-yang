@@ -1,9 +1,9 @@
 /**
  * client/theme/structure.ts —— 结构值：圆角四档 + 字重/行高复合简写重写（外观深化层 3）。
  *
- * 字重的载体修正（层 3 对 P1/D7 的修正）：P1 覆盖了 48 个 `*-font-weight` / `*-line-height`
+ * 字重的载体修正（层 3 对 p1-shell-identity P1/D7 的修正）：P1 覆盖了 48 个 `*-font-weight` / `*-line-height`
  * 独立子 token，但宿主组件只消费复合简写（`font: var(--dsw-font-markdown-base)`），独立子
- * token 消费点为 0——字重覆盖从未产生视觉效果。P1 的 D7 论证「覆盖复合简写会连带冻结用户
+ * token 消费点为 0——字重覆盖从未产生视觉效果。p1-shell-identity P1 的 D7 论证「覆盖复合简写会连带冻结用户
  * 字号与字族」只在整串写死的前提下成立：实测宿主复合简写本身就是 var() 组装的
  * （`var(--dsh-content-font-size, 14px) / calc(24px + var(--dsh-content-font-delta))
  * var(--dsw-font-family)`），**重写时逐字保留 size 与 family 的 var() 表达式、只替换
@@ -11,7 +11,7 @@
  *
  * 由此本文件的三条硬约束：
  *   ① size 表达式与 family 表达式必须与宿主 gradient-shadow-text.css 当前字面**逐段一致**
- *      （宿主改 size 计算式时本表必须同步——由 `scripts/check-host-font-tokens.mjs` 对账
+ *      （宿主改 size 计算式时本表必须同步——由 `client/theme/host-font-sheet.spec.ts` 对账
  *      看守，宿主源在位时逐 token 比对，不一致即红）；
  *   ② family 段只允许 `var(--dsw-font-family)` / `var(--ds-font-family-code)` 两种宿主引用
  *      （check-forbidden-tokens 的 RL9:font-shorthand 规则按此放行，其余形态仍拦）；
