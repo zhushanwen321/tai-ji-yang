@@ -1,12 +1,12 @@
 /**
- * client/preview-tab/iframe-view.tsx —— 设计产物的 iframe 呈现层（U7；设计 D7 缓解落地）。
+ * client/preview-tab/iframe-view.tsx —— 设计产物的 iframe 呈现层（U7；V1 设计包 D7 缓解落地）。
  *
  * **sandbox 红线**：iframe 一律 `sandbox="allow-scripts"` 且**不含** allow-same-origin——
  * 产物脚本被隔离在恒不同源的 opaque origin 中运行，无法以宿主同源身份携带 cookie 发起
- * 请求、无法读取伺服根内文件、无法触碰宿主域（设计 D7 影响分析的缓解机制；RL8 由 U8 e2e
+ * 请求、无法读取伺服根内文件、无法触碰宿主域（V1 设计包 D7 影响分析的缓解机制；RL8 由 U8 e2e
  * 机器断言，桌面真实宿主上的形态已由 U6 交付门探针实测：load 触发、脚本可执行、产物请求
  * Origin: null、宿主读 iframe 被同源策略拒绝——见 U6 runlog）。**不得为交互便利追加
- * allow-same-origin**：那等于把 cwd 读写权交回产物脚本，D7 的缓解随之失效。
+ * allow-same-origin**：那等于把 cwd 读写权交回产物脚本，V1 设计包 D7 的缓解随之失效。
  *
  * **加载态**：先以面板自身对同一路由发一次 HEAD 探针再挂 iframe——沙箱（无
  * allow-same-origin）使父页面读不到 iframe 文档与响应状态（隔离语义的直接后果），错误
@@ -96,7 +96,7 @@ export function ArtifactIframeView(props: { url: string; name: string; t: PanelT
     <div className="odp-view">
       <div className="odp-frame-body">
         {state.phase === 'ready' && (
-          // D7 缓解红线：sandbox 只放脚本、不放同源（文件头注释；RL8 e2e 断言的缓解机制）。
+          // V1 设计包 D7 缓解红线：sandbox 只放脚本、不放同源（文件头注释；RL8 e2e 断言的缓解机制）。
           <iframe
             key={url}
             className="odp-frame"

@@ -5,7 +5,7 @@
  * 数据源 = 宿主 workspaceFiles 的目录列举 remote（`ctx.remote.workspaceFiles.list`，经
  * index.tsx 闭包捕获传入——服务不经槽 props，本仓项目分组浏览器的同款装配形态）。只列
  * workspace 根一层、只收 .html/.htm 的普通文件项：产物形态开放但 index.html 在根是设计
- * 的既定形态（D7 否决「产物子树白名单」时给出的形态事实），子目录不递归——列表是兜底
+ * 的既定形态（V1 设计包 D7 否决「产物子树白名单」时给出的形态事实），子目录不递归——列表是兜底
  * 入口而非文件树，递归面留给通用文件预览。`.od-frames/` 是设备壳目录（材质化落点），
  * 类型为 directory，天然不进产物列表。
  *

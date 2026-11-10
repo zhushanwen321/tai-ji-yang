@@ -1,5 +1,5 @@
 /**
- * client/preview-tab/index.tsx —— 设计预览面板的浏览器半场入口（U7 终态实现；设计 D7）。
+ * client/preview-tab/index.tsx —— 设计预览面板的浏览器半场入口（U7 终态实现；V1 设计包 D7）。
  *
  * 职责（本文件 = tab 注册 + 面板体；地址契约与呈现层分属 present-card-link.ts 与
  * iframe-view.tsx / artifact-list.tsx）：
