@@ -40,8 +40,8 @@ export const DESIGN_PANEL_LOCALE_NS = 'opendesign.designPanel'
 /**
  * 产物伺服路由前缀的 document 相对形态（iframe 与面板 fetch 的寻址形态；完整地址 =
  * `<前缀>/<sessionId>/<产物相对路径>`，session 段由本文件的构造函数拼装——伺服根按
- * 会话解析，D7「伺服根 = 会话 cwd」，lib/serve/artifacts-route.ts 的 parseArtifactRoute
- * 是服务侧对偶）。
+ * 会话解析，V1 设计包 D7「伺服根 = 会话 cwd」，lib/serve/artifacts-route.ts 的
+ * parseArtifactRoute 是服务侧对偶）。
  *
  * 字面值来源 = lib/serve/artifacts-route.ts 的 `OPENDESIGN_ARTIFACTS_PREFIX_ROUTE`（U6）。
  * 不直接 import 的原因：该模块是 Node 半场入口（顶层 import node:fs/promises），浏览器
@@ -128,7 +128,7 @@ function encodeArtifactRoutePath(path: string): string {
  * 产物地址 → 伺服路由 URL（document 相对形态；web 与桌面双通的寻址形态：web 下相对
  * document base 即同源路由，桌面下 dsh-app:// 的相对路径由壳层 web-document 转发给宿主）。
  * 地址 = `<前缀>/<sessionId>/<产物相对路径>`——session 段是伺服根解析的寻址凭据（伺服根
- * = 该会话 cwd，D7），不可省略。不可认领的地址返回 undefined——调用方以
+ * = 该会话 cwd，V1 设计包 D7），不可省略。不可认领的地址返回 undefined——调用方以
  * canOpenArtifactAddress 分流后不会见到它。
  */
 export function artifactRouteUrlFor(address: string): string | undefined {
