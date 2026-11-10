@@ -20,7 +20,7 @@
  *     零回注（已知边界；感知与补跑路径见设计 D4/UD8 与 e2e S7 分版本实态断言）。
  *     非设计会话零监听零注入（preset 过滤）。
  *
- * 材质化触发点的宿主契约（0.1.7-rc.2 亲读核实，U8 接线时定案）：
+ * 材质化触发点的宿主契约（0.1.7-rc.2 亲读核实，V1 设计包 impl-plan U8 接线时定案）：
  *   - 事件：agent-preset-registry 对会话事件 `agent-preset/selected` 的转发
  *     （ctx.emit('agent-preset/selected', sessionId, presetId)）——preset 应答到会话的时点，
  *     覆盖「blank 会话经芯片 staged pick 应用设计 preset」路径与 resume 重组路径（后者 0.1.7

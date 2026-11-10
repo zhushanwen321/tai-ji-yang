@@ -1,5 +1,5 @@
 <!--
-  fixture 小样本：drift-od 漂移树的 core 资产（消费方 U2a locate 单测——漂移定位与版本画像）。
+  fixture 小样本：drift-od 漂移树的 core 资产（消费方 V1·U2a locate 单测——漂移定位与版本画像）。
   内容为清单声明存在性所需的最小正文（非原文摘录；语义对账以 mini-od 树的摘录为准）。
 -->
 # OD Next Core System Prompt（drift fixture 正文）
