@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  fixture 探针产物（V10 / RL8，设计 D7 影响分析的机器验证载体）。
+  fixture 探针产物（V1·V10 / V1·RL8，V1 设计包 D7 影响分析的机器验证载体）。
   产物脚本在载入后依次执行三组探针，把结果写进 DOM 便于 e2e 断言：
     1. fetch 宿主 open-in-app 的 POST open 路由（路径实名：DSH 仓 packages/host/open-in-app/src/shared.ts
        OPEN_IN_APP_OPEN_PATH = '/open-in-app/open'）；
@@ -9,7 +9,7 @@
   DOM 契约（与 tests/e2e/fixtures/README.md 一致）：#probe-open / #probe-secret / #probe-cookie
   三个独立节点 + #probe-results 聚合 JSON 节点，均为 textContent。
   隔离生效预期：open 路由响应不可得或被围栏拒（无 status=200 泄漏）、secret 内容不可得
-  （无 canary 泄漏）、cookie 为空。本文件自身不断言——断言在 U8 e2e。
+  （无 canary 泄漏）、cookie 为空。本文件自身不断言——断言在 V1·U8 e2e。
 -->
 <html lang="en">
 <head>

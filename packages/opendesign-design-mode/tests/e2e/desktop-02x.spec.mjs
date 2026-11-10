@@ -10,16 +10,16 @@
  * cordis.patch.yml} 后 pnpm install，依赖用 link: 指向仓内包目录（node_modules 留符号链接，
  * lib/ 改动即生效）。
  *
- * 核心组（验收计划表 A9 的 L3 段；模型行为段归 L4）：roster（选择器菜单 + 芯片选择）→
+ * 核心组（本轮 impl-plan 验收项 A9 的 L3 段；模型行为段归本轮 A11/A12/L4）：roster（选择器菜单 + 芯片选择）→
  * 注入（会话日志 system 节点特征句）→ doctor 十一分节（V5 的 0.2.2 形态，前八节零回归）→
- * 材质化恰 5 管理名（V1 设计包 D8 + opendesign-assets-quality D9）→ 预览面板 iframe 产物载入 + 探针（RL6/RL8 的 0.2.2 形态）→
+ * 材质化恰 5 管理名（V1 设计包 D8 + opendesign-assets-quality D9）→ 预览面板 iframe 产物载入 + 探针（V1·RL6/V1·RL8 的 0.2.2 形态）→
  * 检查环桌面宿主可用性（V2 的 0.2.2 形态：真机写盘 P0 产物 → 回注消息 source.kind
  * 协议信号形态断言 + report.jsonl fed-back 记录——RL1 的 0.2.2 半场）。
  *
- * AS7 混合内容（桌面 dsh-app:// 嵌 http://127.0.0.1 iframe）：实测已于 U6 交付门完成并关闭
- * （RR3）：裸 iframe 与 sandbox="allow-scripts" 均触发 load、无混合内容/CSP 阻拦、产物脚本
- * Origin: null——本 spec 在 asar 宿主（http 形态）复核 iframe 隔离语义（RL8 探针），AS7 的
- * dsh-app:// 壳层形态结论以 U6 runlog 为准记录，不在此重复实测。
+ * V1·AS7 混合内容（桌面 dsh-app:// 嵌 http://127.0.0.1 iframe，V1 设计包前提编号）：实测已于
+ * V1·U6 交付门完成并关闭（V1 复审决议 RR3）：裸 iframe 与 sandbox="allow-scripts" 均触发 load、
+ * 无混合内容/CSP 阻拦、产物脚本 Origin: null——本 spec 在 asar 宿主（http 形态）复核 iframe
+ * 隔离语义（V1·RL8 探针），V1·AS7 的 dsh-app:// 壳层形态结论以 V1·U6 runlog 为准记录，不在此重复实测。
  *
  * 运行：node packages/opendesign-design-mode/tests/e2e/desktop-02x.spec.mjs（退出码 0 = 绿）。
  * 前置：/Applications/DeepSeek Harness.app（0.2.2-rc.1）、PATH 上有 pnpm（profile 手装用）。
@@ -169,7 +169,7 @@ fs.writeFileSync(path.join(home, 'storages', 'workspace.json'), JSON.stringify({
 // 会话日志断言通道（同 web spec）
 const patchFile = path.join(home, 'e2e-patch.yml')
 fs.writeFileSync(patchFile, [
-  '# desktop e2e 观察用 overlay（U8）：会话日志落盘为未压缩 JSONL',
+  '# desktop e2e 观察用 overlay（V1·U8）：会话日志落盘为未压缩 JSONL',
   '- id: session-persistence-jsonl',
   '  config:',
   "    root: !!js dshHomePath('sessions')",
@@ -382,7 +382,15 @@ try {
     const sys = messages.find((t) => t.includes(DESIGN_INJECTION_MARK)) ?? ''
     assert(sys.includes(MINI_OD_PROFILE_PATH), '注入文本缺 prototype 任务档路径')
     assert(!sys.includes('{{SKILL_CATALOG}}'), '注入文本含占位符字面')
-    assert(!sys.includes('$OD_BIN'), '注入文本含 $OD_BIN 特征串（RL3 命令清零失效）')
+    assert(!sys.includes('$OD_BIN'), '注入文本含 $OD_BIN 特征串（V1·RL3 命令清零失效）')
+    // 本轮四新段的桌面注入特征（设计 §4.3 desktop 行「persona 组装含新段」；web spec 对
+    // rich-assets 全量断言四新段——本 spec 的 fixtureRoot 是 mini-od（无 craft/design-templates/
+    // design-systems 三目录），形状包清单/craft 指路/manifest 感知三段按 AX5 设计性降级省略，
+    // 可断言的新段 = panel 评审团协议段 + ppt 条目 deck 协议指针（两段无条件注入，随 compose
+    // 单源进桌面 systemPrompt；特征串与 web spec 断言同源）。
+    assert(sys.includes('# Critique Theater'), '注入文本缺 panel 评审团协议段标题（本轮新段）')
+    assert(sys.includes('maxRounds="3"') && sys.includes('threshold="8"'), 'panel 段缺缺省参数（轮数 3/阈值 8）')
+    assert(sys.includes('Deck protocol note') && sys.includes('`.od-frames/deck-framework.md`'), 'ppt 条目缺 deck 协议指针（本轮新段）')
   })
 
   await step('材质化：.od-frames/ 恰 5 管理名（4 复制件 + deck-framework.md）且派生文本一致（V1 设计包 D8 + opendesign-assets-quality D9 的 0.2.2 形态）', async () => {
@@ -426,7 +434,7 @@ try {
     assert(body.includes('检查发现：共 0 条'), '⑪ 尚无发现时应报零发现')
   })
 
-  await step('预览：fixture 产物载入 iframe 且探针呈隔离形态（RL6/RL8 的 0.2.2 形态）', async () => {
+  await step('预览：fixture 产物载入 iframe 且探针呈隔离形态（V1·RL6/V1·RL8 的 0.2.2 形态）', async () => {
     await page.getByRole('button', { name: 'Open right sidebar' }).click()
     await sleep(900)
     await page.getByText('Design preview').first().click()
@@ -462,10 +470,10 @@ try {
     assert(readQualityReport().some((line) => line.type === 'artifact' && line.path === 'landing.html'), '快照外新写产物应落身份行（D5④）')
   })
 
-  await step('AS7 衔接结论：asar 宿主 http 形态 iframe 隔离语义复核通过（dsh-app:// 壳层形态以 U6 交付门实测为准：无混合内容阻拦，RR3 关闭）', async () => {
+  await step('V1·AS7 衔接结论：asar 宿主 http 形态 iframe 隔离语义复核通过（dsh-app:// 壳层形态以 V1·U6 交付门实测为准：无混合内容阻拦，V1 复审决议 RR3 关闭）', async () => {
     // 本 spec 的宿主 = app 内嵌 0.2.2 宿主（http 形态）。上一断言的探针已复核 sandbox
     // 隔离（open 路由拒、非产物不可读、cookie SecurityError）。桌面壳（dsh-app:// 源嵌
-    // http://127.0.0.1 iframe）的混合内容实测由 U6 交付门探针完成：load 触发、脚本执行、
+    // http://127.0.0.1 iframe）的混合内容实测由 V1·U6 交付门探针完成：load 触发、脚本执行、
     // Origin: null、宿主不可读 iframe——结论「无阻拦」已在 U6 runlog 登记，此处不重复实测。
   })
 

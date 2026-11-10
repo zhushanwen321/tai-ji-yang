@@ -12,13 +12,19 @@
  *     触发（U5 / D4 / D5）：起 fs.watch 递归监听（lib/quality/watcher.js）→ 写盘事件经
  *     防抖 + 完整性哨兵 → lib/quality/lint.js 检查 → lib/quality/feedback.js 仅 P0 回注
  *     （steer/followup 双通道）+ .od-quality/report.jsonl 记录。监听器集合挂进程 effect
- *     （卸载即撤）；同会话重复 selected（resume 重组路径）先撤旧监听再起新一代——新一代
- *     快照 + 产物身份豁免集即 resume 语义（D5④）。非设计会话零监听零注入（preset 过滤）。
+ *     （卸载即撤）；同会话重复 selected 先撤旧监听再起新一代——新一代
+ *     快照 + 产物身份豁免集即 resume 语义（D5④）。该换代路径的宿主实态分版本登记（上游
+ *     依赖 UD8，0.1.7-rc.2 构建产物亲读）：0.1.7 的 resume 重组不发 selected 事件
+ *     （registry select() 对有历史回合的会话 locked），换代逻辑在 0.1.7 不触发、为事件
+ *     发射形态宿主（0.2.2+）预留——0.1.7 resume 后监听器不启动、上一代产物改写零检查
+ *     零回注（已知边界；感知与补跑路径见设计 D4/UD8 与 e2e S7 分版本实态断言）。
+ *     非设计会话零监听零注入（preset 过滤）。
  *
  * 材质化触发点的宿主契约（0.1.7-rc.2 亲读核实，U8 接线时定案）：
  *   - 事件：agent-preset-registry 对会话事件 `agent-preset/selected` 的转发
  *     （ctx.emit('agent-preset/selected', sessionId, presetId)）——preset 应答到会话的时点，
- *     覆盖「blank 会话经芯片 staged pick 应用设计 preset」与 resume 重组两条路径，即 V1 设计包 D8 的
+ *     覆盖「blank 会话经芯片 staged pick 应用设计 preset」路径与 resume 重组路径（后者 0.1.7
+ *     实态不发事件、事件发射形态宿主才覆盖，分版本登记见 UD8 与上方换代注释），即 V1 设计包 D8 的
  *     「会话创建时」（doctor 文案同口径：新会话首轮前已重铺）；
  *   - cwd：resolveSessionCwdById（lib/serve/session-cwd.js，U6 检查点裁决的唯一通道）——
  *     sessions.get(sessionId) 取会话对象后 workingDirectory.get 优先（0.2.x）、header.cwd

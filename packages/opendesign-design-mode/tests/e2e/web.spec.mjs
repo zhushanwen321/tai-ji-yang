@@ -18,17 +18,17 @@
  *      同内容重写指纹去重（回注消息计数不变 + duplicate 记录恰一行，SI2/RL3）。
  *   S4 V7 —— 非设计会话零侵入：standard 会话写 P0 HTML，零监听零回注（preset 过滤，
  *      .od-quality/ 不出现、事件流无 lint 消息）。
- *   S5 V6+RL5 —— 无资产环境（资源根指向空目录）：roster broken + 默认 preset 不受影响；
+ *   S5 V6+V1·RL5 —— 无资产环境（资源根指向空目录）：roster broken + 默认 preset 不受影响；
  *      SI3 假阳性形态（清单损坏）：诊断文案区分「未检测到」与「检测失败请重启 DSH 重试」。
- *   S6 V6漂移 —— 资产漂移 fixture（清单在非默认相对位置）仍可定位 + 画像版本正确。
- *   S7 V9+RL7 —— resume 代际重组 + resume 检查环不变量（RL10）：gen1 创建设计会话 →
+ *   S6 V1·V6 漂移 —— 资产漂移 fixture（清单在非默认相对位置）仍可定位 + 画像版本正确。
+ *   S7 V9+V1·RL7 —— resume 代际重组 + resume 检查环不变量（RL10）：gen1 创建设计会话 →
  *      写 P0 产物回注（followup）→ 关实例换 gen2 资产 → resume → 新一轮 system 节点反映
  *      gen2、无 gen1 残留句 → doctor ⑪ 读出检查记录 → 同文件同内容重写触发第二代回注
  *      （指纹进程内重启即清的幂等代价，SC4）→ 再写同内容记 duplicate 不再回注。
- *   S8 V11写入形态 —— git fixture 项目目录连续三次设计会话（一次换资产）：.od-frames/
+ *   S8 V1·V11 写入形态 —— git fixture 项目目录连续三次设计会话（一次换资产）：.od-frames/
  *      恰 5 管理名（4 复制件 + deck-framework.md，gen2 无壳声明轮 deck-framework.md 无条件
  *      重铺）、幂等、git status 无 tracked 变更（反向断言）。
- *   S9 A9/A10/A11 —— shell 包共存回归：verify runner 以 --url 连共存实例跑 brand+projects、
+ *   S9 V1·A9/A10/A11 —— shell 包共存回归（V1 设计包 impl-plan 验收项：brand/projects/lifecycle 三回归）：verify runner 以 --url 连共存实例跑 brand+projects、
  *      以自启形态对共存 home 跑 lifecycle（卸载 shell）——「preset 注册与 UI 注入不干扰
  *      shell 包」只在 opendesign 在场（两包共存 profile）时才可证明，单装态结果不作数。
  *
@@ -245,7 +245,7 @@ async function withInstance({ label, fixtureRoot, workspaceDir }) {
 function writeSessionLogPatch(home) {
   const patchFile = path.join(home, 'e2e-patch.yml')
   fs.writeFileSync(patchFile, [
-    '# e2e 观察用 overlay（U8）：会话日志落盘为未压缩 JSONL，供 system 节点断言',
+    '# e2e 观察用 overlay（V1·U8）：会话日志落盘为未压缩 JSONL，供 system 节点断言',
     '- id: session-persistence-jsonl',
     '  config:',
     "    root: !!js dshHomePath('sessions')",
@@ -852,38 +852,38 @@ async function scenarioPanelAndDoctor() {
       assert(body.includes('个管理名全部在场'), '材质化状态缺全在场结论')
     })
 
-    await stepAsync(results, '预览面板：fixture 产物出现在产物列表（A3b 兜底列表）', async () => {
+    await stepAsync(results, '预览面板：fixture 产物出现在产物列表（V1·A3b 兜底列表）', async () => {
       await openDesignPanel(page)
       const rows = await page.evaluate(() => Array.from(document.querySelectorAll('.odp-row')).map((r) => (r.textContent ?? '').trim()))
       assert(rows.includes('index.html'), `产物列表缺 index.html：${JSON.stringify(rows)}`)
     })
 
-    await stepAsync(results, '预览面板：产物经伺服路由载入 iframe 且 sandbox 只放脚本（RL6/V1 设计包 D7）', async () => {
+    await stepAsync(results, '预览面板：产物经伺服路由载入 iframe 且 sandbox 只放脚本（V1·RL6 与 V1 设计包 D7）', async () => {
       await page.locator('.odp-row').first().click()
       await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
       const sandbox = await page.getAttribute('iframe.odp-frame', 'sandbox')
       assert(sandbox === 'allow-scripts', `iframe sandbox 形态不对：${JSON.stringify(sandbox)}（不得含 allow-same-origin）`)
     })
 
-    await stepAsync(results, '产物脚本可执行且探针写 DOM（RL6 交互性）', async () => {
+    await stepAsync(results, '产物脚本可执行且探针写 DOM（V1·RL6 交互性）', async () => {
       const frame = page.frameLocator('iframe.odp-frame')
       const results0 = await frame.locator('#probe-results').textContent({ timeout: 15000 })
       assert(results0 !== null && results0 !== 'pending', `探针未产出结果：${JSON.stringify(results0)}`)
     })
 
-    await stepAsync(results, '探针：document.cookie 为空（RL8：fetch 不携带宿主 cookie 的前提语义）', async () => {
+    await stepAsync(results, '探针：document.cookie 为空（V1·RL8：fetch 不携带宿主 cookie 的前提语义）', async () => {
       const frame = page.frameLocator('iframe.odp-frame')
       const cookie = await frame.locator('#probe-cookie').textContent({ timeout: 10000 })
       assert(cookie !== null && /^cookie: \(empty\)|^cookie: blocked SecurityError/.test(cookie.trim()), `产物内 cookie 应为隔离形态（空或 SecurityError）：${JSON.stringify(cookie?.slice(0, 160))}`)
     })
 
-    await stepAsync(results, '探针：伺服根非产物文件不可得（RL8：无 canary 泄漏）', async () => {
+    await stepAsync(results, '探针：伺服根非产物文件不可得（V1·RL8：无 canary 泄漏）', async () => {
       const frame = page.frameLocator('iframe.odp-frame')
       const secret = await frame.locator('#probe-secret').textContent({ timeout: 10000 })
       assert(secret !== null && !secret.includes('SECRET-NOTE-CANARY'), `非产物内容泄漏：${JSON.stringify(secret?.slice(0, 160))}`)
     })
 
-    await stepAsync(results, '探针：宿主 open 路由响应不可得（RL8：围栏拒/opaque origin）', async () => {
+    await stepAsync(results, '探针：宿主 open 路由响应不可得（V1·RL8：围栏拒/opaque origin）', async () => {
       const frame = page.frameLocator('iframe.odp-frame')
       const open = await frame.locator('#probe-open').textContent({ timeout: 10000 })
       assert(open !== null && !open.includes('status=200'), `open 路由响应疑似可得：${JSON.stringify(open?.slice(0, 160))}`)
@@ -1054,7 +1054,7 @@ async function scenarioNoAssets() {
     await pickWorkspace(page, workspace)
 
     if (!REAL_OD_INSTALLED) {
-      await stepAsync(results, '无资产：新会话选择器不出现设计模式（RL5 入口过滤）', async () => {
+      await stepAsync(results, '无资产：新会话选择器不出现设计模式（V1·RL5 入口过滤）', async () => {
         const items = await readPickerItems(page)
         assert(!items.some((t) => t.includes('OpenDesign')), `broken preset 不应出现在选择器：${JSON.stringify(items)}`)
         assert(items.some((t) => t.includes('Standard mode')), `healthy preset 应保留：${JSON.stringify(items)}`)
@@ -1111,7 +1111,7 @@ async function scenarioNoAssets() {
   return results
 }
 
-/** 场景 S6（主编排注册名「S6 V6漂移」；A6/V6 = V1 设计包 impl-plan 验收项编号）：资产漂移 fixture 仍可定位 + 画像版本正确。 */
+/** 场景 S6（主编排注册名「S6 V1·V6 漂移」；A6/V6 = V1 设计包 impl-plan 验收项编号）：资产漂移 fixture 仍可定位 + 画像版本正确。 */
 async function scenarioDrift() {
   const results = []
   const workspace = makeWorkspaceDir('v6')
@@ -1128,7 +1128,7 @@ async function scenarioDrift() {
       assert(sys.includes(path.join(DRIFT_ROOT, 'od-next-strategy', 'assets', 'task-profiles', 'prototype.md')), '注入文本缺漂移树的 prototype 任务档路径')
     })
 
-    await stepAsync(results, '漂移布局：doctor 画像报告漂移路径与实际版本（V6）', async () => {
+    await stepAsync(results, '漂移布局：doctor 画像报告漂移路径与实际版本（V1·V6）', async () => {
       const body = await runDoctor(page)
       assert(body.includes('清单路径：'), '缺清单路径行')
       assert(body.includes(path.join('upgraded', 'v2', 'od-next-strategy')), `清单路径应指向漂移位置：${body.slice(0, 400)}`)
@@ -1140,7 +1140,7 @@ async function scenarioDrift() {
   return results
 }
 
-/** 场景 S7（主编排注册名「S7 V9+RL7 resume 代际重组+检查环不变量」；A13/V9+RL7 = V1 设计包 impl-plan 验收项编号）：resume 代际重组。 */
+/** 场景 S7（主编排注册名「S7 V9+V1·RL7 resume 代际重组+检查环不变量」；代际重组半场承接 V1 设计包 impl-plan 验收项 A13（V1·RL7 = V1 红灯 resume 重组语义，非本轮 RL7 注入体积预算），检查环不变量半场为本轮 V9）：resume 代际重组。 */
 async function scenarioResume() {
   const results = []
   const workspace = makeWorkspaceDir('v9')
@@ -1218,7 +1218,7 @@ async function scenarioResume() {
       assert(labeled, 'resume 后会话头/页面缺设计 preset 标识（preset 未重挂）')
     })
 
-    await stepAsync(results, 'resume：新一轮 system 节点反映 gen2 资产、无 gen1 特征句残留（RL7）', async () => {
+    await stepAsync(results, 'resume：新一轮 system 节点反映 gen2 资产、无 gen1 特征句残留（V1·RL7）', async () => {
       await sendUserMessage(gen2Page, 'continue the poster with a hero section')
       const entry = collectSessionFiles(home)
         .map((f) => ({ ...f, log: readSessionLog(f.file) }))
@@ -1249,10 +1249,12 @@ async function scenarioResume() {
 
     // V9 后半（resume 后监听器复活与第二代回注）依赖宿主 resume 重组发 agent-preset/selected
     // 事件——0.1.7 实测不发（registry select() 对有历史回合的会话 locked，resume 走投影状态
-    // 重挂且幂等不写事件，亲读 packages/preset/agent-preset-registry/src/index.ts:368-377 与
-    // 会话日志实读核实）：gen2 进程无新 started 行、同内容重写零回注。自愈接线是设计外新
-    // 机制（D4 无此语义），归 U5 领地待裁决；本场景探测两种实态：复活则走 V9 完整断言
-    // （0.2.2 或接线补边后形态），未复活则显式播报降级、登记补跑路径（不静默、不固化缺陷）。
+    // 重挂且幂等不写事件，亲读 packages/preset/agent-preset-registry/src/index.ts:368-377、
+    // 构建产物 dsh-agent-preset-registry 0.1.7-rc.2 lib/index.js:756/:761 与会话日志实读核实；
+    // 设计上游依赖 UD8 分版本登记）：gen2 进程无新 started 行、同内容重写零回注。自愈接线是
+    // 设计外新机制，D4 采用栏明示不做（UD8 退场条件同口径）；本场景按双实态探测：复活则走
+    // V9 完整断言（0.2.2 或后续宿主补线形态），未复活则按 0.1.7 预期实态显式断言（监听器
+    // 不启动、改写零回注零新检查记录）+ 环境分界播报与补跑路径呈报。
     const resumeWatcherRevived = await (async () => {
       const workspaceReal = fs.realpathSync(workspace)
       fs.writeFileSync(path.join(workspaceReal, 'poster.html'), dirtyArtifactHtml('Poster'))
@@ -1281,8 +1283,23 @@ async function scenarioResume() {
         assert(collectLintFeedbackMessages(home).length === 2, '第二代同内容重写应被指纹去重，回注计数停在 2')
       })
     } else {
-      console.log('    [环境降级] 0.1.7 宿主 resume 重组不发 agent-preset/selected 事件（registry select() 对已开局会话 locked）：resume 后质量环监听器不自动复活，V9/SC4+SI2 完整断言跳过——已写入 poster.html 触发实态，待接线补边（自愈通道归 U5 领地裁决）或 0.2.2 桌面宿主验证后补跑')
-      results.push({ name: 'V9 后半降级登记：resume 后监听器复活探测（未复活——见场景播报）', ok: true })
+      // 0.1.7 预期实态显式断言（UD8/D4 分版本登记）：resume 后监听器不启动——探测循环写入
+      // 的 poster.html 已过防抖窗口（≥12s ≫ 防抖 800ms），若监听器意外存活早应出现第二代
+      // started 行与回注；此处把实态固化为断言，宿主行为偏离登记分界时在此红灯。
+      await stepAsync(results, 'V9 后半（0.1.7 预期实态，UD8/D4）：resume 后监听器不启动——改写零回注、零新检查记录', async () => {
+        const workspaceReal = fs.realpathSync(workspace)
+        const report = readQualityReport(workspaceReal)
+        const starts = report.filter((l) => l.type === 'watcher' && l.event === 'started').length
+        assert(starts === 1, `0.1.7 resume 后不应有新一代监听器 started 行（预期恰 1 行=第一代）：${starts}`)
+        const messages = collectLintFeedbackMessages(home)
+        assert(messages.length === 1, `0.1.7 resume 后同内容改写不应触发回注（监听器未启动）：${messages.length}`)
+        const findings = report.filter((l) => l.type === 'finding')
+        assert(findings.length === 1, `0.1.7 resume 后不应有新 finding 行（仅 gen1 的 fed-back 一行）：${findings.length}`)
+        const artifacts = report.filter((l) => l.type === 'artifact')
+        assert(artifacts.length === 1, `0.1.7 resume 后不应有新产物身份行（仅 gen1 的 poster.html 一行）：${artifacts.length}`)
+      })
+      console.log('    [环境分界] 0.1.7 宿主 resume 重组不发 agent-preset/selected 事件（UD8/D4 已登记，registry select() 对已开局会话 locked）：监听器不启动为预期实态（已按显式断言固化）；V9/SC4+SI2 完整断言在事件发射形态宿主（0.2.2+）上补跑')
+      results.push({ name: 'V9 后半（0.1.7 分版本实态断言）：监听器不启动 + 改写零回注零新记录（完整断言待事件发射宿主补跑）', ok: true })
     }
   } finally {
     if (gen1 !== null) await gen1.close()
@@ -1291,7 +1308,7 @@ async function scenarioResume() {
   return results
 }
 
-/** 场景 S8（主编排注册名「S8 V11 项目目录写入形态（5 管理名）」；A15/V11 = V1 设计包 impl-plan 验收项编号）：git fixture 连续三次设计会话（一次换资产）的写入形态。 */
+/** 场景 S8（主编排注册名「S8 V1·V11 项目目录写入形态（5 管理名）」；A15/V11 = V1 设计包 impl-plan 验收项编号）：git fixture 连续三次设计会话（一次换资产）的写入形态。 */
 async function scenarioProjectWrites() {
   const results = []
   const workspace = makeWorkspaceDir('v11', { git: true })
@@ -1387,7 +1404,7 @@ async function scenarioProjectWrites() {
   return results
 }
 
-// ── shell 包共存回归（A9/A10/A11；设计 §4.3 e2e 影响面第一行）───────────────
+// ── shell 包共存回归（V1·A9/A10/A11；设计 §4.3 e2e 影响面第一行）───────────────
 
 /** verify runner 子进程（--json：stdout 尾部 JSON 行 = 聚合 verdict；日志走 stderr）。 */
 function runVerifyRunner(args) {
@@ -1412,7 +1429,7 @@ function runVerifyRunner(args) {
 }
 
 /**
- * 场景 S9（主编排注册名；A9/A10/A11 = V1 设计包 impl-plan 验收项：shell 包 brand/projects/
+ * 场景 S9（主编排注册名「S9 V1·A9/A10/A11 shell 包共存回归（runner 串接）」；A9/A10/A11 = V1 设计包 impl-plan 验收项：shell 包 brand/projects/
  * lifecycle 三场景）：shell 包既有断言场景在两包共存 profile 上的回归。
  *
  * 共存前提即命题：brand/projects/lifecycle 三场景的验收目的 =「新插件安装进同一 profile 后
@@ -1430,7 +1447,7 @@ async function scenarioShellCoexistRegression() {
   const artifactsDir = path.join(RUN_ROOT, 'verify-shell-regression')
   fs.mkdirSync(artifactsDir, { recursive: true })
 
-  await stepAsync(results, 'A9/A10：runner --url 连共存实例，brand+projects 回归', async () => {
+  await stepAsync(results, 'V1·A9/A10：runner --url 连共存实例，brand+projects 回归', async () => {
     const instance = await withInstance({ label: 'shell-coexist', fixtureRoot: MINI_OD_ROOT, workspaceDir: workspace })
     try {
       const { page, home } = instance
@@ -1454,7 +1471,7 @@ async function scenarioShellCoexistRegression() {
     }
   })
 
-  await stepAsync(results, 'A11：runner 自启共存 home 跑 lifecycle 回归（卸载 shell，opendesign 在场）', async () => {
+  await stepAsync(results, 'V1·A11：runner 自启共存 home 跑 lifecycle 回归（卸载 shell，opendesign 在场）', async () => {
     const home = path.join(RUN_ROOT, 'home-shell-lifecycle')
     fs.cpSync(TEMPLATE_HOME, home, { recursive: true })
     const runId = `shell-lifecycle-${Date.now()}`
@@ -1499,10 +1516,10 @@ try {
     ['S3 V2+V10 质量环回注+指纹去重+陌生既有文件', scenarioQualityLoop],
     ['S4 V7 非设计会话零侵入', scenarioStandardZeroIntrusion],
     ['S5 V6无资产+SI3', scenarioNoAssets],
-    ['S6 V6漂移', scenarioDrift],
-    ['S7 V9+RL7 resume 代际重组+检查环不变量', scenarioResume],
-    ['S8 V11 项目目录写入形态（5 管理名）', scenarioProjectWrites],
-    ['S9 A9/A10/A11 shell 包共存回归（runner 串接）', scenarioShellCoexistRegression],
+    ['S6 V1·V6 漂移', scenarioDrift],
+    ['S7 V9+V1·RL7 resume 代际重组+检查环不变量', scenarioResume],
+    ['S8 V1·V11 项目目录写入形态（5 管理名）', scenarioProjectWrites],
+    ['S9 V1·A9/A10/A11 shell 包共存回归（runner 串接）', scenarioShellCoexistRegression],
   ]
 
   const outcome = []

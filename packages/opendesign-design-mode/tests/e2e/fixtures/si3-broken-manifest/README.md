@@ -12,8 +12,8 @@
 | `empty-assets/` | 空目录（无任何清单） | 「未检测到 OpenDesign」+ 安装指引 |
 | `si3-broken-manifest/` | 本目录（清单存在但损坏） | 「检测失败请重启 DSH 重试」类文案（不得误报未安装） |
 
-**用法**：e2e 把资源根环境变量指向本目录（其余同 V5 隔离环境），断言 preset broken
-且文案含重启重试指引（U8 场景；实施计划 U8 行「已装但启动探测失败的假阳性形态」）。
+**用法**：e2e 把资源根环境变量指向本目录（其余同 V1·V5 隔离环境），断言 preset broken
+且文案含重启重试指引（V1·U8 场景；V1 实施计划 U8 行「已装但启动探测失败的假阳性形态」）。
 
 **禁止修复本目录的 open-design.json**——损坏即其功能；来源与真清单的对账见
 `tests/fixtures/mini-od/.../open-design.json` 的 `$fixtureSource`。
