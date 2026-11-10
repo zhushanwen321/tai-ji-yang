@@ -1,12 +1,12 @@
 /**
- * opendesign-design-mode 的共享契约类型（单处归属；U2a/U2b/U3/U5/U6/U7 经相对路径 import）。
+ * opendesign-design-mode 的共享契约类型（单处归属；V1 设计包 U2a/U2b/U3/U5/U6/U7 经相对路径 import）。
  *
- * 形状来源：设计文档 §3.1 各层描述（资产层 / 会话组装层 / 预览层 / 诊断）与验收场景
- * V4（清单三层版本）/ D6（改写命中清单）/ D8（材质化写入清单）/ D9（doctor 八项）。
- * 本文件只承载类型与常量词表，不含运行时逻辑；U1 阶段先立契约，实现单元按此填实。
+ * 形状来源：V1 设计包 §3.1 各层描述（资产层 / 会话组装层 / 预览层 / 诊断）与验收场景
+ * V4（清单三层版本）/ D6（改写命中清单）/ D8（材质化写入清单）/ D9（doctor 八项）——编号均属 V1 设计包。
+ * 本文件只承载类型与常量词表，不含运行时逻辑；V1 设计包 U1 阶段先立契约，实现单元按此填实。
  */
 
-// ── 资产层（U2a 定位器 / U2b doctor 消费）────────────────────────────────────
+// ── 资产层（V1 设计包 U2a 定位器 / U2b doctor 消费）──────────────────────────
 
 /** OD 安装渠道（macOS /Applications 下四种渠道命名 + 环境变量覆盖）。 */
 export type OdChannel = 'override' | 'stable' | 'beta' | 'prerelease' | 'preview'
@@ -22,7 +22,7 @@ export interface OdAssetCandidate {
   channel: OdChannel
 }
 
-/** open-design.json 清单的三层版本（验收场景 V4：manifest 版本 / specVersion / 资产版本）。 */
+/** open-design.json 清单的三层版本（V1 设计包验收场景 V4：manifest 版本 / specVersion / 资产版本）。 */
 export interface ManifestVersions {
   /** 清单自身的 version 字段。 */
   manifestVersion?: string
@@ -40,7 +40,7 @@ export interface VersionProfile {
   manifestPath: string
   /**
    * 清单所在场景包目录（manifestPath 的父目录；清单内 "./assets/..." 相对路径的解析根）。
-   * 默认读取器与组装器（U3 任务档绝对路径）都以它为锚——不加此字段则每个消费方都得从
+   * 默认读取器与组装器（V1 设计包 U3 任务档绝对路径）都以它为锚——不加此字段则每个消费方都得从
    * manifestPath 自行推导同一件事。
    */
   scenarioRoot: string
@@ -50,17 +50,17 @@ export interface VersionProfile {
   candidates: OdAssetCandidate[]
   /** 选定依据的人类可读描述（环境变量覆盖 / 渠道优先级 / 路径序）。 */
   selectedBy: string
-  /** 版本是否已核实（未核实时 doctor 出警告，设计 UD2）。 */
+  /** 版本是否已核实（未核实时 doctor 出警告，V1 设计包 UD2）。 */
   verified: boolean
 }
 
-// ── 启动探测（U1 persona 激活时点；U2a 填实定位逻辑）──────────────────────────
+// ── 启动探测（V1 设计包 U1 persona 激活时点；U2a 填实定位逻辑）──────────────────
 
 /**
- * persona 激活时点的启动探测结果（SI3 两形态区分的载体）：
+ * persona 激活时点的启动探测结果（V1 设计包 SI3 两形态区分的载体）：
  *   - missing：探测完成、零候选（未装 OD）→ 文案「未检测到 OpenDesign，请安装后重启 DSH」；
  *   - error：探测本身失败（IO 异常 / 慢挂载 / 权限）→ 文案「OpenDesign 资产检测失败，请重启 DSH 重试」。
- * 两形态不得合并：把 error 报成 missing 会把「已装但探测瞬时失败」误导成未装（SI3 假阳性方向）。
+ * 两形态不得合并：把 error 报成 missing 会把「已装但探测瞬时失败」误导成未装（V1 设计包 SI3 假阳性方向）。
  */
 export type OdProbeOutcome =
   | { status: 'found'; resourceRoot: string }
@@ -70,15 +70,15 @@ export type OdProbeOutcome =
 /** 探测失败（missing / error）时随 diagnostic 激活失败抛出的错误——message 即 roster broken 诊断文案。 */
 export class OdProbeError extends Error {}
 
-/** 未安装形态的诊断文案（验收条款② / 场景 V5 与「重启重试」文案可区分）。 */
+/** 未安装形态的诊断文案（V1 设计包验收条款② / 场景 V5 与「重启重试」文案可区分）。 */
 export const OD_MISSING_MESSAGE = '未检测到 OpenDesign，请安装后重启 DSH。'
 
-/** 探测失败形态的诊断文案（SI3 假阳性收窄：瞬时失败给重试指引而非误判未装）。 */
+/** 探测失败形态的诊断文案（V1 设计包 SI3 假阳性收窄：瞬时失败给重试指引而非误判未装）。 */
 export const OD_PROBE_FAILED_MESSAGE = 'OpenDesign 资产检测失败，请重启 DSH 重试。'
 
-// ── 会话组装层（U3 组装器 / U4 改写器 / U2b doctor 消费）───────────────────────
+// ── 会话组装层（V1 设计包 U3 组装器 / U4 改写器 / U2b doctor 消费）────────────────
 
-/** 路由指令段注册的任务档类别（八类 HTML 文件产物型，设计 D6；排除五档不在此列）。 */
+/** 路由指令段注册的任务档类别（八类 HTML 文件产物型，V1 设计包 D6；排除五档不在此列）。 */
 export const ROUTED_TASK_PROFILES = [
   'prototype',
   'ppt',
@@ -93,27 +93,28 @@ export const ROUTED_TASK_PROFILES = [
 export type RoutedTaskProfile = (typeof ROUTED_TASK_PROFILES)[number]
 
 /**
- * 改写器的一条命中记录（doctor 改写命中清单的逐条形态，设计 D9）。
+ * 改写器的一条命中记录（doctor 改写命中清单的逐条形态，V1 设计包 D9）。
  * 命中记录契约唯一权威 = lib/rewrite/apply.ts；此处 re-export 保持 import 路径兼容。
  */
 export type { RewriteApplyRecord } from './rewrite/apply.js'
 
-// ── 材质化（U5 消费；doctor 材质化状态报告落点清单，D8）───────────────────────
+// ── 材质化（U5 消费；doctor 材质化状态报告落点清单，V1 设计包 D8）───────────────
 
 /** 材质化写入的一个文件。 */
 export interface MaterializedFile {
   /** 管理名（.od-frames/ 内的文件名，如 android.html）。 */
   name: string
   /**
-   * 源资产绝对路径（manifest 清单资源复制件）。派生登记件（deck-framework.md，D9——
-   * 内容生成自 lib/protocols/deck.ts，非 OD 静态资产复制）无源资产路径，缺省。
+   * 源资产绝对路径（manifest 清单资源复制件）。派生登记件（deck-framework.md，
+   * opendesign-assets-quality D9——内容生成自 lib/protocols/deck.ts，非 OD 静态资产复制）
+   * 无源资产路径，缺省。
    */
   sourcePath?: string
   /** 写入字节数。 */
   bytes: number
 }
 
-/** 材质化写入清单（会话创建时无条件全量重铺的落点记录，设计 D8/D9）。 */
+/** 材质化写入清单（会话创建时无条件全量重铺的落点记录，V1 设计包 D8 确立语义、opendesign-assets-quality D9 扩至 5 文件写清单）。 */
 export interface MaterializeManifest {
   /** 写入落点根（会话工作目录的 .od-frames/ 子目录）。 */
   targetRoot: string

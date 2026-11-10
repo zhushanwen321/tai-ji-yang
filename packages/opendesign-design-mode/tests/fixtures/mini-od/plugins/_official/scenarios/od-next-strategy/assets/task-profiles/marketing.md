@@ -1,6 +1,6 @@
 <!--
   fixture 摘录：OD 仓 .../assets/task-profiles/marketing.md（0.25.1 检出原文，2026-11-09）。
-  八类路由之营销源码档；收录默认交付段（单文件 HTML 源码）——D6 对该档
+  八类路由之营销源码档；收录默认交付段（单文件 HTML 源码）——V1·D6 对该档
   「显式图片/PDF 成片需求按媒体类报缺」边界的资产侧语义来源。
 -->
 # OD Next Marketing Task Profile（fixture 摘录）

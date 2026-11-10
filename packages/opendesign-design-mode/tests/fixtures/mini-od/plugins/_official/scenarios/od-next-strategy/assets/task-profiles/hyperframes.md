@@ -1,7 +1,7 @@
 <!--
   fixture 摘录：OD 仓 .../assets/task-profiles/hyperframes.md（0.25.1 检出原文，2026-11-09）。
   八类路由之动效源码档；收录 Artifact contract 段（原文 L35-40）——交付物 = timeline
-  驱动 HTML 源码、MP4 由产品侧渲染且在 Agent 职责外（该档纯 DSH 可达的依据，设计 D6）。
+  驱动 HTML 源码、MP4 由产品侧渲染且在 Agent 职责外（该档纯 DSH 可达的依据，设计 V1·D6）。
 -->
 # OD Next HyperFrames Task Profile（fixture 摘录）
 

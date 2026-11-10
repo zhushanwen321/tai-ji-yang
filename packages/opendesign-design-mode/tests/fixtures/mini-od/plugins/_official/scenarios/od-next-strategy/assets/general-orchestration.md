@@ -1,7 +1,7 @@
 <!--
   fixture 摘录：OD 仓 plugins/_official/scenarios/od-next-strategy/assets/general-orchestration.md
-  （0.25.1 检出原文，摘录于 2026-11-09）。只收录降级改写器（U4）断言所需关键段，非完整资产副本。
-  摘录语义依据：设计渲染视图 D6 ③④⑤ 与两轮协议/question-form 折叠规则（D2）。
+  （0.25.1 检出原文，摘录于 2026-11-09）。只收录降级改写器（V1·U4）断言所需关键段，非完整资产副本。
+  摘录语义依据：设计渲染视图 V1·D6 ③④⑤ 与两轮协议/question-form 折叠规则（V1·D2）。
   注释纪律同 core-system-prompt.md：注释只写行号与处置域，不复制改写特征串本身。
 -->
 # OD Next General Orchestration（fixture 摘录）
@@ -23,8 +23,8 @@ control unless the user explicitly asks for it.
 
 ## Choose the work
 
-（原文 L52-54：D6 ③ 处置段——独立媒体反包装句，与 core 交付段同性质、不含命令特征串，
- RL3 抓不住，由 U4 反指令特征短语断言兜底）
+（原文 L52-54：V1·D6 ③ 处置段——独立媒体反包装句，与 core 交付段同性质、不含命令特征串，
+ V1·RL3 抓不住，由 V1·U4 反指令特征短语断言兜底）
 
 Determine the deliverable from the latest request plus non-conflicting earlier
 requirements. The selected scenario is a default, not a restriction on output.
@@ -35,7 +35,7 @@ requested page, deck, or composition needs it. Do not demand a scenario switch.
 ## Planning turn protocol
 
 （原文 L88-99 与 L104：两轮协议段——「两轮协议单轮化」与「question-form 文本化」两条规则
- 的处置对象；续轮标记与表单标记的宿主执行者在 DSH 侧不存在，见设计 PR5）
+ 的处置对象；续轮标记与表单标记的宿主执行者在 DSH 侧不存在，见设计 V1·PR5）
 
 5. Summarize the plan in one readable block: the selected deliverable, design
    direction, ordered steps, key assumptions, and remaining constraints.
@@ -57,7 +57,7 @@ preparing the plan are allowed.
 
 ## Media input Skill
 
-（原文 L215-236：D6 ④ 处置段整段——Skill 加载指令段，段内命令走命令特征串，
+（原文 L215-236：V1·D6 ④ 处置段整段——Skill 加载指令段，段内命令走命令特征串，
  无本地路径等价物，整段报缺化）
 
 ### Media input Skill

@@ -1,8 +1,8 @@
 <!--
   fixture 摘录：OD 仓 plugins/_official/scenarios/od-next-strategy/assets/core-system-prompt.md
-  （0.25.1 检出原文，摘录于 2026-11-09）。只收录降级改写器（U4）断言与组装器（U3）拼接所需的
+  （0.25.1 检出原文，摘录于 2026-11-09）。只收录降级改写器（V1·U4）断言与组装器（V1·U3）拼接所需的
   关键段，非完整资产副本；每段注释标注原文行号区间，OD 升级后按行号对账更新（见 tests/fixtures/README.md）。
-  摘录语义依据：设计渲染视图 D6 ①②⑤ 与 RL3。
+  摘录语义依据：设计渲染视图 V1·D6 ①②⑤ 与 V1·RL3。
   注释纪律：注释只写行号与处置域，不复制改写特征串本身——特征串若出现在注释里，
   改写器不会触达注释，fixture 扫描断言会被注释残留误触发。
 -->
@@ -10,7 +10,7 @@
 
 ## Deliverable resolution
 
-（原文 L110-119：独立图片交付段，D6 ① 处置对象——改写器须整段替换为 V1 报缺语义）
+（原文 L110-119：独立图片交付段，V1·D6 ① 处置对象——改写器须整段替换为 V1 报缺语义）
 
 Resolve applicability before precedence. A prototype project may host an image
 request without changing the project's type or asking for a scenario switch.
@@ -23,7 +23,7 @@ at all. Missing output-format instructions do not authorize creating an artifact
 
 ## Production steps
 
-（原文 L148：媒体 production-step 句，D6 ⑤ 处置对象——与 motion-design 档 V1 交付 HTML 源码部分相反）
+（原文 L148：媒体 production-step 句，V1·D6 ⑤ 处置对象——与 motion-design 档 V1 交付 HTML 源码部分相反）
 
 - Generation, waiting for media jobs, rendering a requested final-cut file, and
   registering a live artifact are production steps until the actual requested
@@ -31,7 +31,7 @@ at all. Missing output-format instructions do not authorize creating an artifact
 
 ## Video-motion exception
 
-（原文 L157-164：video-motion 例外段，D6 ⑤ 处置对象——成片评审前提在 V1 报缺语义下不成立）
+（原文 L157-164：video-motion 例外段，V1·D6 ⑤ 处置对象——成片评审前提在 V1 报缺语义下不成立）
 
 Video-motion exception: only while producing an actual video-motion film requested
 by the user, follow the motion guidance for one bounded review of the source and
@@ -42,7 +42,7 @@ not authorize a new acceptance stage or acceptance subagents.
 ## Skill boundaries
 
 （原文 L186-208：Skill 目录只读与 OD 界面指引段——「界面指引替换」规则处置对象，
- RL3 断言注入文本不含 Integration 界面特征串，本段即其来源）
+ V1·RL3 断言注入文本不含 Integration 界面特征串，本段即其来源）
 
 - Skill directories are not writable through your file tools. A skill is part
   of your own instructions, so it is never edited as a side effect of a task;
@@ -59,7 +59,7 @@ not authorize a new acceptance stage or acceptance subagents.
 
 ## Imagery by type
 
-（原文 L267-316：Imagery by type 段，D6 ② 逐子项处置对象——保留子项：素材优先级 L267-286、
+（原文 L267-316：Imagery by type 段，V1·D6 ② 逐子项处置对象——保留子项：素材优先级 L267-286、
  fallback 语义 L290-292、读回禁令 L294-297、占位披露 L306-316；
  报缺化子项：stock 命令 L287-288、生成门控 L299-304；移除子项：L293 的 Skill 加载引用）
 

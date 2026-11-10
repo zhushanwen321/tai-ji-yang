@@ -1,7 +1,7 @@
 <!--
   fixture 摘录：OD 仓 .../assets/task-profiles/ppt.md（0.25.1 检出原文，2026-11-09）。
-  收录 deck 默认交付段——V3/A3b（单文件 html、翻页协议）断言的资产侧语义来源。
-  本档运行时模型自读（D4/D6），不经注入、不经改写器。
+  收录 deck 默认交付段——V1·V3/V1·A3b（单文件 html、翻页协议）断言的资产侧语义来源。
+  本档运行时模型自读（V1·D4/V1·D6），不经注入、不经改写器。
   命名事实：任务档名是 ppt；「deck」是清单 projectKind 字段值（open-design.json ppt.projectKinds=["deck"]）。
 -->
 # OD Next Presentation Task Profile（fixture 摘录）

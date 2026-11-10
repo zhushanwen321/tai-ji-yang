@@ -1,8 +1,8 @@
 <!--
   fixture 摘录：OD 仓 plugins/_official/scenarios/od-next-strategy/assets/task-profiles/prototype.md
   （0.25.1 检出原文，摘录于 2026-11-09）。收录设备壳落点语义段（材质化四文件的消费契约）。
-  本档属运行时模型自读资产（设计 D4/D6）：不经系统提示词注入、不经改写器，
-  故收录范围以材质化断言（U5）与组装断言（U3 路由段路径）所需为限。
+  本档属运行时模型自读资产（设计 V1·D4/V1·D6）：不经系统提示词注入、不经改写器，
+  故收录范围以材质化断言（V1·U5）与组装断言（V1·U3 路由段路径）所需为限。
 -->
 # OD Next Prototype Task Profile（fixture 摘录）
 
