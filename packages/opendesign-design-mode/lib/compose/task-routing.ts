@@ -25,7 +25,7 @@
  * 按字段省略渲染、不计异常（U1 降级口径）；解析异常条目仅目录名 + unparsed 标注；
  * 目录缺失整体降级为空清单指引（AX5）。
  *
- * ppt 条目 deck 协议指针（D9）：演示稿产物遵循 `.od-frames/deck-framework.md` 协议文件
+ * ppt 条目 deck 协议指针（opendesign-assets-quality D9）：演示稿产物遵循 `.od-frames/deck-framework.md` 协议文件
  * （上游约定名，OD 任务档 ppt.md:216 fallback 实名；文件由材质化器铺进会话目录，指针 +
  * 自读省提示词——layout.css 同款先例）。
  */
@@ -76,7 +76,7 @@ export function taskProfilePath(scenarioRoot: string, id: string): string {
   return join(scenarioRoot, TASK_PROFILE_DIR, `${id}.md`)
 }
 
-/** ppt 条目的 deck 协议文件指针（D9；文件名 = 上游约定 .od-frames/deck-framework.md）。 */
+/** ppt 条目的 deck 协议文件指针（opendesign-assets-quality D9；文件名 = 上游约定 .od-frames/deck-framework.md）。 */
 const DECK_PROTOCOL_FILE = `${OD_FRAMES_DIR}/deck-framework.md`
 
 /** 一个形状包的清单行（D2：目录名 + od.mode + description 首句 + 中文触发词摘录）。 */
@@ -195,7 +195,7 @@ export function renderRoutingSegment(input: {
       )
     }
     if (entry.id === 'ppt') {
-      // D9 条目级协议指针：deck 协议文件由材质化器铺进会话目录，指针 + 自读（省提示词）。
+      // opendesign-assets-quality D9 条目级协议指针：deck 协议文件由材质化器铺进会话目录，指针 + 自读（省提示词）。
       lines.push(
         `   Deck protocol note: presentation deliverables follow the deck protocol`,
         `   file staged at \`${DECK_PROTOCOL_FILE}\` in this session directory. Read`,

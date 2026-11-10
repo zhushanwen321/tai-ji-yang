@@ -1,5 +1,5 @@
 /**
- * 协议派生文本的版本锚登记与比对纯函数（AX3 例外的对账义务承载，D7；U3a）。
+ * 协议派生文本的版本锚登记与比对纯函数（AX3 例外的对账义务承载，opendesign-assets-quality D7；U3a）。
  *
  * AX3 范围化例外：安装盘无静态源、正源在 OD 源码仓的 daemon/contracts 侧协议文本
  * （panel 评审团协议、deck 协议）允许派生副本进 lib/protocols/，每份必须带版本锚
@@ -27,7 +27,7 @@ import { PANEL_PROTOCOL_SKELETON } from './panel.js'
 export type ProtocolId = 'panel' | 'deck'
 
 /**
- * 版本锚四要素（D7 采用形态：正源仓 URL / commit hash / 提取日期 / 骨架 sha256）。
+ * 版本锚四要素（opendesign-assets-quality D7 采用形态：正源仓 URL / commit hash / 提取日期 / 骨架 sha256）。
  * 全部为提取时点的登记字面量；改动任一协议文本须同步重登记（tests/protocols.test.ts
  * 的锚自洽断言兜底）。
  */
@@ -52,7 +52,7 @@ export interface RegisteredProtocolAnchor extends ProtocolVersionAnchor {
   skeletonBasis: string
 }
 
-/** 正源仓 URL（panel 与 deck 同仓，D7 证据）。 */
+/** 正源仓 URL（panel 与 deck 同仓，opendesign-assets-quality D7 证据）。 */
 export const PROTOCOL_SOURCE_REPO_URL = 'https://github.com/nexu-io/open-design'
 
 /** 提取时点的正源 commit（两协议同批提取）。 */

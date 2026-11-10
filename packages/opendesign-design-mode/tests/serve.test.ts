@@ -9,12 +9,12 @@
  * 断言结构（RL2 + U6 检查点「伺服根与材质化目标统一 = 会话 cwd」）：
  * 1. 围栏先行：connection.requestRejection 的 401/403 透传为空体响应；围栏拒绝对穿越
  *    路径同样生效（鉴权在解析之前）；围栏服务缺席 fail-closed（503 全拒）；
- * 2. 会话维度伺服根（D7）：路由地址 = <前缀>/<sessionId>/<产物相对路径>，伺服根按
+ * 2. 会话维度伺服根（V1 设计包 D7）：路由地址 = <前缀>/<sessionId>/<产物相对路径>，伺服根按
  *    session 段经 resolveSessionCwdById 解析（与材质化同一通道）；会话不可得 / cwd
  *    不可得 → 404 fail-closed，不回退部署级目录；workingDirectory.get 优先于
  *    header.cwd（通道优先级），服务缺席回退 header.cwd（0.1.7 形态）；
  * 3. 合法产物 200：fixture 产物 + .od-frames/ 相对资源可达 + cwd 内非产物文件可读
- *    （D7 已接受暴露面——cwd 内可读是设计裁决，断言锁语义防止将来收窄成白名单时无感知）；
+ *    （V1 设计包 D7 已接受暴露面——cwd 内可读是设计裁决，断言锁语义防止将来收窄成白名单时无感知）；
  * 4. 穿越拒绝 403：编码 ..（%2e%2e）、绝对路径（%2f）、NUL 字节、符号链接逃逸——
  *    全部经「realpath 规范化后必须落在 cwd 内」这一条裁决拦下；
  * 5. 规范化语义边界：cwd 内的 .. 归一化（sub/../index.html）放行——判定是 realpath
@@ -154,7 +154,7 @@ let mounted: Mounted
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), 'od-serve-cwd-'))
   outside = await mkdtemp(join(tmpdir(), 'od-serve-outside-'))
-  // cwd 内：产物 + 材质化设备壳（相对引用目标）+ 非产物文件（D7 已接受暴露面）。
+  // cwd 内：产物 + 材质化设备壳（相对引用目标）+ 非产物文件（V1 设计包 D7 已接受暴露面）。
   await mkdir(join(root, '.od-frames'), { recursive: true })
   await mkdir(join(root, 'sub'), { recursive: true })
   await copyFile(join(FIXTURE_DIR, 'artifacts/index.html'), join(root, 'index.html'))
@@ -220,7 +220,7 @@ describe('鉴权围栏（每请求第一步，open-in-app 模式）', () => {
   })
 })
 
-// ── 会话维度伺服根（D7 + U6 检查点：伺服根与材质化目标统一 = 会话 cwd）────────
+// ── 会话维度伺服根（V1 设计包 D7 + U6 检查点：伺服根与材质化目标统一 = 会话 cwd）────────
 
 describe('会话维度伺服根（URL session 段 → 会话 cwd，与材质化同一通道）', () => {
   it('伺服根 = 会话 cwd：session 段寻址的产物按会话工作目录伺服（非部署级目录）', async () => {
@@ -282,7 +282,7 @@ describe('会话维度伺服根（URL session 段 → 会话 cwd，与材质化�
   })
 })
 
-// ── 合法产物（RL2：产物 200 + 相对资源可达 + D7 已接受暴露面）────────────────
+// ── 合法产物（RL2：产物 200 + 相对资源可达 + V1 设计包 D7 已接受暴露面）────────────────
 
 describe('合法产物伺服（伺服根 = cwd）', () => {
   it('产物 200：content-type text/html，正文为 fixture 产物原文（不消毒直接返回）', async () => {
@@ -303,7 +303,7 @@ describe('合法产物伺服（伺服根 = cwd）', () => {
     expect(frame.header('content-type')).toBe('text/html; charset=utf-8')
   })
 
-  it('cwd 内非产物文件可读（D7 已接受暴露面：cookie 持有者 = 用户本人）', async () => {
+  it('cwd 内非产物文件可读（V1 设计包 D7 已接受暴露面：cookie 持有者 = 用户本人）', async () => {
     const res = await request(mounted.route, artifactUrl('secret-note.txt'))
     expect(res.statusCode).toBe(200)
     expect(res.header('content-type')).toBe('text/plain; charset=utf-8')

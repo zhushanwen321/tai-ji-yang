@@ -14,11 +14,11 @@
  *     （OD 把全文注入是 daemon 已持文本的顺带行为；DSH 模型有文件工具，指针 + 自读等价
  *     且省 50K 提示词）。
  *
- * deck-framework 槽（D9）：deck 协议的实际供给形态 = 材质化铺盘文件——材质化器把
+ * deck-framework 槽（opendesign-assets-quality D9）：deck 协议的实际供给形态 = 材质化铺盘文件——材质化器把
  * lib/protocols/deck.ts 派生的协议登记文本铺进 `.od-frames/deck-framework.md`（材质化器
  * 写清单第 5 个文件，AX3 范围化例外：版本锚 + doctor 对账），协议文本含整页骨架 HTML、
- * 不进提示词注入，模型经任务档路由段 ppt 条目指针（task-routing.ts D9 段）自读全文——
- * 体积分档裁决见 copy.ts 文件头 D9 段。本模块的注入块接口（可选入参
+ * 不进提示词注入，模型经任务档路由段 ppt 条目指针（task-routing.ts 的 opendesign-assets-quality D9 段）自读全文——
+ * 体积分档裁决见 copy.ts 文件头 opendesign-assets-quality D9 段。本模块的注入块接口（可选入参
  * {@link ContextFactsInput.deckFrameworkDirective}）保留为不供给的备用槽：组装链路
  * （bundle.ts）不传该入参，deck 注入块不出现在提示词。
  *
@@ -65,7 +65,7 @@ function stableJson(value: Record<string, unknown>): string {
 export interface ContextFactsInput {
   /**
    * deck 协议指令文本（注指令块形态的内容槽；缺省 = 不出 deck 注入块）。
-   * deck 协议供给已定档材质化铺文件形态（D9，见文件头注释）——组装链路不传该入参，
+   * deck 协议供给已定档材质化铺文件形态（opendesign-assets-quality D9，见文件头注释）——组装链路不传该入参，
    * 本槽保留为不供给的备用槽。
    */
   deckFrameworkDirective?: string
@@ -118,7 +118,7 @@ export function renderContextFacts(input: ContextFactsInput = {}): string {
     })
   }
   if (input.deckFrameworkDirective !== undefined && input.deckFrameworkDirective.trim() !== '') {
-    // deck 备用槽（D9：实际供给走材质化铺文件，本注入块槽不供给，见文件头注释）：
+    // deck 备用槽（opendesign-assets-quality D9：实际供给走材质化铺文件，本注入块槽不供给，见文件头注释）：
     // OD 同构守卫句 + 指令文本。
     blocks.push({
       kind: 'instruction',

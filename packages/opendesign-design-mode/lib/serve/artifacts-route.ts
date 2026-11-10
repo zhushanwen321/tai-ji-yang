@@ -1,18 +1,18 @@
 /**
  * 产物伺服 host 子插件：webServer 前缀路由（U6 终态实现）。
  *
- * 语义权威 = 设计 D7：伺服根定死 = 会话 cwd（会话工作目录）。路由地址带会话维度——
+ * 语义权威 = V1 设计包 D7：伺服根定死 = 会话 cwd（会话工作目录）。路由地址带会话维度——
  * `/opendesign/artifacts/<sessionId>/<产物相对路径>`，每个请求按 URL 的 session 段经
  * resolveSessionCwdById（lib/serve/session-cwd.ts，与材质化落点共用同一函数）解析该会话
  * 的工作目录作为伺服根；会话不可得或 cwd 不可得时 404 fail-closed，绝不回退部署级目录
- * ——用户为会话选择非默认工作区时，伺服根必须跟着会话走（D7：伺服根小于会话 cwd 即断
+ * ——用户为会话选择非默认工作区时，伺服根必须跟着会话走（V1 设计包 D7：伺服根小于会话 cwd 即断
  * 产物相对引用；回退部署目录正是本文件旧实现被一致性审查打回的差距）。每个请求第一步过
  * connection.requestRejection 鉴权围栏（未认证 401 / Host-Origin 不可信 403，围栏语义
  * 归属 connection 服务，本包不复制其判定）；URL 相对路径与 cwd 拼接后经 realpath
  * 规范化，必须仍落在 cwd 内——.. 与绝对路径穿越（含符号链接逃逸）一律 403；cwd 内可读
- * 是 D7 已接受的暴露面（cookie 持有者 = 用户本人，与直接读自己项目目录同权限）。
+ * 是 V1 设计包 D7 已接受的暴露面（cookie 持有者 = 用户本人，与直接读自己项目目录同权限）。
  * HTML 产物直接返回不消毒：产物可信性由预览面板 iframe 的 sandbox 隔离承载（U7 落地，
- * D7 缓解决策——消毒会破坏原型的可交互语义，origin 隔离替代）。
+ * V1 设计包 D7 缓解决策——消毒会破坏原型的可交互语义，origin 隔离替代）。
  *
  * 形态先例 = DSH 仓 packages/host/open-in-app/src/index.ts（每 handler 第一步围栏 +
  * ctx.effect 登记 disposer + JSON 错误体）与 packages/host/webserver/src/index.ts
@@ -62,7 +62,7 @@ interface ServeConnection {
   requestRejection(request: { readonly headers: ServeRequest['headers'] }): 401 | 403 | undefined
 }
 
-/** 产物扩展名 → content-type（产物为 HTML 页面与其相对引用的静态资源；D7 伺服面）。 */
+/** 产物扩展名 → content-type（产物为 HTML 页面与其相对引用的静态资源；V1 设计包 D7 伺服面）。 */
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8',
   '.htm': 'text/html; charset=utf-8',
@@ -138,7 +138,7 @@ export type ArtifactResolution =
 /**
  * 产物余段 → 会话 cwd 内绝对路径的安全解析核心（路由行为的唯一裁决点，单测直驱）。
  *
- * 规则（设计 D7 / RL2）：
+ * 规则（V1 设计包 D7 / RL2）：
  *   1. 产物余段（pathname 减去前缀与 session 段，字面 '/' 连接）经 decodeURIComponent
  *      还原；先解码后判定，编码形态的 %2e%2e（..）与 %2f（/）无法绕过后续判定；
  *   2. 解码失败（畸形百分号转义）→ malformed；含 NUL → forbidden；绝对路径寻址
@@ -234,7 +234,7 @@ async function serveArtifactRequest(ctx: unknown, req: ServeRequest, res: ServeR
     sendJson(res, 404, { code: 'not-found', message: `no artifact route for ${pathname}` })
     return
   }
-  // 会话维度解析（D7：伺服根定死 = 会话 cwd）：URL session 段 → 该会话的工作目录，
+  // 会话维度解析（V1 设计包 D7：伺服根定死 = 会话 cwd）：URL session 段 → 该会话的工作目录，
   // 与材质化落点共用 resolveSessionCwdById 同一通道（U6 检查点「伺服根与材质化目标
   // 统一 = 会话 cwd」的结构承载）。会话不可得 / cwd 不可得 → 404 fail-closed，不回退
   // 部署级目录（回退即伺服根指向会话工作区之外，产物相对引用与暴露面判定全部失锚）。
@@ -281,7 +281,7 @@ async function serveArtifactRequest(ctx: unknown, req: ServeRequest, res: ServeR
   res.statusCode = 200
   res.setHeader('content-type', contentTypeFor(resolution.path))
   res.setHeader('cache-control', 'no-store')
-  // HTML 不消毒直接返回（D7 裁决）：产物可信性由 U7 预览 iframe 的 sandbox 隔离承载。
+  // HTML 不消毒直接返回（V1 设计包 D7 裁决）：产物可信性由 U7 预览 iframe 的 sandbox 隔离承载。
   if (req.method === 'GET') res.end(body)
   else res.end()
 }

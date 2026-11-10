@@ -415,7 +415,7 @@ describe('命中清单与 apply 记录一致', () => {
   })
 })
 
-describe('止损位状态（D9 三判据）', () => {
+describe('止损位状态（V1 设计包 D9 三判据）', () => {
   /**
    * 构造合成记录：semantic-anchor 规则 × hitCount（模拟全命中基线与失配翻转）。
    * 代际字段默认 cross-generation × current（恒适用）——代际裁决语义由下方专用用例锁。
@@ -484,7 +484,7 @@ describe('止损位状态（D9 三判据）', () => {
     const report = buildDoctorReport({ profileResult: result, sessionCwd: null })
     expect(report).toContain('触发（')
     expect(report).toContain('条失配）')
-    expect(report).toContain('⚠ 建议方案级重审：止损位判据已触发（V2 真桥接提前或改写策略重构）。')
+    expect(report).toContain('⚠ 建议方案级重审：止损位判据已触发（V1 设计包 V2 真桥接提前或改写策略重构）。')
     // 代际不可判（无代际标记串）→ 全部按适用保守处理，失配照常计数。
     expect(report).toContain('- 资产代际探测：unknown')
     // 失配逐条行带规则 id / 资产 / 脆弱度（判据①的数据源 = 第④节命中清单；行形态见 renderStopLossSection）。
@@ -588,7 +588,7 @@ describe('第⑨节 资产丰富度（fixture 计数对账 + 降级恢复文案�
   })
 })
 
-describe('第⑩节 协议与检查器对账（三态 fixture + clone 探测单元，D7/D10⑩/GPK1）', () => {
+describe('第⑩节 协议与检查器对账（三态 fixture + clone 探测单元，opendesign-assets-quality D7/D10⑩/GPK1）', () => {
   /** 合成锚工厂：registeredCommit 由用例给定（合成 clone 的 HEAD），其余字段取登记形态。 */
   function syntheticCheck(registeredCommit: string): ProtocolAnchorCheck {
     return {

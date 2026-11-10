@@ -858,7 +858,7 @@ async function scenarioPanelAndDoctor() {
       assert(rows.includes('index.html'), `产物列表缺 index.html：${JSON.stringify(rows)}`)
     })
 
-    await stepAsync(results, '预览面板：产物经伺服路由载入 iframe 且 sandbox 只放脚本（RL6/D7）', async () => {
+    await stepAsync(results, '预览面板：产物经伺服路由载入 iframe 且 sandbox 只放脚本（RL6/V1 设计包 D7）', async () => {
       await page.locator('.odp-row').first().click()
       await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
       const sandbox = await page.getAttribute('iframe.odp-frame', 'sandbox')
