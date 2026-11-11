@@ -1,9 +1,9 @@
 /**
  * /opendesign-doctor —— 设计模式诊断命令（V1 设计包 U2b 八项 + opendesign-assets-quality U6 扩展
- * 三项 = 十一项报告；语义权威 = V1 设计包 D9 八项报告 + opendesign-assets-quality
- * D10⑨⑩⑪ 扩展）。
+ * 三项 + opendesign-comment-loop U5 扩展一项 = 十二项报告；语义权威 = V1 设计包 D9 八项报告 +
+ * opendesign-assets-quality D10⑨⑩⑪ 扩展 + comment-loop 设计包 D7 第⑫节扩展）。
  *
- * 十一项报告：① 安装形态与资源根（多候选并存列全部候选与选中依据）② 清单路径与三层版本
+ * 十二项报告：① 安装形态与资源根（多候选并存列全部候选与选中依据）② 清单路径与三层版本
  * ③ roster 完整性核验（逐文件存在性）④ 改写规则命中清单（消费 V1 设计包 U4 applyRewrites 记录，含
  * 规则脆弱度标记）⑤ 材质化状态（作用域 = 当前会话工作目录，写入落点清单 = 5 文件完整写
  * 清单；预铺后为空即异常并归入错误项）⑥ 资产代际提示（resume 旧会话时历史轮次可能与当前
@@ -17,7 +17,10 @@
  * 逐协议比对 ok/drift/无法比对三态 + 各自恢复动作、clone HEAD 滞后已知信息行）；
  * ⑪ 质量发现（D10⑪/SC5：读会话目录 .od-quality/report.jsonl 呈现 P0/P1/P2 发现（含回注
  * 裁决）、监听器生命周期状态与产物写盘身份记录（D5④ 快照豁免回查数据源）；无记录时报
- * 「本轮会话无检查记录」+ 监听器未启动原因）。
+ * 「本轮会话无检查记录」+ 监听器未启动原因）；⑫ 评论环（comment-loop 设计包 D7/G7：会话
+ * 工作目录 .od-comments/comments.json 的存在性与线程计数、各 delivery 状态分布、文件
+ * parse 健康度（损坏时报告并指引恢复——手工修复或删除重建，插件不自动重建）、写通道
+ * 路由族注册状态）。
  *
  * 输出形态：纯文本结构化报告（分节标题 + 行式条目），供会话内直接阅读与 e2e DOM 断言
  * （V1 设计包 U8 A4 场景断言分节标题字面——分节名经 {@link DOCTOR_SECTIONS} 常量导出供测试对账）。
@@ -32,7 +35,7 @@
  * 宿主契约：CommandDefinition 形态（DSH packages/interaction/commands 先例
  * @deepseek-ai/dsh-command-goal）：inject ['commands'] + ctx.commands.register；
  * handler 返回 { kind: 'success', text }，text 由派发 UI 直接渲染。
- * 会话工作目录探测（第⑤⑪项作用域）：workingDirectory 服务是 0.2.x 引入（0.1.7 base patch
+ * 会话工作目录探测（第⑤⑪⑫项作用域）：workingDirectory 服务是 0.2.x 引入（0.1.7 base patch
  * 无此行，亲读核实），故不作 inject 依赖（0.1.7 上会让本行永久 pending），改 handler 内
  * 运行时可选探测：服务在 → workingDirectory.get(session)；否则回退 session.header.cwd
  * （两版本 session header 均带 cwd 字段）；都不可得 → null（报告「目录未知」，非错误）。
@@ -61,6 +64,8 @@ import {
   type FindingRecordReason,
   type QualityReportLine,
 } from '../quality/feedback.js'
+import { COMMENTS_API_PATHS, COMMENT_DELIVERY_STATES } from '../comments/contract.js'
+import { CommentStoreCorruptError, commentsFilePath, parseCommentsFileText } from '../comments/store.js'
 import type { VersionProfile } from '../types.js'
 
 /** Cordis 插件名（preset plugins 行 od-doctor 的行内标识，与 cordis.patch.yml 对账）。 */
@@ -79,10 +84,12 @@ export const DOCTOR_DEFINITION_ID = 'opendesign-design-mode/commands/doctor'
 export const DOCTOR_REPORT_TITLE = 'OpenDesign 设计模式诊断报告'
 
 /**
- * 十一个分节的标题字面（V1 设计包 U8 A4 + opendesign-assets-quality U6 扩展：分节名常量导出供测试对账；行内形态 =
- * `【N/11】<标题>`）。顺序即报告节序，键名 = 节语义（对账时按键取字面）。
- * 前 8 键为 V1 既有节（零回归面），后 3 键为 opendesign-assets-quality U6 新增
- * （D10：⑨ 资产丰富度 / ⑩ 协议与检查器对账 / ⑪ 质量发现）。
+ * 十二个分节的标题字面（V1 设计包 U8 A4 + opendesign-assets-quality U6 扩展 + comment-loop
+ * 设计包 U5 扩展：分节名常量导出供测试对账；行内形态 = `【N/12】<标题>`）。顺序即报告节序，
+ * 键名 = 节语义（对账时按键取字面）。
+ * 前 8 键为 V1 既有节（零回归面），第 9-11 键为 opendesign-assets-quality U6 新增
+ * （D10：⑨ 资产丰富度 / ⑩ 协议与检查器对账 / ⑪ 质量发现），末键为 comment-loop 设计包
+ * U5 新增（D7：⑫ 评论环）。
  */
 export const DOCTOR_SECTIONS = {
   install: '安装形态与资源根',
@@ -96,12 +103,13 @@ export const DOCTOR_SECTIONS = {
   assetRichness: '资产丰富度',
   protocolAudit: '协议与检查器对账',
   qualityFindings: '质量发现',
+  commentLoop: '评论环',
 } as const
 
 /** 分节总数（标题行分母与结构断言共用，防字面量漂移）。 */
 export const DOCTOR_SECTION_COUNT = Object.keys(DOCTOR_SECTIONS).length
 
-/** 分节标题的渲染行（`【N/11】标题`）；测试与 e2e 按此形态断言。 */
+/** 分节标题的渲染行（`【N/12】标题`）；测试与 e2e 按此形态断言。 */
 export function doctorSectionLine(index: number, title: string): string {
   return `【${index}/${DOCTOR_SECTION_COUNT}】${title}`
 }
@@ -674,8 +682,77 @@ function renderQualityFindingsSection(sessionCwd: string | null): string[] {
   return out
 }
 
+// ── ⑫ 评论环（comment-loop 设计包 D7/G7；parse 健康度消费 U1 store 唯一判定点）──
+
 /**
- * 构建十一项诊断报告（纯函数：输入探测产物、会话目录与登记的 clone 路径，输出全文）。
+ * 第⑫节：评论环。呈现会话工作目录评论数据文件（.od-comments/comments.json）的存在性与
+ * 线程计数、各 delivery 状态分布、文件 parse 健康度、写通道路由族注册状态（comment-loop
+ * 设计包 D7 采用条款四要素）。
+ *
+ * parse 健康度走 parseCommentsFileText 唯一判定点（与读侧 GET / 写事务开头共用同一实现，
+ * D1——四处理损坏语义一致，不另造第二套判定）；损坏 = CommentStoreCorruptError，其
+ * message 自带恢复指引（手工修复或整文件删除重建，插件不自动重建），随本节 ✗ 行就地
+ * 呈现，不并入第⑦节汇总（⑨⑩⑪ 同款——V1 ⑦「未发现异常」零回归面不受新节降级影响）。
+ * 文件不存在 = 正常态（首次评论经写通道 POST .create 时才创建，不伪装成损坏也不自动建）。
+ *
+ * 写通道路由族按契约词表 COMMENTS_API_PATHS 呈现（唯一路由词表，U2 注册与测试同源）；
+ * doctor 无宿主 connection 路由表的进程态感知（本行只 inject commands，且不做 0.1.7 会
+ * 永久 pending 的新 inject），如实标注声明形态不冒充运行时核验（第⑪节监听器状态同款
+ * 诚实口径）。
+ */
+function renderCommentsSection(sessionCwd: string | null): string[] {
+  if (sessionCwd === null) {
+    return ['- 会话工作目录未知，无法读取评论数据（不影响本报告其余各项）。']
+  }
+  const file = commentsFilePath(sessionCwd)
+  const out: string[] = []
+
+  if (!existsSync(file)) {
+    out.push(`- 评论文件：不存在（${file}）——尚未有评论落盘，首次评论经写通道 POST .create 时创建，属正常态。`)
+    out.push('- 线程计数：0；各 delivery 状态分布：pending 0 / delivered 0 / no-agent 0 / inject-error 0（评论文件未创建）。')
+  } else {
+    let raw: string | null = null
+    let readFailedReason: string | null = null
+    try {
+      raw = readFileSync(file, 'utf8')
+    } catch (error) {
+      readFailedReason = error instanceof Error ? error.message : String(error)
+    }
+    if (raw === null) {
+      out.push(`- ⚠ 评论文件存在但读取失败（${file}）：${readFailedReason}（不影响本报告其余各项）。`)
+      out.push('- 线程计数：不可计数（文件不可读）。')
+    } else {
+      out.push(`- 评论文件：存在（${file}）。`)
+      try {
+        const parsed = parseCommentsFileText(raw, file)
+        const distribution = COMMENT_DELIVERY_STATES.map((state) => {
+          const count = parsed.threads.filter((thread) => thread.delivery === state).length
+          return `${state} ${count}`
+        }).join(' / ')
+        out.push(`- 线程计数：${parsed.threads.length}；各 delivery 状态分布：${distribution}。`)
+        out.push('- parse 健康度：正常。')
+      } catch (error) {
+        if (error instanceof CommentStoreCorruptError) {
+          out.push('- 线程计数：不可计数（数据文件损坏，防数据丢失不自动重建）。')
+          out.push(`- ✗ parse 健康度：损坏——${error.message}`)
+        } else {
+          // 判定点外异常（理论不可达）降级呈现不拖垮报告（辅助故障不拖垮核心），不吞错
+          const reason = error instanceof Error ? error.message : String(error)
+          out.push(`- ⚠ parse 健康度判定异常：${reason}（不影响本报告其余各项）。`)
+        }
+      }
+    }
+  }
+
+  out.push(
+    `- 写通道路由：注册器 = 宿主 connection.fetch（/api 域共享鉴权层覆盖，comment-loop 设计包 D2/AX5）；路由族契约共 ${COMMENTS_API_PATHS.length} 条：${COMMENTS_API_PATHS.join('、')}。`,
+    '- 注册状态：声明形态——路由族由评论写通道模块随插件装配经 connection.fetch 注册（contract 词表唯一权威），doctor 无宿主 connection 路由表的进程态感知、不冒充运行时核验；路由未生效时表现为面板评论发送持续失败，恢复动作：重启 DSH 后重试发送。',
+  )
+  return out
+}
+
+/**
+ * 构建十二项诊断报告（纯函数：输入探测产物、会话目录与登记的 clone 路径，输出全文）。
  *
  * @param input - {@link DoctorReportInput}（宿主 handler 或测试组装）。
  * @returns 报告全文（分节标题字面与 {@link DOCTOR_SECTIONS} 一致）。
@@ -779,6 +856,10 @@ export function buildDoctorReport(input: DoctorReportInput): string {
   // ── ⑪ 质量发现 ──（D10⑪/SC5；report.jsonl 读侧，作用域与第⑤节同为会话工作目录）
   sections.push(renderSection(11, DOCTOR_SECTIONS.qualityFindings, renderQualityFindingsSection(input.sessionCwd)))
 
+  // ── ⑫ 评论环 ──（comment-loop 设计包 D7；评论数据文件读侧 + 写通道路由族声明形态，
+  // 作用域与第⑤⑪节同为会话工作目录）
+  sections.push(renderSection(12, DOCTOR_SECTIONS.commentLoop, renderCommentsSection(input.sessionCwd)))
+
   return [
     DOCTOR_REPORT_TITLE,
     `（生成时间：${new Date().toISOString()}；求助时请附本报告全文）`,
@@ -842,7 +923,7 @@ export function apply(ctx: {
   ctx.commands.register({
     definitionId: DOCTOR_DEFINITION_ID,
     name: DOCTOR_COMMAND_NAME,
-    description: '诊断 OpenDesign 设计模式：资产定位、清单版本、roster 完整性、改写命中、材质化、资产丰富度、协议对账、质量发现与止损位状态',
+    description: '诊断 OpenDesign 设计模式：资产定位、清单版本、roster 完整性、改写命中、材质化、资产丰富度、协议对账、质量发现、评论环与止损位状态',
     handler: (invocation) => {
       // 第⑩节 clone 路径登记通道：命令行上命令名之后的原文（rawInput，宿主 CommandInvocation
       // 契约）；形态 `/opendesign-doctor <clone 路径>`，空/缺省 = 未登记（⑩ 报无法比对 + 指引）。

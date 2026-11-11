@@ -4,7 +4,7 @@ import path from "node:path";
 import { lintArtifact } from "./lint.js";
 import { appendQualityReportLine, readArtifactIdentityPaths } from "./feedback.js";
 const WATCHED_EXTENSIONS = [".html", ".htm"];
-const EXCLUDED_DIR_NAMES = /* @__PURE__ */ new Set([".od-frames", ".od-quality"]);
+const EXCLUDED_DIR_NAMES = /* @__PURE__ */ new Set([".od-frames", ".od-quality", ".od-comments"]);
 const DEFAULT_DEBOUNCE_MS = 800;
 function isWatchedArtifactPath(relativePath) {
   if (relativePath.length === 0) return false;

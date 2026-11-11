@@ -1,15 +1,17 @@
 /**
- * doctor 诊断命令测试（U2b 八节 + opendesign-assets-quality U6 扩十一节）。
+ * doctor 诊断命令测试（U2b 八节 + opendesign-assets-quality U6 扩十一节 + comment-loop
+ * 设计包 U5 扩十二节）。
  *
  * fixture：U0 共享 fixture（tests/fixtures/mini-od 默认布局、drift-od 漂移形态）+ U1 资产
  * 目录 fixture（asset-catalog/full 真机形态摘录、missing-dirs 缺失变体，第⑨节消费）；异常
- * 形态（roster 缺件 / 失配文本 / 材质化空落点 / 第⑩节合成 git clone / 第⑪节 report.jsonl）
- * 在测试内以临时树构造（复制 fixture 场景包改内容、git init 合成仓、appendQualityReportLine
- * 真实写侧落行），不落 tests/fixtures/ 目录——它们是 doctor 层的行为用例。
+ * 形态（roster 缺件 / 失配文本 / 材质化空落点 / 第⑩节合成 git clone / 第⑪节 report.jsonl /
+ * 第⑫节评论数据文件）在测试内以临时树构造（复制 fixture 场景包改内容、git init 合成仓、
+ * appendQualityReportLine 真实写侧落行、comments store 真实写侧落线程），不落 tests/fixtures/
+ * 目录——它们是 doctor 层的行为用例。
  *
  * 断言结构（任务书验收条款对账）：
- * 1. 十一节结构断言（V1 八节零回归：前八节标题字面与次序不变 + 三新节标题 + 总数 11）
- * 2. 正常 fixture 资产根十一项齐备（分节标题字面 = DOCTOR_SECTIONS 常量；各节内容锚点）
+ * 1. 十二节结构断言（V1 八节零回归：前八节标题字面与次序不变 + 三新节标题 + 总数 12）
+ * 2. 正常 fixture 资产根十二项齐备（分节标题字面 = DOCTOR_SECTIONS 常量；各节内容锚点）
  * 3. 缺失项带恢复动作（未装形态 / roster 缺件 error 形态 / 材质化空落点与部分缺失形态）
  * 4. 命中清单与 apply 记录一致（doctor 第④节逐行 == 测试侧独立重放 applyRewrites 的记录行）
  * 5. 止损位触发形态构造（evaluateStopLoss 单元边界 + 失配文本 fixture 全链路「建议方案级重审」）
@@ -21,7 +23,10 @@
  *    RL5；任务书验收条款②）与 clone 探测单元（GPK1 命令口径）
  * 10. 第⑪节：report.jsonl 读侧断言（U5 三行型真写侧落行 + 损坏行容忍 + 无记录未启动
  *     原因，RL9；任务书验收条款③）
- * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
+ * 11. 第⑫节：评论环断言（comment-loop 设计包 D7——文件存在性与线程计数 / delivery 分布
+ *     经 comments store 真实写侧对账、损坏 parse 健康度恢复指引就地呈现不并入第⑦节、
+ *     写通道路由族契约词表声明形态）
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀；opendesign-comment-loop 设计包编号带「comment-loop 设计包」前缀。
  */
 import { execFileSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -52,6 +57,8 @@ import { buildVersionProfile, readRosterAsset, type VersionProfileResult } from 
 import { applyRewrites, type RewriteApplyRecord } from '../lib/rewrite/apply.js'
 import { appendQualityReportLine } from '../lib/quality/feedback.js'
 import { materializeAssets } from '../lib/materialize/copy.js'
+import { COMMENTS_API_PATHS } from '../lib/comments/contract.js'
+import { commentsFilePath, createCommentThread, setCommentDelivery } from '../lib/comments/store.js'
 
 const fixturesRoot = resolve(dirname(fileURLToPath(import.meta.url)), 'fixtures')
 /** 默认布局形态的资源根（清单在 plugins/_official/scenarios/od-next-strategy/）。 */
@@ -203,7 +210,7 @@ describe('命令注册形态（apply 经假 ctx 断言 registry 契约）', () =
   })
 })
 
-describe('十一节结构断言（V1 八节零回归 + U6 三新节）', () => {
+describe('十二节结构断言（V1 八节零回归 + U6 三新节 + comment-loop 评论环节）', () => {
   /** V1 既有八节的标题字面（逐字锁——零回归面：字面、次序、键序都不得变化）。 */
   const V1_EIGHT_SECTION_TITLES = [
     '安装形态与资源根',
@@ -216,10 +223,10 @@ describe('十一节结构断言（V1 八节零回归 + U6 三新节）', () => {
     '止损位状态',
   ] as const
 
-  it('分节常量共 11 键：前 8 键 = V1 原标题原序（零回归），后 3 键 = U6 新节标题', () => {
-    expect(DOCTOR_SECTION_COUNT).toBe(11)
+  it('分节常量共 12 键：前 8 键 = V1 原标题原序（零回归），第 9-11 键 = U6 新节标题，末键 = 评论环', () => {
+    expect(DOCTOR_SECTION_COUNT).toBe(12)
     const keys = Object.keys(DOCTOR_SECTIONS)
-    expect(keys).toHaveLength(11)
+    expect(keys).toHaveLength(12)
     // 前 8 键逐字对账（V1 八节零回归：标题字面与键序不变）。
     expect(keys.slice(0, 8)).toEqual(['install', 'manifest', 'roster', 'rewrite', 'materialize', 'generation', 'recovery', 'stopLoss'])
     for (const [index, title] of V1_EIGHT_SECTION_TITLES.entries()) {
@@ -229,25 +236,30 @@ describe('十一节结构断言（V1 八节零回归 + U6 三新节）', () => {
     expect(DOCTOR_SECTIONS.assetRichness).toBe('资产丰富度')
     expect(DOCTOR_SECTIONS.protocolAudit).toBe('协议与检查器对账')
     expect(DOCTOR_SECTIONS.qualityFindings).toBe('质量发现')
+    // 末键（comment-loop 设计包 D7 第⑫节）。
+    expect(DOCTOR_SECTIONS.commentLoop).toBe('评论环')
   })
 
-  it('标题行形态扩为 【N/11】：V1 节与新节同构渲染，编号连续', () => {
-    expect(doctorSectionLine(1, DOCTOR_SECTIONS.install)).toBe('【1/11】安装形态与资源根')
-    expect(doctorSectionLine(8, DOCTOR_SECTIONS.stopLoss)).toBe('【8/11】止损位状态')
-    expect(doctorSectionLine(9, DOCTOR_SECTIONS.assetRichness)).toBe('【9/11】资产丰富度')
-    expect(doctorSectionLine(10, DOCTOR_SECTIONS.protocolAudit)).toBe('【10/11】协议与检查器对账')
-    expect(doctorSectionLine(11, DOCTOR_SECTIONS.qualityFindings)).toBe('【11/11】质量发现')
+  it('标题行形态扩为 【N/12】：V1 节与新节同构渲染，编号连续', () => {
+    expect(doctorSectionLine(1, DOCTOR_SECTIONS.install)).toBe('【1/12】安装形态与资源根')
+    expect(doctorSectionLine(8, DOCTOR_SECTIONS.stopLoss)).toBe('【8/12】止损位状态')
+    expect(doctorSectionLine(9, DOCTOR_SECTIONS.assetRichness)).toBe('【9/12】资产丰富度')
+    expect(doctorSectionLine(10, DOCTOR_SECTIONS.protocolAudit)).toBe('【10/12】协议与检查器对账')
+    expect(doctorSectionLine(11, DOCTOR_SECTIONS.qualityFindings)).toBe('【11/12】质量发现')
+    expect(doctorSectionLine(12, DOCTOR_SECTIONS.commentLoop)).toBe('【12/12】评论环')
   })
 
-  it('任意定位结局都产出十一节：missing 形态报告仍含全部标题行（含三新节的降级形态）', () => {
+  it('任意定位结局都产出十二节：missing 形态报告仍含全部标题行（含四新节的降级形态）', () => {
     const report = buildDoctorReport({ profileResult: { status: 'missing' }, sessionCwd: null })
     for (const [index, title] of Object.values(DOCTOR_SECTIONS).entries()) {
       expect(report).toContain(doctorSectionLine(index + 1, title))
     }
-    // 三新节的降级形态随缺失结局就地呈现。
+    // 四新节的降级形态随缺失结局就地呈现。
     expect(report).toContain('资产未定位，无资产丰富度可报告（见第①节）')
-    expect(report).toContain('【10/11】协议与检查器对账')
+    expect(report).toContain('【10/12】协议与检查器对账')
     expect(report).toContain('会话工作目录未知，无法读取检查记录')
+    expect(report).toContain('【12/12】评论环')
+    expect(report).toContain('会话工作目录未知，无法读取评论数据')
   })
 })
 
@@ -774,6 +786,66 @@ describe('第⑪节 质量发现（report.jsonl 读侧 + 无记录降级，D10�
   it('会话工作目录未知：第⑪节报目录未知，不抛错', () => {
     const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd: null })
     expect(report).toContain('- 会话工作目录未知，无法读取检查记录（不影响本报告其余各项）。')
+  })
+})
+
+describe('第⑫节 评论环（文件/线程/delivery 分布/parse 健康度/路由族声明形态，comment-loop 设计包 D7）', () => {
+  it('无评论文件：存在性不存在 + 线程计数 0；写通道路由族契约五条与注册状态声明形态照常呈现', () => {
+    const sessionCwd = makeTempDir('doctor-comments-absent')
+    const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd })
+    expect(report).toContain(
+      `- 评论文件：不存在（${commentsFilePath(sessionCwd)}）——尚未有评论落盘，首次评论经写通道 POST .create 时创建，属正常态。`,
+    )
+    expect(report).toContain('- 线程计数：0；各 delivery 状态分布：pending 0 / delivered 0 / no-agent 0 / inject-error 0（评论文件未创建）。')
+    // 写通道路由族（D7 四要素之四）：契约词表 COMMENTS_API_PATHS 唯一权威 + 注册状态如实标注声明形态。
+    expect(report).toContain(
+      `- 写通道路由：注册器 = 宿主 connection.fetch（/api 域共享鉴权层覆盖，comment-loop 设计包 D2/AX5）；路由族契约共 ${COMMENTS_API_PATHS.length} 条：${COMMENTS_API_PATHS.join('、')}。`,
+    )
+    expect(COMMENTS_API_PATHS).toHaveLength(5) // GET 基路径 + 四 POST 动作（contract 契约锁）
+    expect(report).toContain(
+      '- 注册状态：声明形态——路由族由评论写通道模块随插件装配经 connection.fetch 注册（contract 词表唯一权威），doctor 无宿主 connection 路由表的进程态感知、不冒充运行时核验；路由未生效时表现为面板评论发送持续失败，恢复动作：重启 DSH 后重试发送。',
+    )
+    // 无评论活动不产生异常项（第⑦节零回归面）。
+    expect(report).toContain('未发现异常。')
+  })
+
+  it('真写侧两线程：线程计数与 delivery 分布逐项对账（create + setDelivery 走 store 真实写路径），parse 健康度正常', async () => {
+    const sessionCwd = makeTempDir('doctor-comments-threads')
+    const delivered = await createCommentThread(
+      sessionCwd,
+      { artifactPath: 'index.html', text: '主视觉配色太艳，压暗一档' },
+      '2026-11-11T00:00:00.000Z',
+    )
+    await setCommentDelivery(sessionCwd, delivered.id, 'delivered', '2026-11-11T00:00:01.000Z')
+    const noAgent = await createCommentThread(
+      sessionCwd,
+      { artifactPath: 'about.html', text: '导航层级再降一级' },
+      '2026-11-11T00:01:00.000Z',
+    )
+    await setCommentDelivery(sessionCwd, noAgent.id, 'no-agent', '2026-11-11T00:01:01.000Z')
+    const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd })
+    expect(report).toContain(`- 评论文件：存在（${commentsFilePath(sessionCwd)}）。`)
+    expect(report).toContain('- 线程计数：2；各 delivery 状态分布：pending 0 / delivered 1 / no-agent 1 / inject-error 0。')
+    expect(report).toContain('- parse 健康度：正常。')
+  })
+
+  it('损坏文件：parse 健康度损坏行带恢复指引（手工修复或删除重建，插件不自动重建），就地呈现不并入第⑦节', () => {
+    const sessionCwd = makeTempDir('doctor-comments-corrupt')
+    mkdirSync(join(sessionCwd, '.od-comments'), { recursive: true })
+    writeFileSync(join(sessionCwd, '.od-comments', 'comments.json'), '{"version":1,"threads":[{"id":"half', 'utf8')
+    const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd })
+    expect(report).toContain(`- 评论文件：存在（${commentsFilePath(sessionCwd)}）。`)
+    expect(report).toContain('- 线程计数：不可计数（数据文件损坏，防数据丢失不自动重建）。')
+    expect(report).toContain('- ✗ parse 健康度：损坏——评论数据文件损坏（读侧报错不自动重建 / 写侧拒写，D1）：')
+    // 恢复指引随损坏行就地呈现（CommentStoreCorruptError message 与 store/GET 三处理同源）。
+    expect(report).toContain('恢复动作：手工修复 comments.json 或整文件删除重建（插件不自动重建，doctor 第⑫节同源呈现）')
+    // 就地呈现不并入第⑦节汇总（⑨⑩⑪ 同款——V1 ⑦「未发现异常」零回归面）。
+    expect(report).toContain('未发现异常。')
+  })
+
+  it('会话工作目录未知：第⑫节报目录未知，不抛错', () => {
+    const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd: null })
+    expect(report).toContain('- 会话工作目录未知，无法读取评论数据（不影响本报告其余各项）。')
   })
 })
 

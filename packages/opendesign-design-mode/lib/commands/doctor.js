@@ -15,6 +15,8 @@ import { LINT_SOURCE_ANCHOR } from "../quality/lint.js";
 import {
   qualityReportPath
 } from "../quality/feedback.js";
+import { COMMENTS_API_PATHS, COMMENT_DELIVERY_STATES } from "../comments/contract.js";
+import { CommentStoreCorruptError, commentsFilePath, parseCommentsFileText } from "../comments/store.js";
 const name = "od-doctor";
 const inject = ["commands"];
 const DOCTOR_COMMAND_NAME = "opendesign-doctor";
@@ -31,7 +33,8 @@ const DOCTOR_SECTIONS = {
   stopLoss: "止损位状态",
   assetRichness: "资产丰富度",
   protocolAudit: "协议与检查器对账",
-  qualityFindings: "质量发现"
+  qualityFindings: "质量发现",
+  commentLoop: "评论环"
 };
 const DOCTOR_SECTION_COUNT = Object.keys(DOCTOR_SECTIONS).length;
 function doctorSectionLine(index, title) {
@@ -415,6 +418,53 @@ function renderQualityFindingsSection(sessionCwd) {
   }
   return out;
 }
+function renderCommentsSection(sessionCwd) {
+  if (sessionCwd === null) {
+    return ["- 会话工作目录未知，无法读取评论数据（不影响本报告其余各项）。"];
+  }
+  const file = commentsFilePath(sessionCwd);
+  const out = [];
+  if (!existsSync(file)) {
+    out.push(`- 评论文件：不存在（${file}）——尚未有评论落盘，首次评论经写通道 POST .create 时创建，属正常态。`);
+    out.push("- 线程计数：0；各 delivery 状态分布：pending 0 / delivered 0 / no-agent 0 / inject-error 0（评论文件未创建）。");
+  } else {
+    let raw = null;
+    let readFailedReason = null;
+    try {
+      raw = readFileSync(file, "utf8");
+    } catch (error) {
+      readFailedReason = error instanceof Error ? error.message : String(error);
+    }
+    if (raw === null) {
+      out.push(`- ⚠ 评论文件存在但读取失败（${file}）：${readFailedReason}（不影响本报告其余各项）。`);
+      out.push("- 线程计数：不可计数（文件不可读）。");
+    } else {
+      out.push(`- 评论文件：存在（${file}）。`);
+      try {
+        const parsed = parseCommentsFileText(raw, file);
+        const distribution = COMMENT_DELIVERY_STATES.map((state) => {
+          const count = parsed.threads.filter((thread) => thread.delivery === state).length;
+          return `${state} ${count}`;
+        }).join(" / ");
+        out.push(`- 线程计数：${parsed.threads.length}；各 delivery 状态分布：${distribution}。`);
+        out.push("- parse 健康度：正常。");
+      } catch (error) {
+        if (error instanceof CommentStoreCorruptError) {
+          out.push("- 线程计数：不可计数（数据文件损坏，防数据丢失不自动重建）。");
+          out.push(`- ✗ parse 健康度：损坏——${error.message}`);
+        } else {
+          const reason = error instanceof Error ? error.message : String(error);
+          out.push(`- ⚠ parse 健康度判定异常：${reason}（不影响本报告其余各项）。`);
+        }
+      }
+    }
+  }
+  out.push(
+    `- 写通道路由：注册器 = 宿主 connection.fetch（/api 域共享鉴权层覆盖，comment-loop 设计包 D2/AX5）；路由族契约共 ${COMMENTS_API_PATHS.length} 条：${COMMENTS_API_PATHS.join("、")}。`,
+    "- 注册状态：声明形态——路由族由评论写通道模块随插件装配经 connection.fetch 注册（contract 词表唯一权威），doctor 无宿主 connection 路由表的进程态感知、不冒充运行时核验；路由未生效时表现为面板评论发送持续失败，恢复动作：重启 DSH 后重试发送。"
+  );
+  return out;
+}
 function buildDoctorReport(input) {
   const issues = [];
   const sections = [];
@@ -485,6 +535,7 @@ function buildDoctorReport(input) {
   sections.push(renderSection(9, DOCTOR_SECTIONS.assetRichness, renderAssetRichnessSection(profile)));
   sections.push(renderSection(10, DOCTOR_SECTIONS.protocolAudit, renderProtocolAuditSection(input.sourceClonePath ?? null)));
   sections.push(renderSection(11, DOCTOR_SECTIONS.qualityFindings, renderQualityFindingsSection(input.sessionCwd)));
+  sections.push(renderSection(12, DOCTOR_SECTIONS.commentLoop, renderCommentsSection(input.sessionCwd)));
   return [
     DOCTOR_REPORT_TITLE,
     `（生成时间：${(/* @__PURE__ */ new Date()).toISOString()}；求助时请附本报告全文）`,
@@ -517,7 +568,7 @@ function apply(ctx) {
   ctx.commands.register({
     definitionId: DOCTOR_DEFINITION_ID,
     name: DOCTOR_COMMAND_NAME,
-    description: "诊断 OpenDesign 设计模式：资产定位、清单版本、roster 完整性、改写命中、材质化、资产丰富度、协议对账、质量发现与止损位状态",
+    description: "诊断 OpenDesign 设计模式：资产定位、清单版本、roster 完整性、改写命中、材质化、资产丰富度、协议对账、质量发现、评论环与止损位状态",
     handler: (invocation) => {
       const rawInput = invocation?.rawInput;
       const sourceClonePath = typeof rawInput === "string" && rawInput.trim() !== "" ? rawInput.trim() : null;

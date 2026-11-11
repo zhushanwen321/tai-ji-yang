@@ -6,7 +6,8 @@
  * 1. 真实写盘触发（RL2）：临时目录真实写 .html → 防抖后回调携带检查发现与会话产物分类；
  * 2. 防抖合并（D4）：同文件窗口内多次写盘合并为一次检查，窗口外重写为新一次检查；
  * 3. 过滤（D4）：.od-frames 与 .od-quality 任意层级排除、非监听后缀零读取、.htm 与子目录
- *    递归在域内；
+ *    递归在域内；环间隔离（comment-loop 设计包 D7/AX6，RL2/V7）：.od-comments 下写文件
+ *    零质量环回调，同目录产物照常触发（两环互不误触）；
  * 4. 完整性哨兵（RL8 / SI1 ②）：无文末 </html> 的半写零检查零记录（不耗额度留待重查），
  *    补全后同一文件重查放行；哨兵纯函数边界（尾随空白 / 大小写 / 中段标签）；
  * 5. 快照豁免三类命中分类（RL10 / D5④）：resume 上一代产物豁免出快照照常回注、陌生既有
@@ -240,6 +241,11 @@ describe('监听过滤（后缀 + 排除目录任意层级 + 子目录递归）'
     expect(isWatchedArtifactPath('.od-frames/deck-framework.md')).toBe(false)
     expect(isWatchedArtifactPath('.od-quality/report.jsonl')).toBe(false)
     expect(isWatchedArtifactPath('assets/.od-frames/x.html')).toBe(false)
+    // .od-comments 环间隔离（comment-loop D7/AX6）：目录内监听后缀文件同样排除（显式
+    // 意图声明，不依赖 .json 后缀过滤的侥幸）。
+    expect(isWatchedArtifactPath('.od-comments/comments.json')).toBe(false)
+    expect(isWatchedArtifactPath('.od-comments/snapshot.html')).toBe(false)
+    expect(isWatchedArtifactPath('assets/.od-comments/x.html')).toBe(false)
     expect(isWatchedArtifactPath('x.html.bak')).toBe(false)
     expect(isWatchedArtifactPath('index.ts')).toBe(false)
     expect(isWatchedArtifactPath('')).toBe(false)
@@ -252,6 +258,48 @@ describe('监听过滤（后缀 + 排除目录任意层级 + 子目录递归）'
     expect(isCompleteHtml('<html><body>half')).toBe(false)
     expect(isCompleteHtml('')).toBe(false)
     expect(DEFAULT_DEBOUNCE_MS).toBe(800) // D4 登记缺省窗口锁定
+  })
+})
+
+// ── 3b. 环间隔离（comment-loop 设计包 D7/AX6；RL2/V7 两环互不误触）───────────
+
+/** V7 形态的最小评论数据文件载荷（含一个新线程；schema 合法性由 comments store 单测锁）。 */
+const COMMENTS_FILE_JSON = JSON.stringify({
+  version: 1,
+  threads: [
+    {
+      id: 'c_watcher-isolation-thread',
+      artifactPath: 'index.html',
+      text: '主视觉配色太艳，压暗一档',
+      replies: [],
+      status: 'open',
+      createdAt: '2026-11-11T00:00:00.000Z',
+      updatedAt: '2026-11-11T00:00:00.000Z',
+      delivery: 'pending',
+    },
+  ],
+})
+
+describe('环间隔离（.od-comments 下写文件零质量环回调，comment-loop D7/AX6）', () => {
+  it('写 .od-comments/comments.json（含新线程）与目录内 .html：零回调零记录；同目录 P0 产物照常触发（V7 两环互不误触）', async () => {
+    const cwd = await makeCwd()
+    const h = await startHarness(cwd)
+    await mkdir(join(cwd, '.od-comments'), { recursive: true })
+    // 评论数据写入（json 后缀）+ 评论目录内监听后缀文件（最强排除形态：意图声明独立于后缀过滤成立）
+    await writeFile(join(cwd, '.od-comments', 'comments.json'), COMMENTS_FILE_JSON, 'utf8')
+    await writeFile(join(cwd, '.od-comments', 'snapshot.html'), P0_HTML, 'utf8')
+    await delay(SETTLE_MS)
+    expect(h.events).toHaveLength(0)
+    // 记录面零痕迹：无身份行无发现行（started 生命周期行除外——零质量环动作，V7 ③）
+    expect((await readReport(cwd)).filter((line) => line.type !== 'watcher')).toEqual([])
+
+    // 监听器仍活的对照面：同会话目录 P0 产物正常进检查环（零回调非监听器死亡所致）
+    const next = h.nextEvent()
+    await writeFile(join(cwd, 'loop.html'), P0_HTML, 'utf8')
+    const input = await next
+    expect(input.relativePath).toBe('loop.html')
+    expect(input.kind).toBe('session-artifact')
+    expect(input.findings.length).toBeGreaterThan(0)
   })
 })
 

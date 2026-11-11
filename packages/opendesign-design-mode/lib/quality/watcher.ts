@@ -4,7 +4,8 @@
  * 职责：会话选定设计 preset 时对会话目录起 fs.watch 递归监听（宿主 agent-preset/selected
  * 事件接线在 lib/index.js；selected 含 resume 重组路径——resume 时监听器同样启动，上一代
  * 产物经身份记录豁免出快照，是声明行为非缺陷）。过滤链 = .html/.htm 后缀 − .od-frames/
- * （材质化根）− .od-quality/（检查记录目录）；同文件事件防抖合并（缺省 800ms，实施期可调
+ * （材质化根）− .od-quality/（检查记录目录）− .od-comments/（评论数据目录，comment-loop
+ * 设计包 D7/AX6 环间隔离）；同文件事件防抖合并（缺省 800ms，实施期可调
  * 参数）；完整性哨兵 = 文末 </html> 判定（缺失视为可能半写：跳过本次、不耗回注额度、
  * 留待下次事件重查——SI1 ②）；监听启动快照（盘上既有 .html 清单 − report.jsonl 产物身份
  * 豁免集）驱动三类命中分类（D5④，RL10）：
@@ -33,8 +34,12 @@ import { appendQualityReportLine, readArtifactIdentityPaths, type WatchedArtifac
 /** 监听后缀词表（产物 HTML；大小写不敏感）。 */
 export const WATCHED_EXTENSIONS = ['.html', '.htm'] as const
 
-/** 监听排除目录名（任意层级命中即排除：材质化根 .od-frames/ 与检查记录 .od-quality/，D4）。 */
-export const EXCLUDED_DIR_NAMES: ReadonlySet<string> = new Set(['.od-frames', '.od-quality'])
+/**
+ * 监听排除目录名（任意层级命中即排除：材质化根 .od-frames/ 与检查记录 .od-quality/，D4；
+ * 评论数据 .od-comments/ 为环间隔离的显式意图声明——comment-loop 设计包 D7/AX6，与 .json
+ * 后缀过滤构成双保险：评论数据目录内的监听后缀文件同样排除，不依赖后缀侥幸）。
+ */
+export const EXCLUDED_DIR_NAMES: ReadonlySet<string> = new Set(['.od-frames', '.od-quality', '.od-comments'])
 
 /** 同文件事件防抖窗口缺省毫秒数（D4 登记值 800，实施期可调）。 */
 export const DEFAULT_DEBOUNCE_MS = 800
