@@ -8,7 +8,7 @@
  *      形态 ② 在隔离 DSH_HOME 里 `dsh plugin add` 本仓 → 启动 dsh web → 从 stdout 解析
  *      认证 URL（不猜端口不猜 token）；.js 形态的 --dsh-bin 用当前 node 执行。
  *
- * 生命周期：参数安全校验 → doctor（lib 新鲜度 + URL 活性 + 装配 + 控制台）→ 逐场景串行
+ * 生命周期：参数安全校验 → lib 新鲜度初筛 → 装配目标实例 → doctor（URL 活性 + 装配 + 控制台）→ 逐场景串行
  * （brand → head → theme → projects → lifecycle，卸载类场景永远最后）→ 证据落盘 →
  * 按 PID 收尾（SIGTERM 进程组 → 宽限后 SIGKILL；不做按名字的宽泛进程匹配）。
  * doctor 与场景间的任何失败都走统一 finally：先关浏览器，再按 PID 停自启实例。
@@ -123,7 +123,13 @@ let aggregate = null
 const results = []
 const aggregateSummary = []
 try {
-  // ── 2. 装配目标实例 ──────────────────────────────────────────────────────
+  // ── 2. lib 产物新鲜度（先于装配与启动：产物落后直接失败，不白耗安装与启动开销）─
+  const fresh = checkLibFresh(REPO)
+  if (!fresh.ok) {
+    failExit('lib 产物落后于源码（doctor lib-fresh 未过）', fresh.hint)
+  }
+
+  // ── 3. 装配目标实例 ──────────────────────────────────────────────────────
   const isolationMeta = { mode: parsed.mode }
   if (parsed.mode === 'dsh') {
     try {
@@ -159,18 +165,14 @@ try {
 
   const targetUrl = parsed.mode === 'url' ? parsed.url : dshSession.url
 
-  // ── 3. doctor（lib 新鲜度 + URL 活性；装配与控制台在页面连上后检查）──────
+  // ── 4. doctor（URL 活性；装配与控制台在页面连上后检查）────────────────────
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'))
-  const fresh = checkLibFresh(REPO)
-  if (!fresh.ok) {
-    failExit('lib 产物落后于源码（doctor lib-fresh 未过）', fresh.hint)
-  }
   const liveness = await checkUrlLiveness(targetUrl)
   if (!liveness.ok) {
     failExit(`测试 URL 不可达：${liveness.detail}`, '确认实例已启动且 URL 含 token；或改用 --dsh-bin/--dsh-home 自启形态')
   }
 
-  // ── 4. 打开页面 + 装配检查（硬门：不绿不进场景）──────────────────────────
+  // ── 5. 打开页面 + 装配检查（硬门：不绿不进场景）──────────────────────────
   let session
   try {
     const playwright = await import('playwright')
@@ -196,7 +198,7 @@ try {
     )
   }
 
-  // ── 5. 逐场景串行 ────────────────────────────────────────────────────────
+  // ── 6. 逐场景串行 ────────────────────────────────────────────────────────
   for (const scenarioRef of parsed.scenarios) {
     const scenarioPath = scenarioRef.endsWith('.mjs')
       ? path.resolve(scenarioRef)
@@ -260,7 +262,7 @@ try {
     }
   }
 
-  // ── 6. 聚合 verdict + 退出码 ─────────────────────────────────────────────
+  // ── 7. 聚合 verdict + 退出码 ─────────────────────────────────────────────
   verifySession = null
   await session.close()
   await cleanup()
