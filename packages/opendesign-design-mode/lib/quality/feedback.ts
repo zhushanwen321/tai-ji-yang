@@ -309,14 +309,21 @@ function contentFingerprint(content: string, p0: readonly LintFinding[]): string
   return `${createHash('sha256').update(content, 'utf8').digest('hex')}|${ids.join(',')}`
 }
 
-type DeliveryResult = 'steered' | 'followup' | 'no-agent' | 'inject-error'
+/**
+ * deliverFeedback 四值结果词表（steered/followup = 已提交投递；no-agent/inject-error =
+ * 放弃回注两形态）。导出仅供评论环回注复用（lib/comments/feedback.ts，评论设计 D4 把
+ * steered/followup 归并为 delivered 后落 thread.delivery）——词表与行为零变化。
+ */
+export type DeliveryResult = 'steered' | 'followup' | 'no-agent' | 'inject-error'
 
 /**
  * 双通道注入（AS1 语义：steer = 注入当前轮最近步骤、空闲开新轮；followup = 排队下一轮）。
  * agents 服务读取失败（cordis ctx 读未供给的服务属性即抛，session-cwd.ts 同款纪律）与
  * 查无 Agent 同归 no-agent；注入调用抛错归 inject-error——两类都由调用方落记录不回注。
+ * 评论环复用同一分流（评论设计 AX4：插件到会话的投递入口唯一，不另起投递通道）——
+ * 本函数是质量环与评论环共用的唯一双通道实现，导出仅为复用，语义零变化。
  */
-function deliverFeedback(
+export function deliverFeedback(
   ctx: unknown,
   sessionId: string,
   message: FeedbackUserMessage,

@@ -167,6 +167,7 @@ export {
   appendQualityReportLine,
   buildLintFeedbackMessage,
   createQualityFeedbackHandler,
+  deliverFeedback,
   qualityReportPath,
   readArtifactIdentityPaths
 };
