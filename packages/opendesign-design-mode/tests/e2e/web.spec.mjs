@@ -548,10 +548,12 @@ function readSessionLog(file) {
     }
     if (event.type === 'user/message') {
       // user/message 的 data = 消息本体（dsh-agent-loop agent.ts:471 append 载荷）；
-      // 回注消息（AX7）以 data.source.kind 自报身份，不冒充用户发言。
+      // 回注消息（AX7）以 data.source.kind 自报身份，不冒充用户发言；source 全量提取
+      // （D3 五字段随消息持久化——assertCommentMessageText 对账用）。
       userMessages.push({
         kind: event.data?.source?.kind ?? null,
         text: event.data?.content?.[0]?.text ?? '',
+        source: event.data?.source ?? null,
       })
     }
     if (event.type === 'agent-preset/selected') {
@@ -784,8 +786,8 @@ async function sendCommentViaPanel(page, text) {
 }
 
 /**
- * 断言回注消息形态与生产构造逐字一致（AX2 独立 kind + D6 三段文本：自报身份句 /
- * 围栏 JSON（threadId/artifactPath/text/createdAt）/ 改稿指引）——期望文本直接调
+ * 断言回注消息形态与生产构造逐字一致（AX2 独立 kind + D3 source 五字段 + D6 三段文本：
+ * 自报身份句 / 围栏 JSON（threadId/artifactPath/text/createdAt）/ 改稿指引）——期望值直接调
  * buildCommentMessage 生成，生产实现漂移即红。
  */
 function assertCommentMessageText(message, thread, payloadText) {
@@ -799,6 +801,10 @@ function assertCommentMessageText(message, thread, payloadText) {
     text: payloadText,
     createdAt: thread.createdAt,
   })
+  assert(
+    JSON.stringify(message.source) === JSON.stringify(expected.source),
+    `回注消息 source 应与生产构造逐字一致（D3 五字段 kind/form/summary/artifactPath/threadId 随消息持久化）：\n实际：${JSON.stringify(message.source)}\n期望：${JSON.stringify(expected.source)}`,
+  )
   assert(
     message.text === expected.text,
     `回注消息文本应逐字等于 buildCommentMessage 构造（D6 三段形态）：\n实际：${message.text.slice(0, 400)}\n期望：${expected.text.slice(0, 400)}`,

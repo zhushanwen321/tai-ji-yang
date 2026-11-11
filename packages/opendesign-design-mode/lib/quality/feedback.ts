@@ -123,7 +123,8 @@ export interface FeedbackUserMessage {
   id: string
   role: 'user'
   content: ReadonlyArray<{ type: 'text'; text: string }>
-  source: { kind: string }
+  /** 宿主 MessageSourceMap 开放形状（插件可声明任意字段并随 user/message 事件持久化）——kind 之外评论环另带 form/summary/artifactPath/threadId（评论设计 D3）。 */
+  source: { kind: string } & Record<string, unknown>
 }
 
 /**

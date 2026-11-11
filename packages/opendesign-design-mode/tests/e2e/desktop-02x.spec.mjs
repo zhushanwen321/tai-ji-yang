@@ -17,7 +17,10 @@
  * 协议信号形态断言 + report.jsonl fed-back 记录——本轮 RL1 的 0.2.2 半场）→ 评论回路桌面
  * 半场（comment-loop 设计包，任务书 U6 桌面清单）：V8 首评循环（侧栏发送 → 落盘 delivered
  * → 回注消息 kind/载荷断言 → 桌面宿主 /api 相对路径写通道可达）+ V2 重启后线程保留
- * （kill + 同 home relaunch，delivered 不回退 pending，doctor ⑫ 重启后在场形态）。
+ * （kill + 同 home relaunch，delivered 不回退 pending，doctor ⑫ 重启后在场形态）+ V10 steer
+ * 前置评论投递（AS9 探针载体，web spec S14 桌面版同款 steer 前置步骤：长任务消息先置
+ * 运行态 → 运行中发评论 → turn/start 计数判通道 → steer 形态全量断言 / followup 形态按
+ * 设计 §4.1 V10 协议登记探针不适用）。
  *
  * 桌面壳 /api 相对路径边界（comment-loop V8 新增验证点的复现形态口径）：本 spec 的宿主 =
  * app 内嵌 0.2.2 宿主（http 形态，V1·AS7 同款复现法）——相对路径可达性以页面同源 fetch
@@ -127,7 +130,7 @@ function commentDistributionLine(threads) {
   return `线程计数：${threads.length}；各 delivery 状态分布：${distribution}`
 }
 
-/** 断言回注消息形态与生产构造逐字一致（AX2 独立 kind + D6 三段文本；期望文本直接调 buildCommentMessage 生成）。 */
+/** 断言回注消息形态与生产构造逐字一致（AX2 独立 kind + D3 source 五字段 + D6 三段文本；期望值直接调 buildCommentMessage 生成）。 */
 function assertCommentMessageText(message, thread, payloadText) {
   assert(
     message.kind === COMMENT_SOURCE_KIND,
@@ -139,6 +142,10 @@ function assertCommentMessageText(message, thread, payloadText) {
     text: payloadText,
     createdAt: thread.createdAt,
   })
+  assert(
+    JSON.stringify(message.source) === JSON.stringify(expected.source),
+    `回注消息 source 应与生产构造逐字一致（D3 五字段 kind/form/summary/artifactPath/threadId 随消息持久化）：\n实际：${JSON.stringify(message.source)}\n期望：${JSON.stringify(expected.source)}`,
+  )
   assert(
     message.text === expected.text,
     `回注消息文本应逐字等于 buildCommentMessage 构造（D6 三段形态）：\n实际：${message.text.slice(0, 400)}\n期望：${expected.text.slice(0, 400)}`,
@@ -336,7 +343,7 @@ function readSystemMessages(file) {
   return messages
 }
 
-/** 读取一份会话日志的 user/message 消息（data = 消息本体；回注消息按 source.kind 辨识）。 */
+/** 读取一份会话日志的 user/message 消息（data = 消息本体；回注消息按 source.kind 辨识，source 全量提取供 D3 五字段对账）。 */
 function readUserMessages(file) {
   const messages = []
   for (const line of fs.readFileSync(file, 'utf8').trim().split('\n')) {
@@ -346,6 +353,7 @@ function readUserMessages(file) {
       messages.push({
         kind: event.data?.source?.kind ?? null,
         text: event.data?.content?.[0]?.text ?? '',
+        source: event.data?.source ?? null,
       })
     }
   }
@@ -425,6 +433,24 @@ async function waitForCommentFeedbackCount(expected, timeoutMs = 30000) {
     await sleep(500)
   }
   throw new AssertionError(`等待评论回注消息达到 ${expected} 条超时（${timeoutMs}ms；实际 ${count} 条）`)
+}
+
+/** 读取一份会话日志的 turn/start 轮次号（宿主 turnBoundary 投影事件；web spec readSessionLog 同款读法）。 */
+function readTurnStarts(file) {
+  const turns = []
+  for (const line of fs.readFileSync(file, 'utf8').trim().split('\n')) {
+    if (line === '') continue
+    const event = JSON.parse(line)
+    if (event.type === 'turn/start') turns.push(event.data?.turn ?? null)
+  }
+  return turns
+}
+
+/** 隔离 home 全部会话日志的 turn/start 事件计数（comment-loop·V10 通道判据：followup 开新轮则 +1，steer 注入当前轮不变）。 */
+function totalTurnStartCount() {
+  return collectSessionFiles()
+    .map((entry) => readTurnStarts(entry.file).length)
+    .reduce((sum, count) => sum + count, 0)
 }
 
 /**
@@ -706,6 +732,98 @@ try {
     assert(body.includes(commentDistributionLine(commentsThreads())), `⑫ 计数/分布行不对：期望「${commentDistributionLine(commentsThreads())}」`)
     assert(body.includes('parse 健康度：正常'), '⑫ 应报 parse 健康（与读侧 GET 共用同一判定点）')
   })
+
+  // ── comment-loop·V10：steer 前置评论投递（AS9 探针载体；web spec S14 桌面版同款）──────
+  // 步骤（设计 §4.1 V10 桌面版同款 ①-⑤）：① 长任务消息先置运行态 → ② 运行中经侧栏发评论
+  // → ③ delivery 回写 delivered + 徽标 Sent → ⑤ 检查会话事件流。通道判据 = 评论投递后
+  // turn/start 事件计数是否 +1（followup = next-turn 开新轮、steer = next-step 注入当前轮）。
+  // steer 形态全量断言（无新轮 + 回合结束后消息仍在事件流——AS9 未被 discard）；followup
+  // 形态按设计 §4.1 V10 criteria 协议登记探针不适用（防通道分流致断言假红、或弱化为对
+  // followup 恒真的永绿断言）。无凭据环境回合秒败的确定性形态 = followup 分支（web S14
+  // 同款环境分界）。基线在长任务发送前取样：长任务轮自身 +1，评论 followup 再 +1。
+  const v10CommentText = '主视觉配色太艳，压暗一档'
+  const v10BaselineTurnStarts = totalTurnStartCount()
+
+  await step('comment-loop·V10 步骤①：长任务消息先置运行态（Send 即发不等回合——给 steer 留运行窗口；等该轮 turn/start 提交）', async () => {
+    const composer = page.locator('[contenteditable="true"]').first()
+    await composer.click()
+    await page.keyboard.type('把三个页面都按新规范重做')
+    await page.waitForTimeout(300)
+    await page.getByRole('button', { name: 'Send message' }).click()
+    const deadline = Date.now() + 30000
+    while (totalTurnStartCount() <= v10BaselineTurnStarts && Date.now() < deadline) await sleep(500)
+    assert(
+      totalTurnStartCount() > v10BaselineTurnStarts,
+      `长任务轮应已开启（turn/start 计数应超过基线 ${v10BaselineTurnStarts}）：${totalTurnStartCount()}`,
+    )
+  })
+
+  await step('comment-loop·V10 步骤②③：agent 运行中经侧栏发评论——thread.delivery 回写 delivered + 徽标「Sent」', async () => {
+    // V2 步骤③已展开侧栏；doctor 步不重挂面板——不在展开态则经 tab 展开（tab 仅折叠态在 DOM）。
+    if (!(await page.locator('.odp-comments-panel').isVisible().catch(() => false))) {
+      const tab = page.locator('button.odp-comments-tab')
+      await tab.waitFor({ state: 'visible', timeout: 15000 })
+      await tab.click()
+    }
+    await page.waitForSelector('.odp-comments-panel', { timeout: 10000 })
+    await page.locator('.odp-comments-panel textarea.odp-comment-input').fill(v10CommentText)
+    await page.locator('.odp-comments-composer button.odp-button').click()
+    await page.waitForFunction(
+      () => Array.from(document.querySelectorAll('.odp-thread .odp-badge')).some((el) => el.textContent?.trim() === 'Sent'),
+      undefined,
+      { timeout: 20000 },
+    )
+    const threads = commentsThreads() // 新线程 append 末尾（store.ts createCommentThread [...threads, thread]）
+    const latest = threads.at(-1)
+    assert(threads.length === 3, `V10 评论应落盘为第 3 线程（V8 两探针 + V10）：${threads.length}`)
+    assert(
+      latest.delivery === 'delivered' && latest.text === v10CommentText && latest.artifactPath === 'index.html',
+      `V10 线程应 delivered 且挂靠/文本正确：${JSON.stringify({ delivery: latest.delivery, text: latest.text, artifactPath: latest.artifactPath })}`,
+    )
+  })
+
+  await step('comment-loop·V10 步骤⑤：回注消息 kind 可辨 + source 五字段与载荷逐字正确（AX2 独立 kind / D3 / D6 围栏 JSON）', async () => {
+    await waitForCommentFeedbackCount(3)
+    const messages = collectCommentFeedbackMessages()
+    assert(messages.length === 3, `评论回注消息应恰 3 条（V8 两探针 + V10 一条）：${messages.length}`)
+    const threads = commentsThreads()
+    assertCommentMessageText(messages.at(-1), threads.at(-1), v10CommentText)
+  })
+
+  // 通道判定：等 followup 形态显形（评论新轮 turn/start）或 15s 预算耗尽（steer 形态——
+  // 评论注入当前轮不开新轮；凭据环境长任务仍在运行时亦落此分支）。web spec S14 同款。
+  let v10FollowupForm = false
+  {
+    const channelDeadline = Date.now() + 15000
+    while (Date.now() < channelDeadline) {
+      if (totalTurnStartCount() > v10BaselineTurnStarts + 1) { v10FollowupForm = true; break }
+      await sleep(500)
+    }
+  }
+
+  if (v10FollowupForm) {
+    await step('comment-loop·V10 探针登记（设计 §4.1 V10 协议）：本轮 followup 通道（评论投递开新轮，turn/start +1）——steer 形态断言不在本轮计数，凭据环境长任务重造后补跑', async () => {
+      await sleep(2500) // 回合结束与日志 flush 余量
+      const messages = collectCommentFeedbackMessages()
+      const latest = commentsThreads().at(-1)
+      assert(
+        totalTurnStartCount() === v10BaselineTurnStarts + 2,
+        `followup 形态应恰多开一个新轮（基线 ${v10BaselineTurnStarts} +长任务轮 +评论轮）：${totalTurnStartCount()}`,
+      )
+      assert(messages.length === 3, `followup 通道回注消息应仍在事件流（未被 discard）：${messages.length}`)
+      assert(latest.delivery === 'delivered', `followup 通道 delivery 应回写 delivered：${latest.delivery}`)
+      console.log('    [环境分界] comment-loop·V10：本轮评论走 followup 通道（agent 轮次先于评论结束——无凭据环境回合秒败的确定性形态）。设计 §4.1 V10 判据：该轮不适用 steer 探针、需重造 steer 场景后再断言（防通道分流致断言假红、或断言被弱化为对 followup 恒真的永绿断言）；steer 形态需凭据环境长任务，真机验收承接')
+    })
+  } else {
+    await step('comment-loop·V10 步骤③⑤ steer 形态全量断言：评论注入当前轮（无新轮 turn/start）+ 回合结束后消息仍在事件流（AS9 未被 discard）', async () => {
+      assert(
+        totalTurnStartCount() === v10BaselineTurnStarts + 1,
+        `steer 形态不应开启新轮（turn/start 计数应保持基线 ${v10BaselineTurnStarts} +1）：${totalTurnStartCount()}`,
+      )
+      const messages = collectCommentFeedbackMessages()
+      assert(messages.length === 3, `steered 消息在回合结束后应仍在事件流（AS9）：${messages.length}`)
+    })
+  }
 
   await step('V1·AS7 衔接结论：asar 宿主 http 形态 iframe 隔离语义复核通过（dsh-app:// 壳层形态以 V1·U6 交付门实测为准：无混合内容阻拦，V1 复审决议 RR3 关闭）', async () => {
     // 本 spec 的宿主 = app 内嵌 0.2.2 宿主（http 形态）。上一断言的探针已复核 sandbox

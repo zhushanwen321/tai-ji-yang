@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { deliverFeedback } from "../quality/feedback.js";
 import { COMMENT_SOURCE_KIND } from "./contract.js";
 import { setCommentDelivery } from "./store.js";
+const COMMENT_SUMMARY_MAX_CHARS = 120;
+function commentSummary(text) {
+  const firstLine = text.split("\n")[0] ?? "";
+  return firstLine.length <= COMMENT_SUMMARY_MAX_CHARS ? firstLine : `${firstLine.slice(0, COMMENT_SUMMARY_MAX_CHARS - 1)}…`;
+}
 function buildCommentMessage(payload) {
   const fencedJson = JSON.stringify(
     {
@@ -26,7 +31,13 @@ function buildCommentMessage(payload) {
     id: randomUUID(),
     role: "user",
     content: [{ type: "text", text }],
-    source: { kind: COMMENT_SOURCE_KIND }
+    source: {
+      kind: COMMENT_SOURCE_KIND,
+      form: "notice",
+      summary: commentSummary(payload.text),
+      artifactPath: payload.artifactPath,
+      threadId: payload.threadId
+    }
   };
 }
 async function deliverComment(input) {
@@ -46,6 +57,7 @@ function commentMessagePayloadOf(thread) {
   };
 }
 export {
+  COMMENT_SUMMARY_MAX_CHARS,
   buildCommentMessage,
   deliverComment
 };

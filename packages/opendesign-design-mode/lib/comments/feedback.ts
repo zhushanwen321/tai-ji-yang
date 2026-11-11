@@ -7,7 +7,9 @@
  *      （threadId/artifactPath/text/createdAt；.reply 追加时 text = 追加文本，载荷恒含
  *      线程 id）③改稿指引行（请读该产物源码按评论修改，写盘即完成交付，无需回复本消息）。
  *      消息形状复用质量环 FeedbackUserMessage 字面量（宿主 UserMessage 开放形状，零依赖
- *      直构），source.kind = COMMENT_SOURCE_KIND（AX2：独立 kind，永不冒充 kind='user'）。
+ *      直构）。source = D3 采用条款五字段（AX2：独立 kind，永不冒充 kind='user'）：
+ *      { kind, form:'notice', summary:评论首句截断, artifactPath, threadId }——结构化字段
+ *      随 user/message 事件持久化（宿主 MessageSourceMap 开放），为 GenUI 卡片演进预留数据。
  *   2. deliverComment——复用 lib/quality/feedback.ts 的 deliverFeedback 双通道分流
  *      （AX4：插件到会话的投递入口唯一，评论环与质量环共用同一实现，不另起投递通道；
  *      agent 运行中 steer / 空闲 followup；查无活 Agent = no-agent；调用抛错 = inject-error）。
@@ -34,7 +36,7 @@ import { COMMENT_SOURCE_KIND, type CommentThread } from './contract.js'
 import { setCommentDelivery } from './store.js'
 import type { DeliverOutcome } from './thread.js'
 
-// ── 消息构造（D6：自报身份句式 + 围栏 JSON 载荷 + 改稿指引）────────────────
+// ── 消息构造（D6：自报身份句式 + 围栏 JSON 载荷 + 改稿指引；D3：source 五字段）──────
 
 /** 围栏 JSON 载荷字段（D6 采用条款四字段，恰此四项——新增字段属设计变更，不在本模块私加）。 */
 export interface CommentMessagePayload {
@@ -49,8 +51,28 @@ export interface CommentMessagePayload {
 }
 
 /**
+ * 评论摘要（source.summary）的截断上限（D3「评论首句截断」）——宿主 boundContextSummary
+ * 同值先例（dsh-llm CONTEXT_SUMMARY_MAX_CHARS = 120，notice 形态摘要的上界）。
+ */
+export const COMMENT_SUMMARY_MAX_CHARS = 120
+
+/**
+ * 评论首句摘要（D3 source.summary）：取评论文本首行，超长按宿主 boundContextSummary 同款
+ * 形态截断（上限 COMMENT_SUMMARY_MAX_CHARS、截后留省略号）——与宿主 notice 形态
+ * （tool-jobs 先例）的摘要上界对齐，producer 折叠行的摘要不因长评论撑爆。
+ */
+function commentSummary(text: string): string {
+  const firstLine = text.split('\n')[0] ?? ''
+  return firstLine.length <= COMMENT_SUMMARY_MAX_CHARS
+    ? firstLine
+    : `${firstLine.slice(0, COMMENT_SUMMARY_MAX_CHARS - 1)}…`
+}
+
+/**
  * 构造一条评论回注消息（D6 三段：自报身份 / 围栏 JSON / 改稿指引；AX2：source.kind
- * 独立登记不冒充用户发言——宿主以 kind==='user' 判定人类在场，评论消息绝不取该值）。
+ * 独立登记不冒充用户发言——宿主以 kind==='user' 判定人类在场，评论消息绝不取该值；
+ * D3：source 五字段随消息持久化，不采用 GenUI 卡片的关键理由即这些结构化字段已为
+ * 卡片演进预留全部数据）。
  */
 export function buildCommentMessage(payload: CommentMessagePayload): FeedbackUserMessage {
   const fencedJson = JSON.stringify(
@@ -76,7 +98,13 @@ export function buildCommentMessage(payload: CommentMessagePayload): FeedbackUse
     id: randomUUID(),
     role: 'user',
     content: [{ type: 'text', text }],
-    source: { kind: COMMENT_SOURCE_KIND },
+    source: {
+      kind: COMMENT_SOURCE_KIND,
+      form: 'notice',
+      summary: commentSummary(payload.text),
+      artifactPath: payload.artifactPath,
+      threadId: payload.threadId,
+    },
   }
 }
 

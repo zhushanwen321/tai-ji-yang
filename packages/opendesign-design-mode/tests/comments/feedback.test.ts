@@ -3,8 +3,9 @@
  *
  * 断言结构：
  * 1. 消息构造三段（D6）：自报身份行 / 围栏 JSON 载荷可解析且恰四字段 / 改稿指引行；
- *    source.kind 独立（RL1：= COMMENT_SOURCE_KIND，≠ 'user'，≠ 质量环 LINT_SOURCE_KIND）；
- *    id 唯一（randomUUID）。
+ *    source 五字段（D3：kind + form:'notice' + summary 首句截断 + artifactPath + threadId；
+ *    RL1：kind = COMMENT_SOURCE_KIND，≠ 'user'，≠ 质量环 LINT_SOURCE_KIND）；id 唯一
+ *    （randomUUID）。
  * 2. deliverComment 双通道与回写对账（RL6）：running → steer、idle → followup（两者返回
  *    delivered）；查无活 Agent 与 agents 服务缺席 → no-agent；steer / followup 抛错 →
  *    inject-error——每分支断言「返回值 === 读盘 thread.delivery」（含 deliveredAt 有无）。
@@ -25,6 +26,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   buildCommentMessage,
+  COMMENT_SUMMARY_MAX_CHARS,
   deliverComment,
   type CommentMessagePayload,
   type DeliverCommentInput,
@@ -167,10 +169,32 @@ describe('消息构造三段与来源标记（D6 / RL1）', () => {
 
   it('RL1：source.kind 独立登记（= COMMENT_SOURCE_KIND，≠ user，≠ 质量环 lint kind）', () => {
     const message = buildCommentMessage(PAYLOAD)
-    expect(message.source).toEqual({ kind: 'opendesign-design-mode/comment' })
     expect(message.source.kind).toBe(COMMENT_SOURCE_KIND)
     expect(message.source.kind).not.toBe('user')
     expect(message.source.kind).not.toBe(LINT_SOURCE_KIND)
+  })
+
+  it('D3：source 恰五字段（kind + form:\'notice\' + summary 首句 + artifactPath + threadId）', () => {
+    const message = buildCommentMessage(PAYLOAD)
+    expect(Object.keys(message.source).sort()).toEqual(['artifactPath', 'form', 'kind', 'summary', 'threadId'])
+    expect(message.source).toEqual({
+      kind: COMMENT_SOURCE_KIND,
+      form: 'notice',
+      summary: '主视觉配色太艳，压暗一档', // 单行且未超上限——summary = 原文
+      artifactPath: PAYLOAD.artifactPath,
+      threadId: PAYLOAD.threadId,
+    })
+  })
+
+  it('D3：summary 取评论首行且超长截断（上限 COMMENT_SUMMARY_MAX_CHARS，截后留省略号）', () => {
+    // 多行评论：summary 只取首行
+    const multiline = buildCommentMessage({ ...PAYLOAD, text: '首行内容\n第二行内容' })
+    expect(multiline.source.summary).toBe('首行内容')
+    // 首行超上限：截到上限 -1 字符 + 省略号（宿主 boundContextSummary 同款形态）
+    const overlong = `${'艳'.repeat(COMMENT_SUMMARY_MAX_CHARS + 10)}\n第二行`
+    const truncated = buildCommentMessage({ ...PAYLOAD, text: overlong })
+    expect(truncated.source.summary).toBe(`${'艳'.repeat(COMMENT_SUMMARY_MAX_CHARS - 1)}…`)
+    expect((truncated.source.summary as string).length).toBe(COMMENT_SUMMARY_MAX_CHARS)
   })
 
   it('id 唯一（randomUUID）：同载荷两次构造 id 不同', () => {
@@ -191,9 +215,15 @@ describe('deliverComment 双通道与回写对账（RL6）', () => {
     expect(outcome).toBe('delivered')
     expect(agent.steer).toHaveBeenCalledTimes(1)
     expect(agent.followup).not.toHaveBeenCalled()
-    // 注入消息与线程快照对账：source.kind 独立 + 载荷四字段与线程一致
+    // 注入消息与线程快照对账：source 五字段 + 载荷四字段与线程一致
     const message = injectedMessage(agent, 'steer')
-    expect(message.source).toEqual({ kind: COMMENT_SOURCE_KIND })
+    expect(message.source).toEqual({
+      kind: COMMENT_SOURCE_KIND,
+      form: 'notice',
+      summary: FIRST_COMMENT,
+      artifactPath: 'index.html',
+      threadId: created.id,
+    })
     const payload = parseFencedPayload(messageText(message))
     expect(payload).toEqual({ threadId: created.id, artifactPath: 'index.html', text: FIRST_COMMENT, createdAt: AT })
     // RL6：返回值 === 落盘 delivery；delivered 态带 deliveredAt
