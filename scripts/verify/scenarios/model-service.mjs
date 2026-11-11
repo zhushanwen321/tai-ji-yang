@@ -9,7 +9,8 @@
  * 断言范围：
  *  V3（追加分区，RL4）：设置导航「模型」与「模型服务」并存；点模型服务渲染插件页（三视图
  *    切换条）；点宿主「模型」渲染宿主原生页（无串页——.ms-section 收起）。
- *  V1（接入全流程）：全新隔离 home 先断言空态（V9 步骤 1 形态）；随后经插件分区添加供应商：
+ *  V1（接入全流程）：全新隔离 home 先断言供应商视图为目录列表形态（V9 步骤 1——宿主
+ *    pi-ai bundle 自带内置目录，非空态）；随后经插件分区添加供应商：
  *    零模型保存被拒并给「至少添加一个模型或先执行发现」指引（保存前置）；手动添加模型后保存
  *    成功，设置文档出现 providers.<key>（apiKeyEnv 为 ref 名、无明文密钥）+ 凭据文件出现
  *    对应 ref（先设置后凭据的两处落盘，V1 步骤 5/6）；不重启宿主（页面无 reload 标记不变）
@@ -184,7 +185,7 @@ export async function run(ctx) {
   const secretValue = `sk-verify-${stamp}-${Math.random().toString(36).slice(2, 10)}`
   ev.step({ step: 'model-service.setup', stats: { providerName, providerKey, credentialRef } })
 
-  // ── V9 步骤 1（全新隔离 home 的空态矩阵）+ V3 步骤 1（导航并存）──────────
+  // ── V9 步骤 1（全新隔离 home 的目录列表形态）+ V3 步骤 1（导航并存）──────────
   if (!(await openSettings(page))) {
     ev.degrade('设置面板打不开（宿主触发钮 aria-label 未命中候选文案）',
       '核对宿主 settings.trigger 的 locale 文案后把候选列表补进 openSettings()')
@@ -215,11 +216,13 @@ export async function run(ctx) {
   const tabCount = await page.locator('.ms-section .ms-viewbar-button').count()
   ev.assert('V3/三视图切换条齐备', tabCount === 3, { expected: '3', actual: String(tabCount) })
 
-  // V9 空态（全新 home：无任何 provider）——供应商视图空态给「为什么空 + 下一步」。
-  const emptyText = await page.locator('.ms-section .ms-empty-title').first().textContent().catch(() => null)
-  ev.assert('V9/全新实例供应商视图空态有引导文案', emptyText !== null && emptyText.length > 0, {
-    expected: '空态文案（为什么空 + 下一步）',
-    actual: String(emptyText),
+  // V9 步骤 1 = 全新实例目录列表形态：宿主 dsh-llm-pi-ai 把 pi-ai bundle 内置 provider 全量
+  // 声明进目录（settingsNs 恒 "llm-pi-ai"），目录行全 editable → providers-view 的两个空态
+  // 分支在宿主 web profile 下永不渲染；空态矩阵意图由路由视图空态与模型清单筛选空态覆盖。
+  const rowCount = await page.locator('.ms-section .ms-provider-item').count()
+  ev.assert('V9/全新实例供应商视图渲染内置目录列表', rowCount > 0, {
+    expected: '目录行 > 0（宿主 pi-ai bundle 自带目录）',
+    actual: String(rowCount),
   })
 
   // V3/无串页：点宿主「模型」条目，宿主原生页渲染、插件页收起。
@@ -343,8 +346,10 @@ export async function run(ctx) {
   await page.locator('.ms-model-edit-id').nth(1).fill('verify-model-2')
   await page.locator('.ms-model-edit-name').nth(1).fill('Verify Model 2')
   await page.locator('.ms-edit-body .ms-button-primary', { hasText: '保存并接入' }).first().click()
+  // 等待条件必须是「保存回执」本体（已保存）：自定义清单态的「目录默认已被替换」ms-note-warn
+  // 常显，不带 hasText 的回执等待会在保存仍在飞行时首查即真，后续读文档与写入竞态（假红）。
   const retrySaved = await waitFor(async () =>
-    page.locator('.ms-edit-body .ms-note-ok, .ms-edit-body .ms-note-warn').first().isVisible().catch(() => false), 10000)
+    page.locator('.ms-edit-body .ms-note-ok, .ms-edit-body .ms-note-warn', { hasText: '已保存' }).first().isVisible().catch(() => false), 10000)
   ev.assert('V1-11/冲突后保存有终态回执（自动重读重试，无需手工干预）', retrySaved, {
     expected: '保存回执（成功或凭据警告）在 10s 内出现',
     actual: String(retrySaved),
@@ -468,6 +473,10 @@ export async function run(ctx) {
 
   // ── V4 步骤 4/5：删除供应商 → 条目与 ref 均清除（无孤儿密钥）────────────────
   if (!(await clickNav(page, '模型服务'))) return
+  // 前段 V9 已切到模型清单视图；分区保持挂载时 nav 重击当前分区不重置内部视图——显式
+  // 切回供应商视图再走删除流程。
+  await page.locator('.ms-section .ms-viewbar-button', { hasText: '供应商' }).first().click().catch(() => {})
+  await page.waitForTimeout(300)
   const item = page.locator('.ms-provider-item', { hasText: providerName }).first()
   await item.locator('.ms-button', { hasText: '删除供应商' }).first().click()
   await page.waitForTimeout(300)
@@ -602,6 +611,10 @@ export async function run(ctx) {
 
   // V5 步骤 9（G18）：删除成员供应商 → 路由视图成员行「供应商已删」标注 + 白名单条目转悬挂。
   if (!(await clickNav(page, '模型服务'))) return
+  // 前段 V6 在模型路由视图操作；分区保持挂载时 nav 重击当前分区不重置内部视图——显式切回
+  // 供应商视图再走删除流程。
+  await page.locator('.ms-section .ms-viewbar-button', { hasText: '供应商' }).first().click().catch(() => {})
+  await page.waitForTimeout(300)
   const m2Item = page.locator('.ms-provider-item', { hasText: m2ProviderName }).first()
   await m2Item.locator('.ms-button', { hasText: '删除供应商' }).first().click()
   // 删除前警告断言（D3 接线：requestDelete 经 routeReferencesOf 计算 → 确认区列出受影响路由；

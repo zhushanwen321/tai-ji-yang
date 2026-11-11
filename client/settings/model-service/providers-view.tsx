@@ -167,7 +167,9 @@ export class ProvidersListModel {
       revision: this.snapshot.revision,
       existing: undefined,
       providers: this.snapshot.providers,
-      onSaved: () => { void this.reloadAndCollapse() },
+      // 与编辑流同形：保存成功保持展开——回执（已保存/凭据警告）可见可读，用户经「取消」
+      // 返回列表（立即收起会让成功回执在渲染后几十毫秒内随卸载消失，任何人都看不到）。
+      onSaved: () => { void this.reloadKeepingEditing(editing) },
     })
     this.focusModelId = undefined
     this.state = { ...this.state, editing, addingNew: true, deleteArmed: undefined }
@@ -243,11 +245,6 @@ export class ProvidersListModel {
     // 保存成功：刷新行数据与徽章（编辑模型的 diff 基线与 revision 已随回执自更新），保持展开。
     await this.load()
     this.deps.onSaved?.()
-  }
-
-  private async reloadAndCollapse(): Promise<void> {
-    await this.load()
-    this.collapse()
   }
 
   /** 目录行 + 快照 providers → 视图行（union：快照有而目录未刷新的 route 也列出）。 */
@@ -350,6 +347,16 @@ export function ProvidersView({ t, model, jumpTarget, onJumpConsumed }: Provider
           </button>
         </div>
       )}
+      {/* 新建供应商（addingNew）：编辑体独立挂载点。行循环内 expanded 条件含 !addingNew 对新建
+          恒 false，且目录为空时循环体不存在——不加该分支新建体永远不渲染。 */}
+      {state.addingNew && state.editing !== undefined && (
+        <ProviderEditBody
+          t={t}
+          model={state.editing}
+          focusModel={model.focusModelId}
+          onCancel={() => { model.collapse() }}
+        />
+      )}
       <div className="ms-rows">
         {managedRows.map((row) => (
           <div key={row.key} className="ms-row ms-row-managed">
@@ -360,7 +367,9 @@ export function ProvidersView({ t, model, jumpTarget, onJumpConsumed }: Provider
         ))}
         {editableRows.map((row) => {
           const expanded = state.editing !== undefined && !state.addingNew && state.editing.key === row.key
-          const armed = state.deleteArmed?.key === row.key
+          // armed = 行是否处于删除确认态（布尔）；armedInfo = 确认态数据本体（警示文案的数据源）。
+          const armedInfo = state.deleteArmed?.key === row.key ? state.deleteArmed : undefined
+          const armed = armedInfo !== undefined
           return (
             <div key={row.key} className="ms-provider-item">
               <div className="ms-row">
@@ -385,15 +394,15 @@ export function ProvidersView({ t, model, jumpTarget, onJumpConsumed }: Provider
                   </button>
                 </span>
               </div>
-              {armed && (
-                <div className={`ms-note ${armed.crossProfile || armed.routes.length > 0 ? 'ms-note-warn' : 'ms-note-err'}`}>
-                  {armed.routes.length > 0 && (
-                    <span>{t('delete.routeReferences', { routes: armed.routes.join('、') })}</span>
+              {armedInfo && (
+                <div className={`ms-note ${armedInfo.crossProfile || armedInfo.routes.length > 0 ? 'ms-note-warn' : 'ms-note-err'}`}>
+                  {armedInfo.routes.length > 0 && (
+                    <span>{t('delete.routeReferences', { routes: armedInfo.routes.join('、') })}</span>
                   )}
                   <span>
-                    {armed.crossProfile
-                      ? t('delete.crossProfileConfirm', { ref: armed.ref ?? '' })
-                      : t('delete.confirmDraft', { name: armed.name })}
+                    {armedInfo.crossProfile
+                      ? t('delete.crossProfileConfirm', { ref: armedInfo.ref ?? '' })
+                      : t('delete.confirmDraft', { name: armedInfo.name })}
                   </span>
                   <button type="button" className="ms-button" onClick={() => { model.cancelDelete() }}>{t('action.cancel')}</button>
                 </div>

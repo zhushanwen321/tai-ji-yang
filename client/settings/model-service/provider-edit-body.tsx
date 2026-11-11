@@ -189,6 +189,8 @@ export class ProviderEditModel {
   private readonly deps: ProviderEditModelDeps
   private readonly listeners = new Set<() => void>()
   private state: ProviderEditSnapshot
+  /** 编辑目标（可变镜像：新建保存成功后翻转为既有 provider 的编辑语义，见 save()）。 */
+  private target: ProviderEditModelDeps['target']
   /** 持有的 revision 栅栏（保存成功回执刷新，D3）。 */
   private heldRevision: number | undefined
   /** 字段级 diff 的基线 profile（打开时快照；保存成功后换回执值，二次保存 diff 不失真）。 */
@@ -200,6 +202,7 @@ export class ProviderEditModel {
 
   constructor(deps: ProviderEditModelDeps) {
     this.deps = deps
+    this.target = deps.target
     this.heldRevision = deps.revision
     this.diffBase = deps.existing
     const existing = deps.existing
@@ -214,7 +217,9 @@ export class ProviderEditModel {
       refPreview: undefined,
       compat: { ...this.storedCompat },
       models: storedModels.map((model) => modelToDraft(model)),
-      directoryMode: storedModels.length === 0,
+      // customOnly（新建 / 非目录 provider）无目录态可回——与 removeModel / restoreDirectory 的
+      // 守卫同语义：只有自定义清单一态（渲染落在自定义分支才有「手动添加模型」可点）。
+      directoryMode: storedModels.length === 0 && !deps.target.customOnly,
       customOnly: deps.target.customOnly,
       overrideOnly: storedModels.length === 0 && isNonEmptyRecord(existing?.modelOverrides),
       discovery: { running: false, outcome: undefined, selected: [], error: undefined },
@@ -241,7 +246,7 @@ export class ProviderEditModel {
 
   /** 目标 key（provider route）。 */
   get key(): string {
-    return this.deps.target.key
+    return this.target.key
   }
 
   // ── 表单字段写入 ──
@@ -341,7 +346,7 @@ export class ProviderEditModel {
 
   /** 目录默认态的目录模型只读清单（挂载时经目录分支拉取，零网络）。 */
   private async loadDirectoryModels(): Promise<void> {
-    const outcome = await discoverProviderModels(this.deps.remote.llm, { provider: this.deps.target.key })
+    const outcome = await discoverProviderModels(this.deps.remote.llm, { provider: this.target.key })
     if (outcome.kind === 'catalog' || outcome.kind === 'endpoint') {
       this.directoryModels = outcome.models
       this.state = { ...this.state, directoryModels: outcome.models }
@@ -368,7 +373,7 @@ export class ProviderEditModel {
     }
     this.state = { ...this.state, discovery: { running: true, outcome: undefined, selected: [], error: undefined } }
     this.notify()
-    const draftKey = this.deps.target.key !== '' ? this.deps.target.key : undefined
+    const draftKey = this.target.key !== '' ? this.target.key : undefined
     const outcome = await discoverProviderModels(this.deps.remote.llm, {
       ...(draftKey !== undefined ? { provider: draftKey } : {}),
       ...(baseURL !== '' ? { baseURL } : {}),
@@ -432,8 +437,8 @@ export class ProviderEditModel {
 
     const draft: ProviderDraft = {
       // 新建：key 由显示名即时派生（AX11）；编辑：key 固定为既有 route。
-      key: this.deps.target.isNew ? deriveProviderKey(this.state.displayName.trim()) : this.deps.target.key,
-      isNew: this.deps.target.isNew,
+      key: this.target.isNew ? deriveProviderKey(this.state.displayName.trim()) : this.target.key,
+      isNew: this.target.isNew,
       displayName: this.state.displayName.trim(),
       baseURL: this.state.baseURL.trim(),
       api: this.state.api,
@@ -475,6 +480,9 @@ export class ProviderEditModel {
     // 成功：凭据失败不回滚设置（D3 可见可救——徽章「未配置」+ 重填重试）。
     this.heldRevision = result.revision
     this.diffBase = result.profile
+    // 新建保存成功：目标翻转为既有 provider 的编辑语义（key 固定、不再走新建预检与整条
+    // set）——展开体保持打开时二次保存走字段级 diff，不会撞自身的 route 预检。
+    if (this.target.isNew) this.target = { ...this.target, key: draft.key, isNew: false }
     const notice = result.refConfigured
       ? { kind: 'ok' as const, text: this.deps.t('save.saved') }
       : { kind: 'warn' as const, text: `${this.deps.t('credential.missing')}：${result.refMessage ?? ''}` }
@@ -498,7 +506,7 @@ export class ProviderEditModel {
 
   private refreshKeyPreview(): void {
     const name = this.state.displayName.trim()
-    const key = this.deps.target.isNew && name !== '' ? deriveProviderKey(name) : this.deps.target.key
+    const key = this.target.isNew && name !== '' ? deriveProviderKey(name) : this.target.key
     this.state = {
       ...this.state,
       keyPreview: key !== '' ? key : undefined,

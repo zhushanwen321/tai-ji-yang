@@ -235,15 +235,17 @@ export async function listRegisteredRoutes(llm: LlmRemoteLike): Promise<string[]
  *
  * 字段集刻意收窄到本表单拥有的面（displayName/api/baseURL/models + 协议可用时的 compat）：
  * 不写宿主 schema 的其余字段（缺省 = 宿主按默认值/目录能力解析），不写 apiKeyEnv 之外的
- * 任何凭据形态字段。models 条目按宿主 modelProfile 形状逐字段写；思考策略按 D6 映射成
- * reasoningEfforts 字典或 false（AS15 已核对宿主校验规则）。
+ * 任何凭据形态字段。apiKeyEnv 按 D7 只存 ref 名——由 saveProvider 在新建带密钥保存时传入
+ * 派生 ref（不传 = 不写，编辑流的字段级 diff 永不触碰它）。models 条目按宿主 modelProfile
+ * 形状逐字段写；思考策略按 D6 映射成 reasoningEfforts 字典或 false（AS15 已核对宿主校验规则）。
  */
-export function profileFromDraft(draft: ProviderDraft): HostProviderProfile {
+export function profileFromDraft(draft: ProviderDraft, apiKeyEnv?: string): HostProviderProfile {
   const profile: HostProviderProfile = {
     displayName: draft.displayName,
     api: draft.api,
     baseURL: draft.baseURL,
   }
+  if (apiKeyEnv !== undefined) profile.apiKeyEnv = apiKeyEnv
   // 目录默认态（草案空清单）不写 models：缺省 = 宿主按目录模型解析（保持目录默认语义的
   // 写入面）；既有 models[] 的清除由 profileDiffOps 的 unset op 承担（恢复目录默认动作）。
   if (draft.models.length > 0) profile.models = draft.models.map(modelFromDraft)
@@ -353,8 +355,10 @@ export async function saveProvider(host: ModelServiceHost, params: SaveProviderP
 
   // ③ settings.mutate：新 provider 整条 set / 既有 provider 字段级 diff；冲突重读一次重发一次。
   // 宿主网关对业务失败 resolve {ok:false}（不 reject），失败判定按 Result 的 ok/code 走。
+  // 新建整条 set 带 apiKeyEnv（D7 只存 ref 名）：本次保存带密钥才写——文档条目引用派生 ref，
+  // 宿主解析才有凭据可用（缺失时徽章「未配置」+ 重填重试，D3 可见可救）。
   const ops = draft.isNew
-    ? [{ op: 'set' as const, path: ['providers', draft.key], value: profileFromDraft(draft) }]
+    ? [{ op: 'set' as const, path: ['providers', draft.key], value: profileFromDraft(draft, wantsKey ? credentialRef : undefined) }]
     : profileDiffOps(existing ?? {}, draft, draft.key)
   let view: SettingsNamespaceViewLike
   const first = await host.settings.mutate(LLM_PI_AI_NS, ops, revision)
