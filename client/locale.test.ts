@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { en, installLocale, LOCALE_DICTS, TAIJI_LOCALE_NS, zh } from './locale'
+import {
+  en,
+  installLocale,
+  installModelServiceLocale,
+  LOCALE_DICTS,
+  modelServiceEn,
+  modelServiceZh,
+  MODEL_SERVICE_LOCALE_DICTS,
+  TAIJI_LOCALE_NS,
+  TAIJI_MODEL_SERVICE_LOCALE_NS,
+  zh,
+} from './locale'
 
 /**
  * locale 单测（设计 §5 文件地图的 locale-keys 项；exec-plan 的 U7 testCommand 指名
@@ -95,5 +106,74 @@ describe('installLocale 装配', () => {
     expect(removed).toBe(false)
     ;(disposer as () => void)()
     expect(removed).toBe(true)
+  })
+})
+
+describe('模型服务分区双语字典（u-foundation 骨架 + M1 填充，键集完整性）', () => {
+  it('modelServiceZh 与 modelServiceEn 的 key 集相等（zh/en 同 key 集纪律）', () => {
+    expect(Object.keys(modelServiceZh).sort()).toEqual(Object.keys(modelServiceEn).sort())
+  })
+
+  it('每个 key 在两种语言下都是非空字符串（空串会让宿主 t 渲染出空白控件）', () => {
+    for (const [key, value] of Object.entries(modelServiceZh)) {
+      expect(typeof value, `modelServiceZh.${key} 不是字符串`).toBe('string')
+      expect(value.trim().length, `modelServiceZh.${key} 是空白`).toBeGreaterThan(0)
+    }
+    for (const [key, value] of Object.entries(modelServiceEn)) {
+      expect(typeof value, `modelServiceEn.${key} 不是字符串`).toBe('string')
+      expect(value.trim().length, `modelServiceEn.${key} 是空白`).toBeGreaterThan(0)
+    }
+  })
+
+  it('骨架键不被 M1 填充改动（u-foundation 键集原样保留；M1 只增键）', () => {
+    expect(modelServiceZh['section.label']).toBe('模型服务')
+    expect(modelServiceZh['view.providers']).toBe('供应商')
+    expect(modelServiceZh['view.models']).toBe('模型清单')
+    expect(modelServiceZh['view.routes']).toBe('模型路由')
+    expect(modelServiceZh['models.directoryMode']).toBe('保持目录默认')
+    expect(modelServiceZh['models.directoryReplaced']).toBe('目录默认已被替换')
+    expect(modelServiceZh['models.restoreDirectory']).toBe('恢复目录默认')
+    expect(modelServiceZh['routes.emptyM1']).toBe('路由能力将在下个版本提供')
+    expect(modelServiceEn['routes.emptyM1']).toBe('Routing will arrive in a future version')
+  })
+
+  it('M1 填充的关键键在位（D6 compat / D7 查重两支 / D11 来源态 / 空态矩阵）', () => {
+    // D7 查重两支（a = 本 profile 查得到持有者 / b = 可能来自其他 profile）
+    expect(modelServiceZh['save.refTakenA']).toContain('本 profile')
+    expect(modelServiceZh['save.refTakenB']).toContain('其他 profile')
+    // D11 来源态
+    expect(modelServiceZh['models.sourceDirectory']).toBe('目录默认')
+    expect(modelServiceZh['models.sourceCustom']).toBe('自定义清单')
+    expect(modelServiceZh['models.sourceOverride']).toBe('目录默认 + 覆盖')
+    // D6 compat 分组与一期不开放标注
+    expect(modelServiceZh['compat.groupEssential']).toBe('基础兼容')
+    expect(modelServiceZh['compat.groupAdvanced']).toBe('高级兼容')
+    expect(modelServiceZh['compat.unavailable']).toBe('一期不开放')
+    // 空态矩阵三视图分支 + 筛选空态
+    expect(modelServiceZh['models.emptyNoMatch']).toContain('{q}')
+    expect(modelServiceZh['models.clearFilter']).toBe('清除筛选')
+    expect(modelServiceZh['models.fieldMissing']).toBe('未提供')
+  })
+
+  it('installModelServiceLocale 经 ctx.effect 注册独立命名空间 taiji.model-service', () => {
+    const registrations: { ns: string; dicts: Record<string, unknown> }[] = []
+    const effects: (() => (() => void) | void)[] = []
+    installModelServiceLocale({
+      effect(callback) { effects.push(callback) },
+      locale: {
+        register(ns, dicts) {
+          registrations.push({ ns, dicts })
+          return () => {}
+        },
+      },
+    })
+    expect(effects).toHaveLength(1)
+    expect(registrations).toHaveLength(0)
+    effects[0]()
+    expect(registrations[0].ns).toBe(TAIJI_MODEL_SERVICE_LOCALE_NS)
+    expect(TAIJI_MODEL_SERVICE_LOCALE_NS).toBe('taiji.model-service')
+    expect(registrations[0].dicts.zh).toBe(modelServiceZh)
+    expect(registrations[0].dicts.en).toBe(modelServiceEn)
+    expect(MODEL_SERVICE_LOCALE_DICTS.zh).toBe(modelServiceZh)
   })
 })

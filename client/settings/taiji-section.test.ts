@@ -87,6 +87,7 @@ function fakeController(initial: ThemeId = 'xuan') {
 
 interface SectionModule {
   TaijiSection: (props: Record<string, unknown>) => FakeElement
+  TaijiSectionPalette: (props: Record<string, unknown>) => FakeElement
   installTaijiSection: (host: unknown, controller: unknown, projectStore?: ProjectStoreLike) => void
   TAIJI_SECTION_ID: string
   TAIJI_SECTION_ORDER: number
@@ -150,18 +151,19 @@ function assemble(
   return { registration, face: inject!() }
 }
 
-/** 渲染分区并返回元素全集（t 用 zh 字典求值，模拟宿主 locale 座位）。 */
+/** 渲染分区并返回元素全集（t 用 zh 字典求值，模拟宿主 locale 座位；selectThemeId 给安全空转）。 */
 function render(face: Record<string, unknown>) {
   const root = sectionModule.TaijiSection({
     t: (key: string) => zh[key as keyof typeof zh],
     close: () => {},
+    selectThemeId: () => {},
     ...face,
   })
   return { root, elements: collectElements(root) }
 }
 
 describe('installTaijiSection 注册契约', () => {
-  it('注册进 settings.section：id 唯一、order 末位、label thunk、locale 命名空间、组件同一性', () => {
+  it('注册进 settings.section：id 唯一、order 12（D8 前移）、label thunk、locale 命名空间、组件同一性', () => {
     const host = fakeSectionHost()
     const { registration } = assemble(host, fakeController())
     expect(registration.key).toBe('settings.section')
@@ -169,8 +171,11 @@ describe('installTaijiSection 注册契约', () => {
     // 不与宿主内置分区 id 相撞（general/account/models/plugins/agent-presets）
     expect(TAIJI_SECTION_ID).toBe('taiji')
     expect(registration.options.order).toBe(TAIJI_SECTION_ORDER)
-    // 末位：大于宿主最高的 agent-presets（20）
-    expect(TAIJI_SECTION_ORDER).toBeGreaterThan(20)
+    // D8 前移：宿主 models(10) < 模型服务(11) < 太极(12) < plugins(15)——两个高频配置入口
+    // 落在宿主「模型」之后、「插件」之前（偏离登记 D-2）
+    expect(TAIJI_SECTION_ORDER).toBe(12)
+    expect(TAIJI_SECTION_ORDER).toBeGreaterThan(10)
+    expect(TAIJI_SECTION_ORDER).toBeLessThan(15)
     // label 是 thunk 且求值得到产品名（宿主每次读取时求值，跟随激活语言）
     expect(typeof registration.options.label).toBe('function')
     expect((registration.options.label as () => string)()).toBe('太极')
@@ -178,23 +183,26 @@ describe('installTaijiSection 注册契约', () => {
     expect(registration.component).toBe(sectionModule.TaijiSection)
   })
 
-  it('注入回调只取 controller 读方法：getThemeId / subscribeThemeId 透传，无 selectThemeId', () => {
+  it('注入回调透传 controller 读写方法（D9 第三换色入口）：getThemeId / selectThemeId / subscribeThemeId', () => {
     const host = fakeSectionHost()
     const controller = fakeController('qingmo')
     const { face } = assemble(host, controller)
-    // 只读分享：状态页不该出现第二个换色写入口（写入口唯一 = 通用设置的外观行）
-    expect(Object.keys(face).sort()).toEqual(['getThemeId', 'subscribeThemeId'])
+    // 三方法同一 controller 实例的分享（与外观行/chip 共用同一持久字段，无双写）
+    expect(Object.keys(face).sort()).toEqual(['getThemeId', 'selectThemeId', 'subscribeThemeId'])
     expect(face.getThemeId()).toBe('qingmo')
+    // selectThemeId 真的转回 controller（写通道唯一 = 装配层接线的那一个）
+    ;(face.selectThemeId as (id: ThemeId) => void)('zhuyin')
+    expect(controller.controller.getThemeId()).toBe('zhuyin')
     // 订阅真的挂在 controller 上：外部换色广播后监听被调用
     let notified = 0
     const unsubscribe = (face.subscribeThemeId as (listener: () => void) => () => void)(() => {
       notified += 1
     })
-    controller.publish('zhuyin')
-    expect(notified).toBe(1)
-    expect(face.getThemeId()).toBe('zhuyin')
-    unsubscribe()
     controller.publish('xuan')
+    expect(notified).toBe(1)
+    expect(face.getThemeId()).toBe('xuan')
+    unsubscribe()
+    controller.publish('dailan')
     expect(notified).toBe(1)
   })
 })
@@ -403,5 +411,55 @@ describe('项目管理块（M1 数据通道）', () => {
     expect(textOf(error[0]!)).toContain('项目变更未能写入插件 Config')
     ;(buttonByLabel(elements, zh['projects.close']).props.onClick as () => void)()
     expect(fake.calls).toEqual([])
+  })
+})
+
+describe('配色行第三换色入口（D9）', () => {
+  it('分区含配色行展开钮（aria-expanded 初态 false；三入口共用 controller 的第三写入口）', () => {
+    const host = fakeSectionHost()
+    const { face } = assemble(host, fakeController('xuan'))
+    const { elements } = render(face)
+    const toggle = elementsWithClass(elements, 'taiji-section-palette-toggle')
+    expect(toggle).toHaveLength(1)
+    expect(toggle[0].props['aria-expanded']).toBe(false)
+  })
+
+  it('TaijiSectionPalette：六色齐备、当前色选中态、点选转发 onSelect（与 chip 色卡同款拆分可测）', () => {
+    let picked: string | undefined
+    const root = sectionModule.TaijiSectionPalette({
+      themeId: 'dailan',
+      onSelect: (id: string) => { picked = id },
+    })
+    const elements = collectElements(root)
+    const swatches = elementsWithClass(elements, 'taiji-section-swatch')
+    expect(swatches).toHaveLength(6)
+    const pressed = swatches.filter((swatch) => swatch.props['aria-pressed'] === true)
+    expect(pressed).toHaveLength(1)
+    expect(textOf(elementsWithClass(collectElements(pressed[0]), 'taiji-section-swatch-name')[0])).toBe('黛蓝')
+    const first = swatches[0]
+    ;(first.props.onClick as () => void)()
+    expect(picked).not.toBeUndefined()
+    // 色点取色 = accentColorOf 静态表（按族取本支；数据搬运非内联色值）
+    const dot = elementsWithClass(collectElements(first), 'taiji-section-swatch-dot')[0]
+    expect((dot.props.style as { background: string }).background).toMatch(/^#/)
+  })
+
+  it('点选转发到 controller：selectThemeId 被调（写通道 = 装配层接线的同一个 controller）', () => {
+    const host = fakeSectionHost()
+    const controller = fakeController('xuan')
+    let received: string | undefined
+    const root = sectionModule.TaijiSectionPalette({
+      themeId: 'xuan',
+      onSelect: (id: string) => { received = id; controller.controller.selectThemeId(id as ThemeId) },
+    })
+    const swatches = elementsWithClass(collectElements(root), 'taiji-section-swatch')
+    ;(swatches[3].props.onClick as () => void)() // 皓（亮族）
+    expect(received).toBe('hao')
+    expect(controller.controller.getThemeId()).toBe('hao')
+  })
+
+  it('指引文案含「通用设置」与「外观」（明暗模式入口指路保持宿主真实导航名）', () => {
+    expect(zh['section.guide']).toContain('通用设置')
+    expect(zh['section.guide']).toContain('外观')
   })
 })

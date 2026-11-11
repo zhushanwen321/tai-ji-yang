@@ -297,6 +297,16 @@ export const Config = z.object({
    * （从未展开过任何组 = 空列表，不是缺席）。
    */
   expanded: z.array(z.string()).volatile(),
+  /**
+   * 待清理凭据 ref 清单（dsh-model-service D7/AX9，M1）：删除供应商时 credentials.unset
+   * 失败的 ref 登记在此，打开「模型服务」分区时幂等重试，成功即移除。为什么 volatile 与
+   * 整写整读：与 projects/assignments 同纪律——值持久（跨重启保留待清理意图）但更新不触发
+   * 重挂载；数组无深层路径写，任何变更 = 全量读 → 内存改 → 整字段写回
+   * （浏览器半场 client/model-service/credentials-client.ts）。密钥本身永不进本字段：条目
+   * 只有 ref 名（大写标识符，不含密钥材料，AX1）。不设 default：空清单 =「没有待清理项」
+   * 的缺席态，缺省由 schemastery 回填空数组。
+   */
+  pendingCredentialUnsets: z.array(z.string()).volatile(),
 })
 
 /** Cordis 插件显示名（与 `package.json` 的 name、`cordis.patch.yml` 的行 id 同一字面值）；

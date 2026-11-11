@@ -184,6 +184,26 @@ function createHarness(options: { persisted?: Record<string, unknown>; writeResu
       error(message: string) { log.errors.push(message) },
       warn(message: string) { log.warnings.push(message) },
     },
+    // 模型服务分区的宿主通道（apply 装配透传进注入面；本文件不断言其调用，stub 即可——
+    // remote 的方法签名对齐 client/apply.ts 的 ClientRemote 最小面）。
+    remote: {
+      settings: {
+        describe: async () => ({ writable: true, namespaces: [{ ns: 'llm-pi-ai', value: { providers: {} }, revision: 1 }] }),
+        mutate: async () => ({ ns: 'llm-pi-ai' }),
+      },
+      llm: {
+        listProviders: async () => [],
+        listConfigurableProviders: async () => [],
+      },
+      credentials: {
+        describe: async () => ({}),
+        set: async () => {},
+        unset: async () => {},
+      },
+      session: {
+        modelCatalog: async () => ({ groups: [] }),
+      },
+    },
     // 项目分组浏览器经闭包捕获的两个宿主动作服务（本文件不断言其调用，stub 即可）
     uiWorkspace: {
       openSession() {},
@@ -266,15 +286,19 @@ describe('client/apply 装配入口', () => {
     expect(localeIndex).toBeGreaterThanOrEqual(0)
     expect(localeIndex).toBeLessThan(firstSlot)
     expect(localeIndex).toBeLessThan(firstLayer)
-    expect(harness.log.localeRegistrations).toEqual([{ ns: 'taiji.shell', languages: ['zh', 'en'] }])
+    // 两本字典同在装配最前（壳字典 + 模型服务分区字典），都先于任何槽位渲染
+    expect(harness.log.localeRegistrations).toEqual([
+      { ns: 'taiji.shell', languages: ['zh', 'en'] },
+      { ns: 'taiji.model-service', languages: ['zh', 'en'] },
+    ])
   })
 
   it('持久命名空间 = 本包 profile 行 id（AS22：Config 随 bundle 行落盘）', () => {
     const harness = createHarness()
     mountApply(harness)
-    // 两次 get 是预期：配色持久通道与 ProjectStore 各自拿同一命名空间的 form
-    // （ConfigForm 本体跨插件共享，两处只撤各自的订阅）
-    expect(harness.log.entryIds).toEqual([PLUGIN_ENTRY_ID, PLUGIN_ENTRY_ID])
+    // 三次 get 是预期：配色持久通道、ProjectStore、模型服务分区（待清理凭据清单）各自拿
+    // 同一命名空间的 form（ConfigForm 本体跨插件共享，各处只撤各自的订阅）
+    expect(harness.log.entryIds).toEqual([PLUGIN_ENTRY_ID, PLUGIN_ENTRY_ID, PLUGIN_ENTRY_ID])
     expect(PLUGIN_ENTRY_ID).toBe('tai-ji-yang-shell')
   })
 
@@ -381,7 +405,7 @@ describe('client/apply 装配入口', () => {
     expect(harness.log.preferenceWrites).toEqual(['light'])
   })
 
-  it('品牌三槽 + 外观行都注册，且每个贡献都经 ctx.effect 托管（十三处 disposer）', () => {
+  it('品牌三槽 + 外观行 + 两个设置分区都注册，且每个贡献都经 ctx.effect 托管', () => {
     const harness = createHarness()
     mountApply(harness)
     expect(harness.log.slotInjects).toEqual([
@@ -390,17 +414,20 @@ describe('client/apply 装配入口', () => {
       'sidebar.brand.name',
       'settings.general.item',
       'conversation.input.left',
+      // settings.section 两次：太极分区 + 模型服务分区（两个独立 id 的插件分区）
+      'settings.section',
       'settings.section',
       'sidebar.workspaces',
       'conversation.session.header.actions',
     ])
-    expect(harness.log.slotRegistrations).toHaveLength(8)
-    // locale 字典 1 + 主题层 1 + 结构层 1 + 持久订阅 1 + ProjectStore 反注册 1
-    // + 八个槽位 inject 各把注册包成嵌套 effect 1 + 持久反注册 1
-    expect(harness.effects).toHaveLength(14)
+    expect(harness.log.slotRegistrations).toHaveLength(9)
+    // locale 字典 2 + 主题层 1 + 结构层 1 + 持久订阅 1 + ProjectStore 反注册 1
+    // + 九个槽位 inject 各把注册包成嵌套 effect 1 + 持久反注册 1
+    expect(harness.effects).toHaveLength(16)
     expect(harness.effects.every((effect) => typeof effect.dispose === 'function')).toBe(true)
     expect(harness.effects.map((effect) => effect.label)).toEqual([
       'taiji: 内联双语字典（zh/en）',
+      'taiji: 模型服务分区双语字典（zh/en）',
       'taiji: 主题 token 覆盖层（overrideTokens disposer 经 ctx.effect 托管）',
       'taiji: 结构 token 覆盖层（overrideTokens disposer 经 ctx.effect 托管）',
       'taiji: 持久配色 → 主题层换层（插件 Config 镜像订阅）',
@@ -410,6 +437,7 @@ describe('client/apply 装配入口', () => {
       'slots.inject("sidebar.brand.name")',
       'slots.inject("settings.general.item")',
       'slots.inject("conversation.input.left")',
+      'slots.inject("settings.section")',
       'slots.inject("settings.section")',
       'slots.inject("sidebar.workspaces")',
       'slots.inject("conversation.session.header.actions")',

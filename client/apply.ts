@@ -24,7 +24,9 @@ import { installBrandMarkSlots, type BrandSlotHost } from './brand/mark'
 import { installBrandNameSlot } from './brand/name'
 import { installSessionStatusIcon } from './head/session-header'
 import { installAppearanceChip } from './input/appearance-chip'
-import { installLocale, type LocaleInstallHost } from './locale'
+import { installLocale, installModelServiceLocale, type LocaleInstallHost } from './locale'
+import { installModelServiceSection, type ModelServiceSectionInjected, type SessionRemoteLike } from './settings/model-service/section'
+import type { ModelServiceHost } from './model-service/settings-client'
 import { AppearancePersistence, PLUGIN_ENTRY_ID, type ConfigFormsHost } from './persist'
 import {
   installProjectsBrowser,
@@ -44,6 +46,22 @@ import { STRUCTURE_TOKENS } from './theme/structure'
 export interface ClientThemeService extends ThemeTokenService {
   getTheme(): { preference: 'light' | 'dark' | 'system'; active: { colorScheme: 'light' | 'dark' } }
   setTheme(id: 'light' | 'dark' | 'system'): void
+}
+
+/**
+ * 宿主 remote 面（模型服务分区消费的四个命名空间；最小结构类型，逐字面对照
+ * dsh-api-remotes 的 wire 契约——settings/llm/credentials 的方法签名在
+ * client/model-service/ 各通道内收窄声明，这里只做透传）。
+ */
+export interface ClientRemote {
+  /** 宿主设置文档通道（llm-pi-ai 命名空间读写的载体）。 */
+  settings: ModelServiceHost['settings']
+  /** 宿主 llm 通道（目录/发现/已注册 route）。 */
+  llm: ModelServiceHost['llm']
+  /** 宿主凭据通道（D7）。 */
+  credentials: ModelServiceHost['credentials']
+  /** 宿主会话通道（模型清单第一层读取源；缺席时清单降级为快照+目录两层）。 */
+  session?: SessionRemoteLike
 }
 
 /**
@@ -68,6 +86,8 @@ export interface ClientApplyContext {
   slots: ClientSlots
   theme: ClientThemeService
   configForms: ConfigFormsHost['configForms']
+  /** 宿主 remote 面（模型服务分区的宿主通道；inject 声明保证在场）。 */
+  remote: ClientRemote
   /** 宿主动作服务（打开/新建/归档/置顶）——项目分组浏览器经闭包捕获（fiber inject 声明保证在场）。 */
   uiWorkspace: ProjectsBrowserHost['uiWorkspace']
   /** 宿主会话服务（重命名公开合同）——同上经闭包捕获。 */
@@ -121,6 +141,8 @@ export const inject = ['slots', 'locale', 'theme', 'configForms', 'remote', 'ses
 export function apply(ctx: ClientApplyContext): void {
   // ① 内联双语字典：必须先于任何槽位的首次渲染（合成 t 座位）
   installLocale(ctx)
+  // ①′ 模型服务分区的双语字典（同装配序约束：先于分区首次渲染注册）
+  installModelServiceLocale(ctx)
 
   // ② 持久通道：只读初值、不写（首次写入只发生在用户主动点选时，D2「默认值」）
   const persistence = new AppearancePersistence(ctx, {
@@ -169,9 +191,24 @@ export function apply(ctx: ClientApplyContext): void {
   //    与外观行共用同一 controller 实例——两处入口指向同一持久通道与换层，无双写。
   installAppearanceChip(ctx, controller)
 
-  // ⑦ 设置页「太极」分区（settings.section，list 槽追加）：只读状态页（不设第二换色
-  //    写入口），换色仍在通用设置的外观行与 composer chip。
+  // ⑦ 设置页「太极」分区（settings.section，list 槽追加）：配色半边是第三换色写入口
+  //    （D9——同一个 controller 的 selectThemeId 透传，三入口共用同一持久字段），明暗模式
+  //    仍在通用设置的外观行。
   installTaijiSection(ctx, controller, projectStore)
+
+  // ⑦′ 设置页「模型服务」分区（settings.section，唯一 id model-services，D2 追加形态）：
+  //     供应商 / 模型清单 / 模型路由三视图；宿主通道 = remote 四命名空间 + 插件 Config 表单
+  //     （待清理凭据清单 pendingCredentialUnsets 的读写）。
+  const modelServiceDeps: ModelServiceSectionInjected = {
+    remote: {
+      settings: ctx.remote.settings,
+      llm: ctx.remote.llm,
+      credentials: ctx.remote.credentials,
+      ...(ctx.remote.session !== undefined ? { session: ctx.remote.session } : {}),
+    },
+    configForm: ctx.configForms.get(PLUGIN_ENTRY_ID),
+  }
+  installModelServiceSection(ctx, modelServiceDeps)
 
   // ⑧ 侧栏会话区的项目分组浏览器（sidebar.workspaces 整槽替换）：taiji 式「项目」分组
   //    列表——项目是本包逻辑分组实体，与宿主工作区/目录无关。会话行行首不放品牌图标

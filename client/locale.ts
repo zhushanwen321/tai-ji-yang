@@ -51,8 +51,8 @@ export const zh = {
   'section.desc': '本插件把 DSH 界面染成太极工作台：六套配色、圆角与字重、双鱼标。',
   /** 当前配色行的行名（值 = 色点 + 当前色中文名，由组件侧拼装）。 */
   'section.current': '当前配色',
-  /** 指引行：配色与明暗模式的切换入口在通用设置的外观行（与宿主 nav 标签「通用设置」「外观」同字面）。 */
-  'section.guide': '配色与明暗模式在 通用设置 → 外观 行切换',
+  /** 指引行：明暗模式在通用设置的外观行（与宿主 nav 标签「通用设置」「外观」同字面）；配色可就地展开色板（D9 第三入口）。 */
+  'section.guide': '明暗模式在 通用设置 → 外观 行切换；点当前配色行尾的箭头可就地展开六色色板',
 
   /* ── 项目分组侧栏（M2，client/projects/browser.tsx 消费；插值 {n}/{date} 与宿主 t 同格式）── */
 
@@ -171,7 +171,7 @@ export const en = {
   'appearance.mode.system': 'Follow system',
   'section.desc': 'This plugin re-themes the DSH interface as the TaiJi workbench: six palettes, corner radii and font weights, and the twin-fish mark.',
   'section.current': 'Current palette',
-  'section.guide': 'Switch palettes and light/dark mode in General → Appearance.',
+  'section.guide': 'Switch light/dark mode in General → Appearance; expand the palette next to the current palette row to switch palettes in place.',
 
   /* ── Project-grouped sidebar (M2; params {n}/{date} match the host t format) ──── */
 
@@ -329,9 +329,80 @@ export const modelServiceZh = {
   'models.emptyNoMatch': '没有匹配「{q}」的模型',
   /** 筛选空态的清除动作。 */
   'models.clearFilter': '清除筛选',
+  /** 清单视图的筛选输入占位/可访问名（G16）。 */
+  'models.viewFilter': '筛选模型',
+  /** 四层数据源中拿不到的字段标注（G16：上下文/输入类型/最大输出缺失）。 */
+  'models.fieldMissing': '未提供',
 
   /* ── 路由视图 M1 期空态引导（M2 交付路由能力后由 M2 增键扩展）── */
   'routes.emptyM1': '路由能力将在下个版本提供',
+  'routes.emptyM1Next': '已接入的供应商与模型不受影响，对话流可正常使用。',
+
+  /* ── 动作（M1 填充：展开体 / 列表 / 清单的通用动作）── */
+  'action.save': '保存并接入',
+  'action.cancel': '取消',
+  'action.deleteProvider': '删除供应商',
+  'action.testConnection': '测试连接',
+  'action.discover': '发现模型',
+  'action.addModel': '手动添加模型',
+  'action.addProvider': '添加供应商',
+  'action.edit': '编辑',
+  'action.locate': '在供应商中查看',
+  'action.backToModels': '返回模型清单',
+  'action.confirmDelete': '再点确认删除',
+
+  /* ── 供应商视图（列表行与标识预览）── */
+  'providers.loading': '读取供应商目录…',
+  'providers.snapshotUnavailable': '宿主模型层未就绪（llm-pi-ai 命名空间未被服务）；确认宿主已装模型适配器后重新打开本分区。',
+  'providers.managedNote': '由宿主管理；请在宿主「模型」分区编辑与配置凭据',
+  'providers.managedBadge': '宿主托管',
+  'providers.catalogBadge': '目录型',
+  'providers.customBadge': '自定义',
+  'provider.keyPreview': '保存标识：{key}',
+  'provider.refPreview': '凭据引用：{ref}',
+  'provider.modelCount': '{n} 个模型',
+
+  /* ── 展开体表单（协议选项 / compat / 模型区来源态 / 发现 / 保存）── */
+  'provider.protocol.openai-completions': 'OpenAI 兼容（chat/completions）',
+  'provider.protocol.openai-responses': 'OpenAI Responses',
+  'provider.protocol.anthropic-messages': 'Anthropic Messages',
+  'compat.groupEssential': '基础兼容',
+  'compat.groupAdvanced': '高级兼容',
+  'compat.unavailable': '一期不开放',
+  'compat.field.thinkingFormat': '思考格式',
+  'compat.field.supportsDeveloperRole': '支持 developer 角色',
+  'compat.field.supportsReasoningEffort': '支持 reasoning effort',
+  'compat.field.supportsStore': '支持 store 参数',
+  'compat.field.supportsUsageInStreaming': '流式返回 usage',
+  'compat.field.supportsFinishReason': '流式 finish reason',
+  'compat.hostDoesNotConsume': '宿主不消费（写入了宿主 schema 未声明的字段）：{fields}',
+  'models.catalogNote': '以下为目录自有模型（只读；保存空模型清单即保持目录默认）',
+  'models.overrideNote': '该供应商以模型覆盖（modelOverrides）微调目录默认；本版本只读展示。',
+  'models.restoreDirectoryWarning': '恢复目录默认将移除全部 {n} 个自定义条目，目录模型重新生效。确认后执行。',
+  'models.saveBlockedEmpty': '至少添加一个模型，或先执行「发现模型」',
+  'models.sourceDirectory': '目录默认',
+  'models.sourceCustom': '自定义清单',
+  'models.sourceOverride': '目录默认 + 覆盖',
+  'thinking.all': '全部档位',
+  'thinking.on-off': '开·关',
+  'thinking.high-max': '高·最高',
+  'thinking.none': '无思考',
+  'input.text': '文本',
+  'input.image': '图像',
+  'discovery.running': '正在探测端点…',
+  'discovery.catalog': '目录自有模型：{n} 个（零网络读取）',
+  'discovery.endpointOk': '端点可达，发现 {n} 个模型',
+  'discovery.failed': '探测失败',
+  'discovery.none': '端点可达，但没有返回模型',
+
+  /* ── 保存与删除的结果文案 ── */
+  'save.saved': '已保存',
+  'save.refTakenA': '该 ref 已被占用（本 profile 内供应商或宿主分区供应商的派生 ref），请更换显示名',
+  'save.refTakenB': '该 ref 已被占用（可能来自其他 profile 的同名供应商），请更换显示名',
+  'save.refTakenRoute': '该名称与已注册的模型路由同名，请更换显示名',
+  'delete.confirmDraft': '再点确认删除「{name}」（含其模型清单）',
+  'delete.crossProfileConfirm': '该供应商的凭据引用 {ref} 由宿主派生，可能被其他 profile 的同名供应商共用；删除将一并清除该凭据。',
+  'credential.pendingRetry': '已自动重试清理 {n} 个待清理凭据引用',
 } satisfies LocaleDict
 
 /** 模型服务分区英文词典（与 modelServiceZh 同 key 集，相等性由 locale.test.ts 对账）。 */
@@ -369,8 +440,73 @@ export const modelServiceEn = {
   'models.emptyNoProviders': 'No providers connected yet',
   'models.emptyNoMatch': 'No models matching "{q}"',
   'models.clearFilter': 'Clear filter',
+  'models.viewFilter': 'Filter models',
+  'models.fieldMissing': 'Not provided',
 
   'routes.emptyM1': 'Routing will arrive in a future version',
+  'routes.emptyM1Next': 'Connected providers and models are unaffected and available in conversations.',
+
+  'action.save': 'Save & connect',
+  'action.cancel': 'Cancel',
+  'action.deleteProvider': 'Delete provider',
+  'action.testConnection': 'Test connection',
+  'action.discover': 'Discover models',
+  'action.addModel': 'Add model manually',
+  'action.addProvider': 'Add provider',
+  'action.edit': 'Edit',
+  'action.locate': 'Show in provider',
+  'action.backToModels': 'Back to model list',
+  'action.confirmDelete': 'Click again to confirm',
+
+  'providers.loading': 'Loading provider directory…',
+  'providers.snapshotUnavailable': 'The host model layer is not ready (llm-pi-ai namespace is unserved); reopen this section once the host ships a model adapter.',
+  'providers.managedNote': 'Host-managed; edit it and its credentials in the host Models section',
+  'providers.managedBadge': 'Host-managed',
+  'providers.catalogBadge': 'Catalog',
+  'providers.customBadge': 'Custom',
+  'provider.keyPreview': 'Saved key: {key}',
+  'provider.refPreview': 'Credential ref: {ref}',
+  'provider.modelCount': '{n} models',
+
+  'provider.protocol.openai-completions': 'OpenAI-compatible (chat/completions)',
+  'provider.protocol.openai-responses': 'OpenAI Responses',
+  'provider.protocol.anthropic-messages': 'Anthropic Messages',
+  'compat.groupEssential': 'Essential compatibility',
+  'compat.groupAdvanced': 'Advanced compatibility',
+  'compat.unavailable': 'Not available in this version',
+  'compat.field.thinkingFormat': 'Thinking format',
+  'compat.field.supportsDeveloperRole': 'Developer role support',
+  'compat.field.supportsReasoningEffort': 'Reasoning effort support',
+  'compat.field.supportsStore': 'Store parameter support',
+  'compat.field.supportsUsageInStreaming': 'Usage in streaming',
+  'compat.field.supportsFinishReason': 'Streaming finish reason',
+  'compat.hostDoesNotConsume': 'Not consumed by the host (fields absent from its schema): {fields}',
+  'models.catalogNote': 'Directory-owned models below (read-only; keeping an empty model list keeps directory defaults)',
+  'models.overrideNote': 'This provider tunes directory defaults via modelOverrides; shown read-only in this version.',
+  'models.restoreDirectoryWarning': 'Restoring directory defaults removes all {n} custom entries and re-enables catalog models. Confirm to proceed.',
+  'models.saveBlockedEmpty': 'Add at least one model, or run model discovery first',
+  'models.sourceDirectory': 'Directory defaults',
+  'models.sourceCustom': 'Custom list',
+  'models.sourceOverride': 'Directory defaults + overrides',
+  'thinking.all': 'All levels',
+  'thinking.on-off': 'On·Off',
+  'thinking.high-max': 'High·Max',
+  'thinking.none': 'No thinking',
+  'input.text': 'Text',
+  'input.image': 'Image',
+  'discovery.running': 'Probing endpoint…',
+  'discovery.catalog': 'Catalog-owned models: {n} (read without network)',
+  'discovery.endpointOk': 'Endpoint reachable, {n} models found',
+  'discovery.failed': 'Discovery failed',
+  'discovery.none': 'Endpoint reachable, but no models returned',
+
+  'save.saved': 'Saved',
+  'save.refTakenA': 'This ref is already taken (derived by a provider in this profile or the host Models section); choose another display name',
+  'save.refTakenB': 'This ref is already taken (likely by a same-named provider in another profile); choose another display name',
+  'save.refTakenRoute': 'This name collides with a registered model route; choose another display name',
+  'delete.confirmDraft': 'Click again to delete "{name}" (including its model list)',
+  'delete.crossProfileConfirm': 'The credential ref {ref} of this provider is host-derived and may be shared by same-named providers in other profiles; deleting also clears that credential.',
+  'credential.pendingRetry': 'Retried clearing {n} pending credential refs',
 } satisfies LocaleDict
 
 /** 模型服务分区文案 key 域（分区组件侧 `t` 的参数类型）。 */

@@ -1,16 +1,16 @@
 /**
  * client/settings/taiji-section.tsx —— 设置页的「太极」独立分区。
  *
- * 分区定位：配色状态的**自述页** + 项目分组的**管理页**。
- *   · 配色半边是自述：本插件是什么 + 当前配色状态 + 指向外观点位，不是操作页——配色与
- *     明暗模式的实际切换都发生在通用设置的外观行（appearance-row.tsx 遮蔽内置行后
- *     「外观」恰好一条，操作入口唯一），本页只呈现状态与指路。因此注入回调只取 controller
- *     的两个只读方法（getThemeId / subscribeThemeId），不透传 selectThemeId：状态页不该
- *     出现第二个换色写入口，否则「换色的唯一入口是外观行」这一分工会被自己打破。
+ * 分区定位：配色**操作页** + 项目分组的**管理页**。
+ *   · 配色半边是第三换色写入口（dsh-model-service D9）：「当前配色」行就地展开六色色板，
+ *     点选即生效。写通道复用既有装配——apply.ts 把同一个 ThemeSelectionController 的
+ *     selectThemeId 透传进来，本页不新建 controller、不新建持久化：外观行、输入框配色
+ *     chip、本页配色行**三入口共用同一 controller 与同一持久字段**（无双写、无第二份偏好
+ *     权威；偏离登记 D-3 落 docs/DSH-PLUGIN-RULES.md，M3 波次）。明暗模式仍只在通用设置
+ *     的外观行切换（宿主偏好写入口唯一，本页不接）。
  *   · 项目半边是管理（M1 数据通道）：装配方传入 ProjectStore 时渲染项目管理块（列表
  *     CRUD + 上移/下移排序，全部动作经 store、UI 不自持数据副本）；store 缺席时整块
- *     不渲染（M1 主线未接线的现状形态）。项目数据的唯一写通道 = store → 插件 Config，
- *     本文件不出现第二条持久路径。
+ *     不渲染。项目数据的唯一写通道 = store → 插件 Config，本文件不出现第二条持久路径。
  *
  * 宿主槽契约（已对照宿主源码核实）：
  *   · 槽 = `settings.section`（list / root，每项一页）；声明见宿主
@@ -23,9 +23,10 @@
  *     `renderSlot('settings.section', { close: onClose }, { only: active })`，SettingsRoot.tsx）
  *     + `t` 座位 + 注入回调。本页没有「离开设置面板」的流程，close 收下不使用。
  *
- * 分区排序：宿主内置分区的 order 为 account -10 / general 0 / models 10 / plugins 15 /
- * agent-presets 20，本分区取 25（末位）——插件分区不插进宿主内置分区的队列中间，
- * 用户的心智模型里「官方分区在前、扩展分区在后」。
+ * 分区排序（D8 前移）：宿主内置分区的 order 为 account -10 / general 0 / models 10 /
+ * plugins 15 / agent-presets 20；本分区 12，落在宿主「模型」（10）之后、「插件」（15）
+ * 之前——两个高频配置入口（模型服务 11 + 太极 12）前移，不再排在「插件」「智能体预设」
+ * 之后（偏离登记 D-2，M3 波次落文档）。
  *
  * 项目管理块**全内联**在 TaijiSection 里（与 appearance-row 同款单组件写法，不拆子组件）：
  * 本包单测夹具（client/testing/load-tsx.ts）的假 jsx-runtime 只记录元素、不递归求值内层
@@ -34,8 +35,10 @@
  */
 import { useRef, useState, useSyncExternalStore } from 'react'
 import { TAIJI_LOCALE_NS, type LocaleKey } from '../locale'
+import { accentColorOf } from '../input/appearance-chip'
 import { type ProjectStoreLike, type ProjectStoreStatus, type ProjectsState } from '../projects/store'
-import { resolveTheme } from '../theme/resolve'
+import { resolveTheme, type ThemeId } from '../theme/resolve'
+import { THEME_IDS } from '../theme/tokens'
 // 类型-only 引入（esbuild 整体擦除，不把外观行模块拖进装载链）：controller 契约由
 // appearance-row.tsx 声明为公共出口，本文件只消费类型不消费实现。
 import type { ThemeSelectionController } from './appearance-row'
@@ -43,17 +46,19 @@ import type { ThemeSelectionController } from './appearance-row'
 /** 本分区在 `settings.section` 里的 id（导航键；不与宿主内置 id——general/account/models/plugins/agent-presets——相撞）。 */
 export const TAIJI_SECTION_ID = 'taiji'
 
-/** 本分区的导航排序位：末位（25），理由见文件头。 */
-export const TAIJI_SECTION_ORDER = 25
+/** 本分区的导航排序位（D8 前移）：12，宿主「模型」（10）之后、「插件」（15）之前；模型服务分区取 11。 */
+export const TAIJI_SECTION_ORDER = 12
 
-/** 本分区组件经注册 `inject` 收到的业务面：controller 的只读分享（写入口刻意不给，见文件头）+ 可选的项目 store。 */
+/** 本分区组件经注册 `inject` 收到的业务面：controller 的读写分享（D9 第三换色入口）+ 可选的项目 store。 */
 export interface TaijiSectionInjected {
-  /** 读当前生效的配色 id（U3 controller 透传）。 */
+  /** 读当前生效的配色 id（controller 透传）。 */
   getThemeId: ThemeSelectionController['getThemeId']
+  /** 用户点选配色（D9：换层 + 写插件 Config 都在装配层接线，本页只转意图）。 */
+  selectThemeId: ThemeSelectionController['selectThemeId']
   /** 订阅配色变化（换色后色名即时跟随；controller 透传）。 */
   subscribeThemeId: ThemeSelectionController['subscribeThemeId']
   /**
-   * 项目分组 store（装配方接线时提供；M1 主线未接线时该键缺席 → 不渲染项目管理块）。
+   * 项目分组 store（装配方接线时提供；未接线时该键缺席 → 不渲染项目管理块）。
    * 全部项目动作与状态读取都经它，本页不持第二条数据副本或持久路径。
    */
   projectStore?: ProjectStoreLike
@@ -102,6 +107,42 @@ export type TaijiSectionComponentProps = {
 const cx = (...names: (string | false | undefined)[]): string => names.filter(Boolean).join(' ')
 
 /**
+ * 六色色板（呈现组件，与 input/appearance-chip.tsx 的 AppearanceChipPalette 同款拆分理由：
+ * 展开态归父组件 ref，色板本体无自持状态、纯 props 可测——夹具下直接调用断言色点数、
+ * 选中态与点选转发）。候选色点取色 = accentColorOf（按族取本支，appearance-chip 同源）。
+ */
+export interface TaijiSectionPaletteProps {
+  /** 当前选中的配色 id（选中态描边跟随）。 */
+  themeId: ThemeId
+  /** 点选一枚色点（父组件接 controller.selectThemeId 并收起色板）。 */
+  onSelect: (id: ThemeId) => void
+}
+
+export function TaijiSectionPalette({ themeId, onSelect }: TaijiSectionPaletteProps) {
+  return (
+    <div className="taiji-section-palette" role="group">
+      {THEME_IDS.map((id) => {
+        const active = themeId === id
+        return (
+          <button
+            key={id}
+            type="button"
+            className={cx('taiji-section-swatch', active && 'taiji-section-swatch-active')}
+            aria-pressed={active}
+            aria-label={resolveTheme(id).name}
+            title={resolveTheme(id).name}
+            onClick={() => { onSelect(id) }}
+          >
+            <span className="taiji-section-swatch-dot" aria-hidden="true" style={{ background: accentColorOf(id) }} />
+            <span className="taiji-section-swatch-name">{resolveTheme(id).name}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
  * store 在 ProjectStoreLike 契约之外的加法能力（ProjectStore 实装提供）：镜像就绪度与最近
  * 一次持久化失败文案。在场则消费、缺席则降级（就绪度按已就绪、错误行不渲染）——宽松读取
  * 缺省降级是本包对宿主面的既有纪律，这里对自己的 store 同样适用。
@@ -126,25 +167,27 @@ interface InputEventLike {
 
 
 /**
- * 渲染「太极」分区：标题 + 一句说明 + 当前配色行 + 指引行 +（store 在场时）项目管理块。
+ * 渲染「太极」分区：标题 + 一句说明 + 当前配色行（就地展开六色色板，D9）+（store 在场时）
+ * 项目管理块。
  *
- * 色点的取色 = `var(--dsw-alias-brand-primary)`（**活的 CSS 变量**，不是 resolveThemeTokens
- * 的静态取值）：U2 的覆盖层换层后 `:root` 上该变量已是当前配色在当前明暗下的实际生效值，
- * 色点呈现的就是「界面此刻真实使用的强调色」。走静态表则还需要知道当前明暗（宿主 theme
- * 服务）才能选 light/dark 列——本页刻意不接任何宿主服务（任务边界），活变量让 CSS 亲自
- * 回答取色问题，React 状态只负责色名。
+ * 色点的取色分两处：
+ *   · 当前行色点 = `var(--dsw-alias-brand-primary)`（**活的 CSS 变量**）：覆盖层换层后
+ *     `:root` 上该变量已是当前配色在当前明暗下的实际生效值，色点呈现的就是「界面此刻真实
+ *     使用的强调色」，React 状态只负责色名；
+ *   · 色板六枚候选色点 = `accentColorOf(id)`（appearance-chip 同源的按族取本支，静态常量
+ *     表数据搬运）：候选色还没生效、没有对应的活变量，取名义色相标识。
  *
  * 项目管理块的交互状态全部收在 useRef + 重渲染扳机（useState 只当扳机用）而非纯
  * useState：本包测试夹具的 useState 桩不会触发重渲染，装填态的**真相**放 ref 才能被
  * 同一渲染树上的后续交互读到（两段确认的第二击在测试里就发生在同一棵树上）；真实
- * React 下扳机保证视觉跟随。名称与输入框同时挂载、用 hidden 类切换显隐：重命名的
- * 键盘/失焦语义（Enter 提交 / Esc 取消 / 失焦提交）因此始终可测，不依赖「先点开
- * 编辑器」的状态转移。
+ * React 下扳机保证视觉跟随。色板展开态同样收在 ref。名称与输入框同时挂载、用 hidden 类
+ * 切换显隐：重命名的键盘/失焦语义（Enter 提交 / Esc 取消 / 失焦提交）因此始终可测，
+ * 不依赖「先点开编辑器」的状态转移。
  *
  * @param props - `t` 座位 + 注入回调（close 由宿主传入，本页不使用）。
  * @returns 分区元素树（自带行 chrome 与分隔线，样式见同目录 taiji-section.css）。
  */
-export function TaijiSection({ t, getThemeId, subscribeThemeId, projectStore }: TaijiSectionComponentProps) {
+export function TaijiSection({ t, getThemeId, selectThemeId, subscribeThemeId, projectStore }: TaijiSectionComponentProps) {
   const themeId = useSyncExternalStore(subscribeThemeId, getThemeId, getThemeId)
   // 项目半边的状态面：store 缺席时挂稳定空态（hooks 不可条件调用；空项目数组让管理块
   // 的渲染分支整体短路，不产生任何 DOM 与交互）。
@@ -160,12 +203,26 @@ export function TaijiSection({ t, getThemeId, subscribeThemeId, projectStore }: 
   const projectsError = projectStore !== undefined && typeof storeExtras.getLastError === 'function'
     ? storeExtras.getLastError()
     : undefined
-  // 两段确认的武装目标 / 行内重命名的编辑目标 / 已关闭的错误文案（真相在 ref，理由见上）。
+  // 两段确认的武装目标 / 行内重命名的编辑目标 / 已关闭的错误文案 / 色板展开态（真相在 ref，理由见上）。
   const armedDeleteId = useRef<string | null>(null)
   const renamingId = useRef<string | null>(null)
   const dismissedError = useRef<string | null>(null)
+  const paletteOpen = useRef(false)
   // 重渲染扳机（真实 React 用；测试夹具的桩是 noop，行为真相在 ref 里不受影响）。
   const [, rerender] = useState(0)
+
+  /** 配色行点击：就地展开/收起六色色板（D9 第三换色入口）。 */
+  const togglePalette = (): void => {
+    paletteOpen.current = !paletteOpen.current
+    rerender((count) => count + 1)
+  }
+
+  /** 色板点选：换色（装配层接线：换层 + 写插件 Config）+ 收起色板。 */
+  const pickTheme = (id: ThemeId): void => {
+    selectThemeId(id)
+    paletteOpen.current = false
+    rerender((count) => count + 1)
+  }
 
   /** 两段确认：第一击武装（按钮变红显后果文案），第二击执行；换目标重新武装。 */
   const requestDelete = (id: string): void => {
@@ -203,7 +260,19 @@ export function TaijiSection({ t, getThemeId, subscribeThemeId, projectStore }: 
           <span className="taiji-section-dot" aria-hidden="true" style={{ background: 'var(--dsw-alias-brand-primary)' }} />
           <span className="taiji-section-current-name">{resolveTheme(themeId).name}</span>
         </span>
+        {/* D9：配色行就地展开六色色板（第三换色写入口，与外观行/chip 共用同一 controller） */}
+        <button
+          type="button"
+          className="taiji-section-palette-toggle"
+          aria-expanded={paletteOpen.current}
+          onClick={togglePalette}
+        >
+          {paletteOpen.current ? '▾' : '▸'}
+        </button>
       </div>
+      {paletteOpen.current && (
+        <TaijiSectionPalette themeId={themeId} onSelect={pickTheme} />
+      )}
       <div className="taiji-section-row">
         <span className="taiji-section-guide">{t('section.guide')}</span>
       </div>
@@ -321,8 +390,8 @@ export function TaijiSection({ t, getThemeId, subscribeThemeId, projectStore }: 
  * 从已安装字典合成 `t` 座位，缺字典会 fail-loud（宿主渲染机契约）。
  *
  * @param host - 宿主侧（slots / locale.bind）。
- * @param controller - 配色选择控制器（U3 提供；本页只取读方法）。
- * @param projectStore - 项目分组 store（可选；提供时渲染项目管理块，缺席时保持无项目半边的现状）。
+ * @param controller - 配色选择控制器（U3 提供；D9 起读写方法都透传——本页是第三换色入口）。
+ * @param projectStore - 项目分组 store（可选；提供时渲染项目管理块，缺席时保持无项目半边）。
  */
 export function installTaijiSection(
   host: TaijiSectionHost,
@@ -341,6 +410,7 @@ export function installTaijiSection(
       locale: TAIJI_LOCALE_NS,
       inject: (): TaijiSectionInjected => ({
         getThemeId: controller.getThemeId,
+        selectThemeId: controller.selectThemeId,
         subscribeThemeId: controller.subscribeThemeId,
         // store 缺席时键整体缺席（不是值 undefined）：注入面的形状即「有没有项目半边」。
         ...(projectStore !== undefined ? { projectStore } : {}),
