@@ -512,3 +512,235 @@
   line-height: 18px;
   color: var(--dsw-alias-label-secondary);
 }
+
+/* ── 路由视图（M2）：列表 / 白名单 / 悬挂 / 状态条 ─────────────────────────── */
+.ms-routes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ms-routes-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ms-routes-name {
+  width: 220px;
+}
+
+.ms-routes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ms-route-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-md);
+}
+
+.ms-route-members {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 16px;
+}
+
+.ms-route-member {
+  font-size: 12px;
+}
+
+.ms-route-member-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ms-hanging {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px dashed var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+}
+
+/* ── 三层时间窗（M2）：层切换 / 命名窗口矩阵 / 48 格条 / 特殊日期 ─────────────── */
+.ms-timegrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.ms-timegrid-layers {
+  display: flex;
+  gap: 4px;
+}
+
+.ms-timegrid-layer-button {
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  border-radius: var(--dsw-radius-xs);
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ms-timegrid-layer-button-active {
+  background: var(--taiji-brand-soft);
+  color: var(--taiji-ink);
+  border-color: var(--taiji-brand-ring);
+}
+
+.ms-weekmatrix {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ms-weekmatrix-row {
+  display: grid;
+  grid-template-columns: 72px repeat(5, 1fr);
+  gap: 2px;
+  align-items: center;
+}
+
+.ms-weekmatrix-corner,
+.ms-weekmatrix-daylabel {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.ms-weekmatrix-colhead {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  text-align: center;
+}
+
+.ms-weekmatrix-cell {
+  height: 18px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-xs);
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ms-weekmatrix-full {
+  background: var(--taiji-brand-soft);
+  border-color: var(--taiji-brand-ring);
+}
+
+.ms-weekmatrix-partial {
+  background: var(--taiji-brand-soft);
+  border-color: var(--taiji-brand-ring);
+  opacity: 0.55;
+}
+
+.ms-dayslots {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ms-dayslots-days {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.ms-dayslot-day-button {
+  border: 1px solid var(--dsw-alias-border-l1);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  border-radius: var(--dsw-radius-xs);
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ms-dayslot-day-button-active {
+  background: var(--taiji-brand-soft);
+  color: var(--taiji-ink);
+  border-color: var(--taiji-brand-ring);
+}
+
+.ms-dayslots-bar {
+  display: grid;
+  grid-template-columns: repeat(48, minmax(0, 1fr));
+  gap: 1px;
+}
+
+.ms-dayslot-cell {
+  height: 16px;
+  min-width: 0;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 1px;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ms-dayslot-on {
+  background: var(--taiji-brand-soft);
+  border-color: var(--taiji-brand-ring);
+}
+
+.ms-dayslots-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.ms-specials {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ms-specials-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ms-specials-date {
+  width: 120px;
+}
+
+.ms-specials-name {
+  width: 140px;
+}
+
+.ms-specials-mode {
+  width: 160px;
+}
+
+.ms-specials-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.ms-specials-mask {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 16px;
+}

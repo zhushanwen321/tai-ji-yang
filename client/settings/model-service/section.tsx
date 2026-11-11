@@ -20,10 +20,12 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { retryPendingUnsets, type PluginConfigFormLike } from '../../model-service/credentials-client'
+import { RoutesListModel } from '../../model-service/route-store'
 import type { ModelServiceHost } from '../../model-service/settings-client'
 import { TAIJI_MODEL_SERVICE_LOCALE_NS, type ModelServiceLocaleKey } from '../../locale'
 import { ModelsView, ModelsListModel } from './models-view'
 import { ProvidersView, ProvidersListModel } from './providers-view'
+import { RoutesView } from './routes-view'
 
 /** 本分区在 `settings.section` 里的 id（D2：唯一 id；不与宿主内置或太极分区相撞）。 */
 export const MODEL_SERVICES_SECTION_ID = 'model-services'
@@ -108,15 +110,20 @@ export function ModelServiceSection({ t, close, remote, configForm }: ModelServi
   const retryNotice = useRef<string | undefined>(undefined)
   const providersModel = useRef<ProvidersListModel | undefined>(undefined)
   const modelsModel = useRef<ModelsListModel | undefined>(undefined)
+  const routesModel = useRef<RoutesListModel | undefined>(undefined)
   const [, rerender] = useState(0)
 
   useEffect(() => {
     const providers = new ProvidersListModel({ remote, t, configForm })
     const models = new ModelsListModel({ remote, t })
+    // 路由视图模型（M2）：Config 快照 + 注册探测 + 成员可用性；翻译座位由 RoutesView 挂载时注入。
+    const routes = new RoutesListModel({ remote, configForm })
     const unsubscribeProviders = providers.subscribe(() => rerender((count) => count + 1))
     const unsubscribeModels = models.subscribe(() => rerender((count) => count + 1))
+    const unsubscribeRoutes = routes.subscribe(() => rerender((count) => count + 1))
     providersModel.current = providers
     modelsModel.current = models
+    routesModel.current = routes
     let disposed = false
     void retryPendingUnsets(configForm, remote.credentials).then((result) => {
       if (disposed || result.removed.length === 0) return
@@ -128,6 +135,8 @@ export function ModelServiceSection({ t, close, remote, configForm }: ModelServi
       disposed = true
       unsubscribeProviders()
       unsubscribeModels()
+      unsubscribeRoutes()
+      routes.dispose()
     }
   }, [])
 
@@ -188,10 +197,9 @@ export function ModelServiceSection({ t, close, remote, configForm }: ModelServi
         )
       )}
       {view === 'routes' && (
-        <div className="ms-empty">
-          <div className="ms-empty-title">{t('routes.emptyM1')}</div>
-          <div className="ms-empty-next">{t('routes.emptyM1Next')}</div>
-        </div>
+        routesModel.current !== undefined && (
+          <RoutesView t={t} model={routesModel.current} />
+        )
       )}
     </section>
   )

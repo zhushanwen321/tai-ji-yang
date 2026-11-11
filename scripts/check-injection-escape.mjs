@@ -75,10 +75,12 @@ function assertGlobalRow(row, index) {
 /** 用假 ctx 触发一次注入收集，返回推入的行。
  *
  * 假 ctx 的职责只在于「让装配入口跑完并把行交出来」，因此除订阅外还给 `effect`（装载期
- * 探针的反注册器登记口）、`get`（服务探询）与 `logger`（诊断出口）三个最小替身：缺 `effect`
- * 会让装载期探针在装配时抛「ctx.effect is not a function」，那是替身缺口而非被测代码缺陷。
+ * 探针的反注册器登记口）、`get`（服务探询）、`logger`（诊断出口）与 `inject`（服务注入面，
+ * M2 路由适配器经它挂装配）四个最小替身：缺 `effect` 会让装载期探针在装配时抛
+ * 「ctx.effect is not a function」，那是替身缺口而非被测代码缺陷。
  * `get` 一律返回 `undefined`（无 webServer / 无 loader）不改变本脚本的断言范围：本脚本只核
- * 注入行，不核诊断。
+ * 注入行，不核诊断；`inject` 不执行回调（等价「llm 服务不在本树」形态，路由装配不在本脚本
+ * 断言范围）。
  */
 function collectRows(module, label) {
   const rows = []
@@ -93,6 +95,9 @@ function collectRows(module, label) {
     effect(execute) {
       const dispose = execute()
       return typeof dispose === 'function' ? dispose : () => {}
+    },
+    inject(_names, _callback) {
+      return () => {}
     },
   }
   module.apply(ctx)
