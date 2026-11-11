@@ -117,6 +117,14 @@ const PROJECT_STORE_DISPOSE_LABEL = 'taiji: ProjectStore（projects/assignments 
  *     宿主自己的先例：`dsh-client-ui-layout` 导出 `["slots","theme","locale","shortcuts"]`，
  *     `dsh-client-ui-theme` 导出 `["slots","locale","remote","configForms"]`。
  *
+ * **嵌套命名空间须逐个声明路径，只声明父级服务名不够**：读 `ctx.remote.settings` 这类
+ * 嵌套面时，宿主把整串路径按完整服务名解析——inject 里只有父级 `'remote'` 的话，
+ * `ctx.remote.settings` 照样抛 `cannot get property "remote.settings" without inject`
+ * （2026-11-12 真机验收 assembly + console-clean 双 FAIL 的根因）。在场探测也算读取：
+ * `ctx.remote.session !== undefined` 这种探测本身即触发，故四个嵌套路径全声明、不省略。
+ * 对照宿主 `dsh-client-ui-settings-models` 的 inject：settings/llm/credentials/session
+ * 四个嵌套路径逐个显式声明。
+ *
  * 取值 = 本文件实际读到的 ctx 面（见 {@link ClientApplyContext}），不多写：
  *   · `slots` —— 品牌三槽与外观行的 register；
  *   · `locale` —— 内联双语字典（`installLocale` 是 apply 的第一步，最先读它）；
@@ -125,7 +133,19 @@ const PROJECT_STORE_DISPOSE_LABEL = 'taiji: ProjectStore（projects/assignments 
  *     「`remote` carries the forwarded settings invalidation that
  *     `ctx.configForms.get(entryId)` subscribes to on this context」。
  */
-export const inject = ['slots', 'locale', 'theme', 'configForms', 'remote', 'sessions', 'uiWorkspace'] as const
+export const inject = [
+  'slots',
+  'locale',
+  'theme',
+  'configForms',
+  'remote',
+  'remote.settings',
+  'remote.llm',
+  'remote.credentials',
+  'remote.session',
+  'sessions',
+  'uiWorkspace',
+] as const
 
 /**
  * 装配入口。

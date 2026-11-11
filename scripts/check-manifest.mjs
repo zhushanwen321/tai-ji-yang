@@ -45,10 +45,24 @@ const CLIENT_INJECT = [
  *   slots（品牌三槽 + 外观行）/ locale（内联字典，apply 第一步读它）/ theme（覆盖层 + 模式按钮）/
  *   configForms + remote（持久通道；remote 承载 configForms.get 订阅的设置失效通知）。
  *
+ * remote 的四个嵌套路径（settings/llm/credentials/session）必须与父级一起逐个声明：
+ * 宿主把嵌套路径按整串服务名解析，只声明父级 'remote' 时读 ctx.remote.settings 照样抛
+ * without inject（2026-11-12 真机验收 assembly/console-clean 双 FAIL 的根因）。
+ *
  * 为什么必须写死在这里而不从源码推断：这条断言的价值恰在于「源码改了但忘了同步 inject」时会红——
  * 若从源码读 inject 再比对自身，任何改动都自动通过，断言退化为恒绿。
  */
-const REQUIRED_SERVICE_INJECT = ['slots', 'locale', 'theme', 'configForms', 'remote']
+const REQUIRED_SERVICE_INJECT = [
+  'slots',
+  'locale',
+  'theme',
+  'configForms',
+  'remote',
+  'remote.settings',
+  'remote.llm',
+  'remote.credentials',
+  'remote.session',
+]
 
 /** 包特有断言的登记：断言逻辑仍在本文件内，按包名选择执行集合（单处归属的两层含义）。 */
 
