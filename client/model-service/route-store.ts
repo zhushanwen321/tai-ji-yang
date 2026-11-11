@@ -89,6 +89,13 @@ export class RoutesListModel {
   private readonly deps: RoutesListModelDeps
   private readonly listeners = new Set<() => void>()
   private state: RoutesSnapshot
+  /**
+   * 已采纳快照的 revision（倒退栅栏，AF-1-1）：commit 成功后的重读走镜像视图，镜像快照
+   * 滞后于 set 落盘时（persist.ts 镜像/mutate 两路径），旧快照整段重建会把乐观写弹回
+   * （白名单 toggle 静默丢失）。非 ready 态重置——命名空间重开时宿主 revision 可重排，
+   * 栅栏不得跨服务期生效。
+   */
+  private appliedRevision: number | undefined
   /** 构造时启动的首读（测试 await model.pending 等待就绪）。 */
   readonly pending: Promise<void>
   private unsubscribe: (() => void) | undefined
@@ -121,15 +128,33 @@ export class RoutesListModel {
   async load(): Promise<void> {
     const snapshot = this.deps.configForm.getSnapshot()
     if (snapshot.status === 'unavailable') {
+      this.appliedRevision = undefined
       this.state = { ...emptySnapshot(), status: 'unavailable' }
       this.notify()
       return
     }
     if (snapshot.status !== 'ready') {
+      this.appliedRevision = undefined
       this.state = { ...emptySnapshot(), status: 'loading' }
       this.notify()
       return
     }
+    // 倒退栅栏（AF-1-1）：revision 与 value 在同一快照对象（ConfigFormSnapshotLike），滞后
+    // 回放的旧快照 revision 必然更小——拒收其 Config 派生面重建（routes/whitelist/hanging
+    // 整段重建正是弹回机制本体），subscribe 事件最终会带新 revision 快照完成对账；栅栏只
+    // 挡倒退不挡前进。探测面不拒收（probeDerived 照跑）：探测读宿主 remote，不依赖这份滞后
+    // 快照，而 load 是探测面唯一刷新入口——宿主实测镜像滞后可达数秒（直至下一次写入才有
+    // describe 触发），整段 return 会把成员可用性/注册探测冻结整个窗口（G18「供应商已删」
+    // 标注缺席）。
+    const staleReplay =
+      this.appliedRevision !== undefined &&
+      snapshot.revision !== undefined &&
+      snapshot.revision < this.appliedRevision
+    if (staleReplay) {
+      await this.probeDerived(this.state.routes)
+      return
+    }
+    this.appliedRevision = snapshot.revision
     const section = typeof snapshot.value === 'object' && snapshot.value !== null
       ? snapshot.value as Record<string, unknown>
       : {}
@@ -145,8 +170,11 @@ export class RoutesListModel {
       hanging: whitelist.filter((id) => !routeIds.has(id)),
     }
     this.notify()
+    await this.probeDerived(routes)
+  }
 
-    // 派生面（异步探测；失败降级为「不标注」，不阻塞路由配置面——AX6 辅助功能接入点降级）。
+  /** 探测面（异步；失败降级为「不标注」，不阻塞路由配置面——AX6 辅助功能接入点降级）。 */
+  private async probeDerived(routes: RouteEntry[]): Promise<void> {
     // remote 方法返回 typert Result 包装，unwrapRemote 解包后失败转 rejection，由 .catch 降级。
     const [directory, llmPiAi, registeredProviders, credentials] = await Promise.all([
       this.deps.remote.llm.listConfigurableProviders().then(unwrapRemote).catch(() => []),
@@ -305,7 +333,13 @@ export class RoutesListModel {
   private async commit(field: string, value: unknown): Promise<void> {
     try {
       const accepted = await this.deps.configForm.set(field, value)
-      if (!accepted) {
+      if (accepted) {
+        // set 被接受即宿主侧 revision 已前移（写入带 revision 栅栏，无冲突才接受），而镜像
+        // 快照更新滞后于 set 落盘（persist.ts 镜像/mutate 两路径）——本 store 的状态此刻至少
+        // 在 appliedRevision+1，前移栅栏把 commit 后重读里的滞后回放（revision ≤ 写前值）
+        // 挡掉；不前移则滞后镜像 revision 与已采纳值相等，倒退恰好漏过（AF-1-1 弹回主径）。
+        this.appliedRevision = (this.appliedRevision ?? 0) + 1
+      } else {
         this.state = { ...this.state, notice: this.t('route.writeRefused') }
         this.notify()
         await this.load()

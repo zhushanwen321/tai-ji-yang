@@ -644,8 +644,22 @@ export async function run(ctx) {
     expected: 'whitelist 不再含 verify-route',
     actual: String(whitelistCleared),
   })
-  await page.locator('.ms-route-item', { hasText: 'verify-route' }).first().locator('.ms-check input[type="checkbox"]').first().check()
-  await page.waitForTimeout(400)
+  // 重新勾选（AF-1-1 纵深加固）：先等 UI 呈现上一步取消勾选的真值（isChecked()=false）再点
+  // ——弹回窗口内 checkbox 仍是勾选态时 check() 对已勾选元素立即返回不点击（playwright
+  // check() 官方契约），写入静默丢失；消除对 UI 同步时序的隐式依赖，防 no-op 回归。
+  const whitelistCheckbox = page.locator('.ms-route-item', { hasText: 'verify-route' }).first().locator('.ms-check input[type="checkbox"]').first()
+  const uncheckedSettled = await waitFor(async () => !(await whitelistCheckbox.isChecked().catch(() => false)), 6000)
+  ev.assert('V6/重新勾选前 UI 已呈现未勾选态（取消勾选在界面生效）', uncheckedSettled, {
+    expected: 'checkbox isChecked() = false',
+    actual: String(uncheckedSettled),
+  })
+  await whitelistCheckbox.check()
+  // 勾选后确认落盘（619 行同款判定）：不等落盘就进删除流程会让悬挂断言吃进写入竞态。
+  const whitelistRestored = await waitFor(() => (readWhitelistEntries(readFileSync(patchFile, 'utf8')) ?? []).includes('verify-route'), 6000)
+  ev.assert('V6/重新勾选落盘（whitelist 恢复含 verify-route）', whitelistRestored, {
+    expected: 'whitelist 恢复含 verify-route',
+    actual: String(whitelistRestored),
+  })
 
   // V5 步骤 9（G18）：删除成员供应商 → 路由视图成员行「供应商已删」标注 + 白名单条目转悬挂。
   if (!(await clickNav(page, '模型服务'))) return
@@ -670,8 +684,12 @@ export async function run(ctx) {
   await m2Item.locator('.ms-button', { hasText: '再点确认删除' }).first().click()
   await waitFor(() => !readFileSync(patchFile, 'utf8').includes(`  ${m2ProviderKey}:`), 8000)
   await page.locator('.ms-section .ms-viewbar-button', { hasText: '模型路由' }).first().click()
-  await page.waitForTimeout(600)
-  const providerMissingBadge = await page.locator('.ms-route-member .ms-badge-missing', { hasText: '供应商已删' }).first().isVisible().catch(() => false)
+  // 标注是异步探测派生（route-store 探测面：删除供应商 → 宿主 document-updated 广播 → 镜像
+  // 重读 → store 重读 + 探测 RPC 完成才有数据），与本场景其余断言一致走 waitFor 轮询——
+  // 固定 600ms 后单次读 DOM 在删除传播链偏慢时假红（a-model-service-20261111230104 实测：
+  // 删除前警告 waitFor 轮询 6s 内绿，徽章在固定 600ms 处缺席）。
+  const providerMissingBadge = await waitFor(async () =>
+    page.locator('.ms-route-member .ms-badge-missing', { hasText: '供应商已删' }).first().isVisible().catch(() => false), 6000)
   ev.assert('V5 步骤 9/成员行可用性标注（供应商已删，G18）', providerMissingBadge, {
     expected: 'ms-badge-missing「供应商已删」（路由成员行）',
     actual: String(providerMissingBadge),
