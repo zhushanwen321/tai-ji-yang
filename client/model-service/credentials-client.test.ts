@@ -17,13 +17,15 @@ import type { ConfigFormLike, ConfigFormSnapshotLike } from '../persist'
  *     a 支 = profile 查得到持有者 / b 支 = 查不到（可能来自其他 profile）。
  *   · ownRef 豁免 = 当前编辑 provider 的既有 apiKeyEnv（重填重试通道）。
  *   · pendingCredentialUnsets：登记幂等、重试成功即移除（整字段写回）、失败保留、
- *     Config 未被服务 skipped。
+ *     Config 未被服务 skipped；登记/写回失败均不外抛（返回 failed 或清单保留——挂载
+ *     链 void…then 无 catch，U13 失败边界）。
  *   · ref 前缀形态判定（TAIJI_ 前缀 → 自建路径；宿主派生 <ROUTE>_API_KEY → 跨 profile 确认）。
  */
 
-/** 假 Config 表单：内存段 + 写记录（整字段写回断言的载体）。 */
-function fakeForm(initial: { status?: 'ready' | 'unavailable'; value?: Record<string, unknown> } = {}) {
+/** 假 Config 表单：内存段 + 写记录（整字段写回断言的载体）；failSet 注入写回失败（U13 边界）。 */
+function fakeForm(initial: { status?: 'ready' | 'unavailable'; value?: Record<string, unknown>; failSet?: boolean } = {}) {
   let status = initial.status ?? 'ready'
+  let failSet = initial.failSet ?? false
   let value: Record<string, unknown> | undefined = initial.value
   const writes: { field: string; value: unknown }[] = []
   const form: ConfigFormLike = {
@@ -32,12 +34,13 @@ function fakeForm(initial: { status?: 'ready' | 'unavailable'; value?: Record<st
     },
     subscribe: () => () => {},
     async set(field, next) {
+      if (failSet) throw new Error('config write rejected')
       writes.push({ field, value: next })
       value = { ...(value ?? {}), [field]: next }
       return true
     },
   }
-  return { form, writes, setUnavailable: () => { status = 'unavailable' } }
+  return { form, writes, setUnavailable: () => { status = 'unavailable' }, setFailSet: (next: boolean) => { failSet = next } }
 }
 
 /** 假凭据通道：可配置已存在 refs 与失败注入。 */
@@ -116,15 +119,24 @@ describe('ref 前缀形态判定（D7 删除侧的机器信号）', () => {
 describe('pendingCredentialUnsets 待清理联动（D7/AX9）', () => {
   it('登记：追加 ref 整字段写回；重复登记幂等（零写入）', async () => {
     const { form, writes } = fakeForm({ value: { pendingCredentialUnsets: ['TAIJI_A_KEY'] } })
-    await registerPendingUnset(form, 'TAIJI_B_KEY')
+    expect(await registerPendingUnset(form, 'TAIJI_B_KEY')).toEqual({ ok: true })
     expect(writes).toEqual([{ field: PENDING_UNSETS_FIELD, value: ['TAIJI_A_KEY', 'TAIJI_B_KEY'] }])
-    await registerPendingUnset(form, 'TAIJI_A_KEY')
+    expect(await registerPendingUnset(form, 'TAIJI_A_KEY')).toEqual({ ok: true })
     expect(writes).toHaveLength(1) // 幂等：已在清单不重复写
   })
 
-  it('Config 未被服务（unavailable）：登记静默跳过（宿主凭据界面人工清理的已知代价）', async () => {
+  it('登记写回失败：返回 failed（不外抛，detail 供调用方拼人工清理指引）', async () => {
+    const { form, writes } = fakeForm({ value: {}, failSet: true })
+    const result = await registerPendingUnset(form, 'TAIJI_A_KEY')
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.detail).toContain('config write rejected')
+    expect(writes).toHaveLength(0) // 清单零写入，ref 未入清单
+  })
+
+  it('Config 未被服务（unavailable）：登记如实上报 failed（ref 未入清单，调用方给人工清理指引）', async () => {
     const { form, writes } = fakeForm({ status: 'unavailable' })
-    await registerPendingUnset(form, 'TAIJI_A_KEY')
+    const result = await registerPendingUnset(form, 'TAIJI_A_KEY')
+    expect(result).toEqual({ ok: false, detail: expect.stringContaining('未被服务') })
     expect(writes).toHaveLength(0)
   })
 
@@ -168,6 +180,15 @@ describe('pendingCredentialUnsets 待清理联动（D7/AX9）', () => {
     const { credentials } = fakeCredentials([])
     const result = await retryPendingUnsets(form, credentials)
     expect(result.removed).toEqual([])
+    expect(writes).toHaveLength(0)
+  })
+
+  it('重试写回失败：不外抛，清单原样保留（removed 并回 kept 如实反映清单持有态）', async () => {
+    const { form, writes } = fakeForm({ value: { pendingCredentialUnsets: ['TAIJI_A_KEY'] }, failSet: true })
+    const { credentials } = fakeCredentials(['TAIJI_A_KEY'])
+    const result = await retryPendingUnsets(form, credentials) // 若写回外抛，此行即未处理拒绝（挂载链无 catch）
+    expect(result.removed).toEqual(['TAIJI_A_KEY']) // 凭据文件侧已清理（unset 成功）
+    expect(result.kept).toEqual(['TAIJI_A_KEY']) // 清单写回失败 → ref 仍在清单，下次打开分区自愈
     expect(writes).toHaveLength(0)
   })
 })

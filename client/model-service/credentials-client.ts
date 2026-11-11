@@ -102,16 +102,29 @@ function sectionValue(snapshot: { value: unknown }): Record<string, unknown> | u
   return typeof snapshot.value === 'object' && snapshot.value !== null ? snapshot.value as Record<string, unknown> : undefined
 }
 
-/** 登记一个待清理 ref（幂等：已在清单中不重复写；整字段写回）。 */
-export async function registerPendingUnset(form: PluginConfigFormLike, ref: string): Promise<void> {
+/** 登记结果：ok = ref 已写入待清理清单；failed = 未入清单（Config 未被服务或写回失败），detail 供调用方拼人工清理指引。 */
+export type PendingUnsetRegistration = { ok: true } | { ok: false; detail: string }
+
+/**
+ * 登记一个待清理 ref（幂等：已在清单中不重复写；整字段写回）。失败不外抛（persist.ts
+ * attempt 先例：写回异常收敛成结果值）——AX9/D7 的孤儿密钥防线依赖登记落盘，登记失败若
+ * 静默，ref 既不在凭据文件侧被清理、又不在待清理清单里，无任何信号残留；返回 failed 让
+ * 调用方给用户可见降级提示（宿主凭据界面人工清理），Config 未被服务同理如实上报。
+ */
+export async function registerPendingUnset(form: PluginConfigFormLike, ref: string): Promise<PendingUnsetRegistration> {
   const snapshot = form.getSnapshot()
-  if (snapshot.status !== 'ready') return // Config 未被服务：登记通道缺失，宿主凭据界面人工清理（已知代价，D3 卸载语义）
+  if (snapshot.status !== 'ready') return { ok: false, detail: '插件 Config 未被服务，待清理登记通道缺失' }
   const pending = sanitizePending(sectionValue(snapshot)?.[PENDING_UNSETS_FIELD])
-  if (pending.includes(ref)) return
-  await form.set(PENDING_UNSETS_FIELD, [...pending, ref])
+  if (pending.includes(ref)) return { ok: true }
+  try {
+    await form.set(PENDING_UNSETS_FIELD, [...pending, ref])
+  } catch (error) {
+    return { ok: false, detail: error instanceof Error ? error.message : String(error) }
+  }
+  return { ok: true }
 }
 
-/** 重试结果（UI 与 verify 场景消费；removed/kept 都是 ref 名）。 */
+/** 重试结果（UI 与 verify 场景消费；removed/kept 都是 ref 名；kept = 清单实际仍持有的 ref）。 */
 export interface PendingUnsetRetry {
   removed: string[]
   kept: string[]
@@ -122,6 +135,8 @@ export interface PendingUnsetRetry {
 /**
  * 幂等重试待清理清单（打开分区时调用；「下次启动」路径由 M2 的 Node 半场凭据预检顺带接管）：
  * 逐个 unset，成功即移出清单，失败保留；清单有变化才整字段写回（无变化零写入）。
+ * 写回失败不外抛（挂载效应 void…then 链无 catch，section.tsx）：清单原样保留（快照未变，
+ * removed 并回 kept 如实反映清单持有态），下次打开分区重试自愈（宿主 unset 幂等）。
  */
 export async function retryPendingUnsets(form: PluginConfigFormLike, credentials: CredentialsRemoteLike): Promise<PendingUnsetRetry> {
   const snapshot = form.getSnapshot()
@@ -137,7 +152,13 @@ export async function retryPendingUnsets(form: PluginConfigFormLike, credentials
       kept.push(ref)
     }
   }
-  if (removed.length > 0) await form.set(PENDING_UNSETS_FIELD, kept)
+  if (removed.length > 0) {
+    try {
+      await form.set(PENDING_UNSETS_FIELD, kept)
+    } catch {
+      kept.push(...removed)
+    }
+  }
   return { removed, kept, skipped: false }
 }
 
