@@ -24,9 +24,11 @@
  *    （真机 D3 可另按宿主分区写者复验）；机制本体另有单测（settings-client 冲突重试分支）。
  *  V4（密钥零泄漏 + 保存链路）：设置文档与插件 Config 行无密钥字面（sk- 前缀扫描）；同名
  *    供应商二次保存被 route 预检拒绝且设置文档零写入（检查点 U1「预检 → 查重 → mutate →
- *    set」顺序的自动可达部分；凭据 ref 撞名的 a/b 两支文案分支由单测覆盖——经 UI 构造
- *    撞 ref 需宿主分区/凭据文件直改，登记 notProvable）；删除供应商后设置文档条目与凭据
- *    ref 均清除（V4 步骤 5，无孤儿密钥）。
+ *    set」顺序的自动可达部分）；凭据 ref 撞名的 b 支文案（V4 步骤 9，RL10 补建项）：直改
+ *    凭据文件写入无引用者 ref（宿主凭据服务运行中热加载）后经插件分区创建派生同名 ref 的
+ *    供应商，断言保存被拒 + 跨 profile 占用文案 + 设置文档零写入 + 改名重试成功；a 支文案
+ *    （宿主「模型」分区创建 taiji-* 路由供应商）的宿主表单自动化构造未建立，登记
+ *    notProvable；删除供应商后设置文档条目与凭据 ref 均清除（V4 步骤 5，无孤儿密钥）。
  *  V9（清单与只读行）：模型清单视图渲染自定义条目（来源态标注「自定义清单」+ 上下文字段）；
  *    筛选无结果空态 + 清除动作（V9 步骤 5）；宿主托管只读行视隔离实例的注册情况存在
  *    （无托管行时登记 notProvable，不假红）。
@@ -39,7 +41,7 @@
  * 本场景不发任何模型对话请求（V1 步骤 8 / V5 步骤 5-8 / V7 的流式与错误断言需要真实可用
  * 端点，归 D3 真机）。
  */
-import { readFileSync, existsSync } from 'node:fs'
+import { chmodSync, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { bootInto } from '../lib/browser.mjs'
 
@@ -49,14 +51,38 @@ export const meta = {
   description: '分区并存无串页 / 接入全流程与热重算 / 冲突重读重试双方保留 / 密钥零泄漏与保存链路 / 清单来源态与空态',
 }
 
-/** 设置文档与凭据文件的轮询等待（宿主落盘是异步的，给最多 5s）。 */
-async function waitFor(cond, timeoutMs = 5000) {
+/**
+ * 设置文档与凭据文件的轮询等待（宿主落盘是异步的，给最多 5s）。
+ * cond 允许同步布尔与返回 Promise 的异步谓词（await 对同步返回值原样通过）——判定必须
+ * await：漏 await 时 Promise 对象恒真，轮询第一次就假绿（run() 开头的自证断言守护这一点）。
+ */
+export async function waitFor(cond, timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    if (cond()) return true
+    if (await cond()) return true
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
-  return cond()
+  return await cond()
+}
+
+/**
+ * waitFor 自证（check-credentials-hygiene.mjs 的负样本纪律同源）：恒 false 的异步 cond
+ * 必须超时后返回 false（漏 await 时恒真——轮询失效），同步 true cond 必须立即通过
+ * （await 不得误拦既有同步调用点）。返回失败描述清单，空 = 通过。
+ */
+export async function waitForSelfTestFailures() {
+  const failures = []
+  const started = Date.now()
+  if (await waitFor(async () => false, 450) !== false) {
+    failures.push('恒 false 的异步 cond 未按超时返回 false——waitFor 轮询判定漏 await（假绿回归）')
+  }
+  if (Date.now() - started < 400) {
+    failures.push('异步 cond 的等待耗时不足 400ms——waitFor 未真正轮询到超时')
+  }
+  if (await waitFor(() => true, 1000) !== true) {
+    failures.push('同步 true cond 未立即通过——await 改写破坏了同步谓词兼容')
+  }
+  return failures
 }
 
 /** 打开设置面板（宿主触发钮 aria-label 跟随语言，候选依次试）。 */
@@ -98,6 +124,37 @@ function deriveKey(displayName) {
     .replace(/^-+|-+$/g, '')
 }
 
+/**
+ * 直改凭据文件：向 version 1 布局的 refs 段插入一个 ref（dsh-credentials-local 的存储布局
+ * `version: 1` + 两空格缩进的 `REF: 值`）。b 支构造通道（RL10 补建项：直改凭据文件是决策 7
+ * 边缘二登记的同型入口）。权限保原样（新建给 0600）——宿主 assertOwnerOnly 拒绝
+ * group/other 可读的凭据文件，放宽权限会让热加载保留旧快照（reload warn）。
+ */
+function appendCredentialRef(file, ref, value) {
+  const current = existsSync(file) ? readFileSync(file, 'utf8') : 'version: 1\nrefs:\n'
+  const mode = existsSync(file) ? statSync(file).mode & 0o777 : 0o600
+  const lines = current.split('\n')
+  const refsAt = lines.findIndex((line) => line.trimEnd() === 'refs:')
+  const entry = `  ${ref}: ${value}`
+  const next = refsAt >= 0
+    ? [...lines.slice(0, refsAt + 1), entry, ...lines.slice(refsAt + 1)].join('\n')
+    : `${current}${current.endsWith('\n') || current === '' ? '' : '\n'}${entry}\n`
+  writeFileSync(file, next, { mode })
+  chmodSync(file, mode)
+}
+
+/** 直改凭据文件：移除一个 ref 行（b 支收尾清理；宿主 unset 对缺席 ref 幂等，同纪律）。 */
+function removeCredentialRef(file, ref) {
+  if (!existsSync(file)) return
+  const mode = statSync(file).mode & 0o777
+  const next = readFileSync(file, 'utf8')
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith(`${ref}:`))
+    .join('\n')
+  writeFileSync(file, next, { mode })
+  chmodSync(file, mode)
+}
+
 export async function run(ctx) {
   const { page, recorder, ev, log, mode, dsh } = ctx
 
@@ -108,6 +165,14 @@ export async function run(ctx) {
     ev.attach('console.txt', recorder.text())
     return
   }
+
+  // waitFor 自证先于一切场景断言（本场景多处断言以 waitFor 的轮询结果为准——轮询机制
+  // 自身失效时后续断言不可信，必须先红）。
+  const waitSelfTest = await waitForSelfTestFailures()
+  ev.assert('waitFor 轮询自证（异步恒 false cond 超时返回 false、同步 true cond 立即通过）', waitSelfTest.length === 0, {
+    expected: '轮询机制按 await 判定',
+    actual: waitSelfTest.join('; ') || '通过',
+  })
 
   const profileDir = join(dsh.dshHome, 'profiles', dsh.profile)
   const patchFile = join(profileDir, 'cordis.patch.yml')
@@ -324,7 +389,60 @@ export async function run(ctx) {
   })
   // 收起拒绝的展开体，不把草稿留在界面。
   await page.locator('.ms-edit-body .ms-button', { hasText: '取消' }).first().click().catch(() => {})
-  ev.notProvable('凭据 ref 撞名的 a/b 两支拒绝文案（V4 步骤 9）：经界面构造撞 ref 需宿主「模型」分区写 taiji-* 路由或直改凭据文件，自动构造超出本场景通道；两支分支判定由 credentials-client 单测覆盖')
+
+  // ── V4 步骤 9（b 支）：直改凭据文件写入无引用者 ref → 保存被拒 + 跨 profile 占用文案 ──
+  // RL10 补建项：b 支判定只看凭据文件存在性与本 profile apiKeyEnv 枚举（决策 7 查重句），
+  // 「直接编辑凭据文件」正是本场景已具备的通道（credentialsFile 直读直写）。宿主凭据服务
+  // 带文件 watcher（运行中热加载，debounce 100ms）——无需重启宿主，设计 RL10 的「重启后
+  // 加载」探针前提以更强形态成立。a 支（宿主「模型」分区创建 taiji-* 路由供应商录密钥）
+  // 需宿主分区创建表单的自动化构造，本场景未建立，notProvable 登记（见下方）。
+  const lonelyName = `verify-lonely-${stamp}`
+  const lonelyKey = deriveKey(lonelyName)
+  const lonelyRef = `TAIJI_${lonelyKey.replace(/-/g, '_').toUpperCase()}_KEY`
+  ev.step({ step: 'v4.refCheckB', stats: { lonelyName, lonelyKey, lonelyRef } })
+  appendCredentialRef(credentialsFile, lonelyRef, `sk-lonely-${stamp}`)
+  await page.waitForTimeout(1500) // watcher 热加载（debounce 100ms + awaitWriteFinish）留足裕量
+  await page.locator('.ms-section .ms-button-primary', { hasText: '添加供应商' }).first().click()
+  await page.waitForTimeout(300)
+  await page.locator('.ms-edit-body .ms-field', { hasText: '显示名称' }).first().locator('input').fill(lonelyName)
+  await page.locator('.ms-edit-body .ms-field', { hasText: 'API 端点' }).first().locator('input').fill('http://127.0.0.1:9/v1')
+  // 输入密钥（触发保存链路的凭据查重环节）；provider key 与已注册 route 不同名，不触发预检，
+  // 保证拒绝只能来自凭据查重（V4 步骤 9 的 b 支构造前提）。
+  await page.locator('.ms-edit-body input[type="password"]').first().fill(`sk-lonely-${stamp}-value`)
+  await page.locator('.ms-edit-body .ms-button', { hasText: '手动添加模型' }).first().click()
+  await page.waitForTimeout(200)
+  await page.locator('.ms-model-edit-id').first().fill('lonely-model')
+  await page.locator('.ms-edit-body .ms-button-primary', { hasText: '保存并接入' }).first().click()
+  const refTakenB = await waitFor(async () =>
+    page.locator('.ms-edit-body .ms-note-err', { hasText: '其他 profile' }).first().isVisible().catch(() => false), 8000)
+  ev.assert('V4 步骤 9 b 支/凭据 ref 撞无引用者 ref：保存被拒并出现跨 profile 占用提示', refTakenB, {
+    expected: 'save.refTakenB 文案（可能来自其他 profile 的同名供应商）',
+    actual: String(refTakenB),
+  })
+  const lonelyNotWritten = !readFileSync(patchFile, 'utf8').includes(`  ${lonelyKey}:`)
+  ev.assert('V4 步骤 9 b 支/查重拒绝时设置文档零写入', lonelyNotWritten, {
+    expected: `providers.${lonelyKey} 不出现在文档`,
+    actual: String(lonelyNotWritten),
+  })
+  // 更换显示名后重试成功（派生 ref 不再撞名——拒绝是查重而非通道故障的反证）。
+  await page.locator('.ms-edit-body .ms-field', { hasText: '显示名称' }).first().locator('input').fill(`${lonelyName}-b`)
+  await page.locator('.ms-edit-body .ms-button-primary', { hasText: '保存并接入' }).first().click()
+  const lonelySaved = await waitFor(async () =>
+    page.locator('.ms-edit-body .ms-note-ok', { hasText: '已保存' }).isVisible().catch(() => false), 8000)
+  ev.assert('V4 步骤 9 b 支/更换显示名后重试成功', lonelySaved, {
+    expected: '保存成功回执（已保存提示）',
+    actual: String(lonelySaved),
+  })
+  // 收尾：删除重试创建的供应商、移除直改写入的 ref（场景自清洁；后续断言不受残留影响）。
+  await page.locator('.ms-edit-body .ms-button', { hasText: '取消' }).first().click().catch(() => {})
+  const lonelyItem = page.locator('.ms-provider-item', { hasText: `${lonelyName}-b` }).first()
+  await lonelyItem.locator('.ms-button', { hasText: '删除供应商' }).first().click()
+  await page.waitForTimeout(300)
+  await lonelyItem.locator('.ms-button', { hasText: '再点确认删除' }).first().click()
+  await waitFor(() => !readFileSync(patchFile, 'utf8').includes(`  ${lonelyKey}-b:`), 8000)
+  removeCredentialRef(credentialsFile, lonelyRef)
+
+  ev.notProvable('V4 步骤 9 a 支（本 profile 持有者的撞名文案）：需在宿主「模型」分区经其创建表单写入 taiji-* 路由供应商并录密钥，宿主分区表单的自动化选择器勘察未建立（非通道缺失，是构造未建立），归 D3 真机复验；a 支判定分支由 credentials-client 单测覆盖')
   ev.notProvable('V4 步骤 6（unset 失败 → 待清理清单重试）：需让凭据服务在删除动作时不可用，自动构造超出本场景通道；重试机制由 credentials-client 单测覆盖')
 
   // V9：模型清单视图——自定义条目来源态标注 + 上下文字段 + 筛选空态。

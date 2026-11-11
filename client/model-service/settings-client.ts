@@ -30,8 +30,9 @@
  * 风格：无 any、无 eslint-disable；不 import 任何 dsh-client 包（D3 纪律，宿主面用最小
  * 结构类型声明）。
  */
-import { isSelfManagedRef } from './credentials-client'
+import { isSelfManagedRef, type PendingUnsetRegistration } from './credentials-client'
 import { checkRouteConflict, deriveCredentialRef } from './provider-key'
+import type { RouteEntry } from './route-evaluate'
 
 /** 宿主 llm-pi-ai 命名空间 id = 其 profile 行 id（本机 cordis.patch.yml 实证：`- id: llm-pi-ai`）。 */
 export const LLM_PI_AI_NS = 'llm-pi-ai'
@@ -117,8 +118,15 @@ export interface ModelDraft {
   contextWindow: number | undefined
   maxTokens: number | undefined
   input: ('text' | 'image')[]
-  /** 思考策略（D6 三档映射 + 无思考）：all = 全档位 / on-off = 开·关 / high-max = 高·最高 / none = 非思考模型。 */
-  thinkingStrategy: 'all' | 'on-off' | 'high-max' | 'none'
+  /**
+   * 思考策略（D6 三档映射 + 无思考）：all = 全档位 / on-off = 开·关 / high-max = 高·最高 /
+   * none = 非思考模型 / preserve = 既有条目的 reasoningEfforts 不匹配三档形态时的原样保留态
+   * （读改写逐字写回，用户未编辑推理档位不产生 models diff——D3「只替换用户本次编辑的字段」
+   * 的保真形态；不可被用户主动选择，点任一策略按钮即覆盖）。
+   */
+  thinkingStrategy: 'all' | 'on-off' | 'high-max' | 'none' | 'preserve'
+  /** preserve 态携带的原始 reasoningEfforts 值（写回逐字透传；undefined = 既有条目省略该字段，写回同样省略）。 */
+  reasoningEffortsRaw?: unknown
 }
 
 /** 供应商编辑草案（展开体表单的提交形态）。 */
@@ -238,6 +246,10 @@ export function modelFromDraft(draft: ModelDraft): HostProviderProfile {
   entry.input = [...draft.input]
   if (draft.thinkingStrategy === 'none') {
     entry.reasoningEfforts = false
+  } else if (draft.thinkingStrategy === 'preserve') {
+    // 原样保留（D3 读改写保真）：非三档形态的既有值逐字写回（不改写宿主权威数据）；
+    // undefined = 既有条目省略该字段，写回同样省略（宿主语义 = 沿用安装目录能力）。
+    if (draft.reasoningEffortsRaw !== undefined) entry.reasoningEfforts = draft.reasoningEffortsRaw
   } else {
     // wire spelling 按 pi-ai 协议 spelling（level 名本身即 wire 词形；off 带值合法——
     // resolveModelReasoning「off with a value sends that value」）。
@@ -312,13 +324,17 @@ export async function saveProvider(host: ModelServiceHost, params: SaveProviderP
   }
 
   // ② 凭据 ref 查重（要写密钥时才查；查重拒绝 = 保存动作整体未发生，零写入）。
+  // 写入目标（D7：编辑既有 provider 时保留其既有 apiKeyEnv——不重派生、不 unset 旧 ref，
+  // 宿主「模型」分区创建的非 TAIJI_ ref 不被孤儿化）；仅既有条目缺失 apiKeyEnv 时
+  // （新建 / 无凭据引用的存量条目）回落 key 派生。查重豁免与写入目标同源（ownRef 命中
+  // 即重填重试通道，不算撞名）。
   const ownRef = typeof existing?.apiKeyEnv === 'string' ? existing.apiKeyEnv : undefined
+  const credentialRef = ownRef ?? deriveCredentialRef(draft.key)
   const wantsKey = draft.apiKeyValue.trim().length > 0
   if (wantsKey) {
-    const ref = deriveCredentialRef(draft.key)
-    const verdict = await refGuard(ref, ownRef)
+    const verdict = await refGuard(credentialRef, ownRef)
     if (!verdict.ok) {
-      return { kind: 'refused-ref', branch: verdict.branch, message: `凭据引用 ${ref} 已被占用，请更换显示名后保存` }
+      return { kind: 'refused-ref', branch: verdict.branch, message: `凭据引用 ${credentialRef} 已被占用，请更换显示名后保存` }
     }
   }
 
@@ -344,12 +360,13 @@ export async function saveProvider(host: ModelServiceHost, params: SaveProviderP
   const writtenProfile = readWrittenProfile(view, draft.key)
   const undeclared = undeclaredFieldPaths(writtenProfile)
 
-  // ④ credentials.set：设置成功凭据失败 → 徽章「未配置」+ 重填重试（不回滚 ③）。
+  // ④ credentials.set：写入目标与 ② 查重同源（编辑既有 provider 落其既有 apiKeyEnv）。
+  // 设置成功凭据失败 → 徽章「未配置」+ 重填重试（不回滚 ③）。
   let refConfigured = true
   let refMessage: string | undefined
   if (wantsKey) {
     try {
-      await host.credentials.set(deriveCredentialRef(draft.key), draft.apiKeyValue.trim())
+      await host.credentials.set(credentialRef, draft.apiKeyValue.trim())
     } catch (error) {
       refConfigured = false
       refMessage = `供应商已保存，但密钥写入凭据文件失败（${messageOf(error)}）。请在该供应商的展开体重填密钥重试。`
@@ -378,24 +395,21 @@ export interface DeleteProviderParams {
   existing: HostProviderProfile | undefined
   /** 跨 profile 确认（非 TAIJI_ 前缀 ref 必须先经 UI 确认为 true 才会走到这里）。 */
   crossProfileConfirmed: boolean
-  /** 登记待清理 ref 的通道（credentials-client.registerPendingUnset 的绑定）。 */
-  registerPendingUnset: (ref: string) => Promise<void>
+  /** 登记待清理 ref 的通道（credentials-client.registerPendingUnset 的绑定；failed = 登记未落盘，须人工清理指引）。 */
+  registerPendingUnset: (ref: string) => Promise<PendingUnsetRegistration>
 }
 
 /**
  * 删除供应商（D3 删除流程 + D7 删除侧）：
- *   ① 路由成员引用检查（M1 期路由表尚不存在 → routeReferencesOf 空实现，M2 补全）；
+ *   ① 路由成员引用警告由 UI 在两段确认里完成（routeReferencesOf 是警告数据源——被引用时
+ *      列出受影响路由，用户确认后继续删除，D3 原文；本函数不再硬拒绝）；
  *   ② settings.mutate unset providers.<key>（冲突同保存：重读一次重发一次）；
- *   ③ 凭据处置：TAIJI_ 前缀（自建）直接 unset，失败登记 pendingCredentialUnsets；
+ *   ③ 凭据处置：TAIJI_ 前缀（自建）直接 unset，失败登记 pendingCredentialUnsets（登记
+ *      本身失败 → unsetMessage 降级为宿主凭据界面人工清理指引，不静默）；
  *      非 TAIJI_ 前缀（宿主侧派生）在 crossProfileConfirmed=true 下同通道 unset（确认
  *      提示由 UI 在调用前完成，取消时 UI 不调本函数）。
  */
 export async function deleteProvider(host: ModelServiceHost, params: DeleteProviderParams): Promise<DeleteProviderResult> {
-  const references = routeReferencesOf(params.key)
-  if (references.length > 0) {
-    return { kind: 'rejected', message: `该供应商被路由引用（${references.join('、')}），请先在路由中移除对应成员` }
-  }
-
   const ops: SettingsOp[] = [{ op: 'unset', path: ['providers', params.key] }]
   try {
     await host.settings.mutate(LLM_PI_AI_NS, ops, undefined)
@@ -418,22 +432,31 @@ export async function deleteProvider(host: ModelServiceHost, params: DeleteProvi
     await host.credentials.unset(ref)
     return { kind: 'deleted', pendingUnset: undefined, unsetMessage: undefined }
   } catch (error) {
-    await params.registerPendingUnset(ref)
+    // 登记失败不外抛：凭据文件侧 unset 已失败、条目已删，此处再抛 = ref 静默失登（孤儿密钥
+    // 无信号，AX9 要防的形态）。failed 时降级为人工清理指引，与登记成功文案同经 unsetMessage 呈现。
+    const registered = await params.registerPendingUnset(ref)
     return {
       kind: 'deleted',
       pendingUnset: ref,
-      unsetMessage: `凭据清理失败（${messageOf(error)}），${ref} 已登记待清理清单，打开本分区时自动重试。`,
+      unsetMessage: registered.ok
+        ? `凭据清理失败（${messageOf(error)}），${ref} 已登记待清理清单，打开本分区时自动重试。`
+        : `凭据清理失败（${messageOf(error)}），且待清理登记失败（${registered.detail}）——请在宿主凭据界面手工清理 ${ref}。`,
     }
   }
 }
 
 /**
- * 路由成员引用检查（M1 预留空实现）：M2 引入路由表（插件 Config routes 字段）后，此处
- * 改为检索 routes[].members[].provider 命中 key 的路由并返回其名（D3 删除流程的警告源）。
- * M1 期 Config 无路由字段 → 恒空数组 → 删除流程不产生路由警告。
+ * 路由成员引用检查（D3 删除流程的警告源）：检索 routes[].members[].provider 命中 key 的
+ * 路由并返回其名（UI 在删除两段确认里列出受影响路由，用户确认后继续删除）。
+ * 数据源 = 插件 Config 的 routes 字段（调用方从 Config 快照读入传入——本模块不持 Config
+ * 通道），纯函数可单测。
  */
-export function routeReferencesOf(_key: string): string[] {
-  return []
+export function routeReferencesOf(key: string, routes: RouteEntry[]): string[] {
+  const names: string[] = []
+  for (const route of routes) {
+    if (route.members.some((member) => member.provider === key)) names.push(route.name)
+  }
+  return names
 }
 
 /** 回读校验：profile 顶层与 models[] 条目里宿主 schema 未声明的字段路径（「宿主不消费」标注）。 */

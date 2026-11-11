@@ -431,6 +431,8 @@ export const modelServiceZh = {
   'action.locate': '在供应商中查看',
   'action.backToModels': '返回模型清单',
   'action.confirmDelete': '再点确认删除',
+  /** 恢复目录默认的两段确认第二击（警示文案 models.restoreDirectoryWarning 随第一击展示）。 */
+  'action.confirmRestore': '再点确认恢复',
 
   /* ── 供应商视图（列表行与标识预览）── */
   'providers.loading': '读取供应商目录…',
@@ -483,6 +485,8 @@ export const modelServiceZh = {
   'save.refTakenRoute': '该名称与已注册的模型路由同名，请更换显示名',
   'delete.confirmDraft': '再点确认删除「{name}」（含其模型清单）',
   'delete.crossProfileConfirm': '该供应商的凭据引用 {ref} 由宿主派生，可能被其他 profile 的同名供应商共用；删除将一并清除该凭据。',
+  /** 路由成员引用警告（D3 删除流程：列出受影响路由，用户确认后继续删除）。 */
+  'delete.routeReferences': '该供应商被路由引用（{routes}）；删除后对应成员将不可用（路由视图成员行标注「供应商已删」）。确认后继续删除。',
   'credential.pendingRetry': '已自动重试清理 {n} 个待清理凭据引用',
 } satisfies LocaleDict
 
@@ -619,6 +623,7 @@ export const modelServiceEn = {
   'action.locate': 'Show in provider',
   'action.backToModels': 'Back to model list',
   'action.confirmDelete': 'Click again to confirm',
+  'action.confirmRestore': 'Click again to restore',
 
   'providers.loading': 'Loading provider directory…',
   'providers.snapshotUnavailable': 'The host model layer is not ready (llm-pi-ai namespace is unserved); reopen this section once the host ships a model adapter.',
@@ -668,6 +673,7 @@ export const modelServiceEn = {
   'save.refTakenRoute': 'This name collides with a registered model route; choose another display name',
   'delete.confirmDraft': 'Click again to delete "{name}" (including its model list)',
   'delete.crossProfileConfirm': 'The credential ref {ref} of this provider is host-derived and may be shared by same-named providers in other profiles; deleting also clears that credential.',
+  'delete.routeReferences': 'This provider is referenced by route(s) ({routes}); after deletion the affected members become unavailable (marked "provider deleted" in the routes view). Confirm to proceed.',
   'credential.pendingRetry': 'Retried clearing {n} pending credential refs',
 } satisfies LocaleDict
 

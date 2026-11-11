@@ -11,19 +11,23 @@
  * dsh-llm-pi-ai）→ 显式降级文案。空态矩阵（V9）：无任何 provider → 「尚未接入任何供应商」+
  * 添加引导卡；只有托管行 → 「暂无可编辑供应商（现有供应商由宿主管理）」。
  *
- * 删除供应商（D3 删除流程 + D7 删除侧）：两段确认；待删 ref 非 TAIJI_ 前缀（宿主侧派生）
- * 时武装文案换跨 profile 确认提示，确认才 unset（取消 = 条目与 ref 均不动——第二击不发生）；
- * 路由成员引用检查在 settings-client.deleteProvider 内（M1 期路由表不存在，空实现）。
+ * 删除供应商（D3 删除流程 + D7 删除侧）：两段确认；第一击进入确认态时经 routeReferencesOf
+ * 从插件 Config 的 routes 快照计算受影响路由，被引用时警告列出路由名（用户确认后继续删除——
+ * D3 删除流程原文）；待删 ref 非 TAIJI_ 前缀（宿主侧派生）时确认文案另附跨 profile 确认
+ * 提示，确认才 unset（取消 = 条目与 ref 均不动——第二击不发生）。
  *
  * 跳转定位（模型清单 → 本视图）：jumpTarget 到达时展开目标 provider 并聚焦模型行。
  */
 import { useEffect, useSyncExternalStore } from 'react'
 import { isSelfManagedRef, registerPendingUnset, type PluginConfigFormLike } from '../../model-service/credentials-client'
+import { sanitizeRoutes } from '../../model-service/route-evaluate'
+import { ROUTES_FIELD } from '../../model-service/route-store'
 import {
   LLM_PI_AI_NS,
   listProviderDirectory,
   readLlmPiAi,
   deleteProvider,
+  routeReferencesOf,
   type ConfigurableProviderRow,
   type HostProviderProfile,
   type ModelServiceHost,
@@ -63,8 +67,8 @@ export interface ProvidersListSnapshot {
   editing: ProviderEditModel | undefined
   /** 当前编辑是否新建。 */
   addingNew: boolean
-  /** 删除武装态（两段确认第一击后）。 */
-  deleteArmed: { key: string; crossProfile: boolean; ref: string | undefined; name: string } | undefined
+  /** 删除确认态（两段确认第一击后；routes = 受影响路由名——D3 删除流程的警告数据源）。 */
+  deleteArmed: { key: string; crossProfile: boolean; ref: string | undefined; name: string; routes: string[] } | undefined
   notice: string | undefined
   error: string | undefined
 }
@@ -172,14 +176,29 @@ export class ProvidersListModel {
     this.notify()
   }
 
-  /** 删除两段确认：第一击武装（跨 profile 提示按 ref 前缀形态分派），第二击执行。 */
+  /**
+   * 删除两段确认：第一击进入确认态（跨 profile 提示按 ref 前缀形态分派；路由成员引用警告按
+   * D3 删除流程从插件 Config routes 快照计算，被引用时列出受影响路由），第二击执行。
+   */
   requestDelete(key: string): void {
     const row = this.state.rows.find((candidate) => candidate.key === key)
     if (row === undefined || !row.editable) return
     const ref = row.ref
     const crossProfile = ref !== undefined && !isSelfManagedRef(ref)
-    this.state = { ...this.state, deleteArmed: { key, crossProfile, ref, name: row.name } }
+    const routes = this.readConfigRoutes()
+    const references = routeReferencesOf(key, routes)
+    this.state = { ...this.state, deleteArmed: { key, crossProfile, ref, name: row.name, routes: references } }
     this.notify()
+  }
+
+  /** 插件 Config routes 字段的读取（快照不可用/未就绪 → 空数组：警告降级，删除动作不拦）。 */
+  private readConfigRoutes() {
+    const snapshot = this.deps.configForm.getSnapshot()
+    if (snapshot.status !== 'ready') return []
+    const section = typeof snapshot.value === 'object' && snapshot.value !== null
+      ? snapshot.value as Record<string, unknown>
+      : {}
+    return sanitizeRoutes(section[ROUTES_FIELD])
   }
 
   /** 第二击：真正删除（跨 profile 确认语义 = 用户点了第二击即确认）。 */
@@ -363,7 +382,10 @@ export function ProvidersView({ t, model, jumpTarget, onJumpConsumed }: Provider
                 </span>
               </div>
               {armed && (
-                <div className={`ms-note ${armed.crossProfile ? 'ms-note-warn' : 'ms-note-err'}`}>
+                <div className={`ms-note ${armed.crossProfile || armed.routes.length > 0 ? 'ms-note-warn' : 'ms-note-err'}`}>
+                  {armed.routes.length > 0 && (
+                    <span>{t('delete.routeReferences', { routes: armed.routes.join('、') })}</span>
+                  )}
                   <span>
                     {armed.crossProfile
                       ? t('delete.crossProfileConfirm', { ref: armed.ref ?? '' })

@@ -2,19 +2,23 @@ import { describe, expect, it } from 'vitest'
 import {
   deleteProvider,
   listRegisteredRoutes,
+  modelFromDraft,
   profileDiffOps,
   profileFromDraft,
   readLlmPiAi,
+  routeReferencesOf,
   saveProvider,
   thinkingEffortsOf,
   undeclaredFieldPaths,
   type CredentialsRemoteLike,
   type LlmRemoteLike,
+  type ModelDraft,
   type ModelServiceHost,
   type SettingsOp,
   type SettingsRemoteLike,
 } from './settings-client'
 import { deriveCredentialRef, isValidProviderKeyShape } from './provider-key'
+import type { RouteEntry } from './route-evaluate'
 
 /**
  * settings-client 单测（dsh-model-service 检查点 U1 的机器化部分）：
@@ -409,7 +413,7 @@ describe('deleteProvider 删除链路（D3/D7）', () => {
       key: 'verify-a',
       existing: { apiKeyEnv: deriveCredentialRef('verify-a') },
       crossProfileConfirmed: true,
-      registerPendingUnset: async (ref) => { pendings.push(ref) },
+      registerPendingUnset: async (ref) => { pendings.push(ref); return { ok: true } },
     })
     expect(result.kind).toBe('deleted')
     expect(recorder.calls).toEqual(['settings.mutate', 'credentials.unset'])
@@ -426,11 +430,30 @@ describe('deleteProvider 删除链路（D3/D7）', () => {
       key: 'verify-a',
       existing: { apiKeyEnv: deriveCredentialRef('verify-a') },
       crossProfileConfirmed: true,
-      registerPendingUnset: async (ref) => { pendings.push(ref) },
+      registerPendingUnset: async (ref) => { pendings.push(ref); return { ok: true } },
     })
     expect(result.kind).toBe('deleted')
     if (result.kind === 'deleted') expect(result.pendingUnset).toBe(deriveCredentialRef('verify-a'))
     expect(pendings).toEqual([deriveCredentialRef('verify-a')])
+  })
+
+  it('unset 失败且登记也失败：不外抛，unsetMessage 降级为宿主凭据界面人工清理指引（U13 边界）', async () => {
+    const settings = fakeSettings()
+    const credentials = fakeCredentials([])
+    credentials.unset = async () => { throw new Error('down') }
+    const host = makeHost({ settings, credentials })
+    const result = await deleteProvider(host, {
+      key: 'verify-a',
+      existing: { apiKeyEnv: deriveCredentialRef('verify-a') },
+      crossProfileConfirmed: true,
+      registerPendingUnset: async () => ({ ok: false, detail: 'config write rejected' }),
+    })
+    expect(result.kind).toBe('deleted')
+    if (result.kind === 'deleted') {
+      expect(result.pendingUnset).toBe(deriveCredentialRef('verify-a'))
+      expect(result.unsetMessage).toContain('手工清理')
+      expect(result.unsetMessage).toContain('config write rejected')
+    }
   })
 
   it('非 TAIJI_ 前缀 ref 且未确认跨 profile：凭据零动作（UI 先确认；确认后才走同通道）', async () => {
@@ -441,7 +464,7 @@ describe('deleteProvider 删除链路（D3/D7）', () => {
       key: 'yanshi',
       existing: { apiKeyEnv: 'YANSHI_API_KEY' },
       crossProfileConfirmed: false,
-      registerPendingUnset: async () => {},
+      registerPendingUnset: async () => ({ ok: true }),
     })
     expect(result.kind).toBe('deleted')
     if (result.kind === 'deleted') expect(result.pendingUnset).toBeUndefined()
@@ -481,5 +504,92 @@ describe('readLlmPiAi 快照', () => {
     expect(snapshot.writable).toBe(true)
     expect(snapshot.revision).toBe(42)
     expect(snapshot.providers.a.displayName).toBe('A')
+  })
+})
+
+// ── 一致性修复 r1（model-service-save-chain 组）补充：U5 写入目标 / U10 preserve 保真 / U12 引用检索 ──
+
+describe('编辑既有 provider 重填密钥的写入目标（D7：保留既有 apiKeyEnv，不派生孤儿 ref）', () => {
+  it('既有 apiKeyEnv 非 TAIJI_ 形态：credentials.set 落既有 ref，不落 key 派生的新 ref', async () => {
+    const settings = fakeSettings()
+    const credentials = fakeCredentials([])
+    const host = makeHost({ settings, credentials })
+    const result = await saveProvider(host, {
+      draft: { ...baseDraft, key: 'yanshi', isNew: false, apiKeyValue: 'sk-refilled' },
+      revision: 7,
+      existing: { apiKeyEnv: 'YANSHI_API_KEY', displayName: 'Yanshi', api: 'openai-completions', baseURL: 'http://y/v1' },
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('saved')
+    expect(credentials.setCalls).toHaveLength(1)
+    expect(credentials.setCalls[0].ref).toBe('YANSHI_API_KEY')
+    expect(credentials.setCalls[0].value).toBe('sk-refilled')
+  })
+
+  it('查重豁免与写入目标同源：重填既有 ref 自身放行（guard 收到 ownRef = 既有 apiKeyEnv）', async () => {
+    const settings = fakeSettings()
+    const credentials = fakeCredentials(['YANSHI_API_KEY'])
+    const host = makeHost({ settings, credentials })
+    const guardCalls: { ref: string; ownRef: string | undefined }[] = []
+    const result = await saveProvider(host, {
+      draft: { ...baseDraft, key: 'yanshi', isNew: false, apiKeyValue: 'sk-again' },
+      revision: 7,
+      existing: { apiKeyEnv: 'YANSHI_API_KEY' },
+      refGuard: async (ref, ownRef) => { guardCalls.push({ ref, ownRef }); return { ok: true } },
+    })
+    expect(result.kind).toBe('saved')
+    expect(guardCalls).toEqual([{ ref: 'YANSHI_API_KEY', ownRef: 'YANSHI_API_KEY' }])
+    expect(credentials.setCalls[0]?.ref).toBe('YANSHI_API_KEY')
+  })
+
+  it('既有条目缺失 apiKeyEnv（含新建）：回落 key 派生 ref（原语义不变）', async () => {
+    const credentials = fakeCredentials([])
+    const host = makeHost({ credentials })
+    const result = await saveProvider(host, {
+      draft: baseDraft,
+      revision: 7,
+      existing: undefined,
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('saved')
+    expect(credentials.setCalls[0]?.ref).toBe(deriveCredentialRef(baseDraft.key))
+  })
+})
+
+describe('preserve 原样保留（D3 读改写保真：非三档 reasoningEfforts 不被改写）', () => {
+  it('modelFromDraft preserve：原始字典逐字写回；raw undefined = 写回省略该字段（沿用目录能力语义）', () => {
+    const raw = { off: 'off', low: 'low' }
+    const entry = modelFromDraft({ id: 'm', name: 'M', contextWindow: undefined, maxTokens: undefined, input: ['text'], thinkingStrategy: 'preserve', reasoningEffortsRaw: raw })
+    expect(entry.reasoningEfforts).toEqual(raw)
+    const omitted = modelFromDraft({ id: 'm', name: 'M', contextWindow: undefined, maxTokens: undefined, input: ['text'], thinkingStrategy: 'preserve' })
+    expect('reasoningEfforts' in omitted).toBe(false)
+  })
+
+  it('打开展开体直接保存（preserve 草案原样回写）：profileDiffOps 零 op——用户未编辑推理档位不发 models set', () => {
+    const existing = {
+      displayName: 'Yanshi', api: 'openai-completions', baseURL: 'http://y/v1',
+      models: [{ id: 'm', name: 'M', input: ['text'], reasoningEfforts: { off: 'off', low: 'low' } }],
+    }
+    const draft: ModelDraft = { id: 'm', name: 'M', contextWindow: undefined, maxTokens: undefined, input: ['text'], thinkingStrategy: 'preserve', reasoningEffortsRaw: { off: 'off', low: 'low' } }
+    const ops = profileDiffOps(existing, {
+      key: 'yanshi', isNew: false, displayName: 'Yanshi', baseURL: 'http://y/v1', api: 'openai-completions',
+      apiKeyValue: '', compat: {}, models: [draft],
+    }, 'yanshi')
+    expect(ops).toHaveLength(0)
+  })
+})
+
+describe('routeReferencesOf 路由成员引用检索（D3 删除流程的警告源）', () => {
+  const routes: RouteEntry[] = [
+    { id: 'a', name: '路由甲', members: [{ provider: 'yanshi', model: 'm', order: 0, condition: { type: 'none' } }] },
+    { id: 'b', name: '路由乙', members: [{ provider: 'other', model: 'm', order: 0, condition: { type: 'none' } }] },
+    { id: 'c', name: '路由丙', members: [{ provider: 'yanshi', model: 'm2', order: 0, condition: { type: 'window' } }] },
+  ]
+
+  it('命中成员 provider 的路由返回路由名（多命中保序）；未命中返回空数组', () => {
+    expect(routeReferencesOf('yanshi', routes)).toEqual(['路由甲', '路由丙'])
+    expect(routeReferencesOf('other', routes)).toEqual(['路由乙'])
+    expect(routeReferencesOf('nobody', routes)).toEqual([])
+    expect(routeReferencesOf('yanshi', [])).toEqual([])
   })
 })

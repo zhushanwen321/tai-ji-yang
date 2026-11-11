@@ -42,6 +42,7 @@ import {
 } from '../../model-service/provider-key'
 import {
   saveProvider,
+  thinkingEffortsOf,
   undeclaredFieldPaths,
   type HostProviderProfile,
   type ModelDraft,
@@ -148,6 +149,8 @@ export interface ProviderEditSnapshot {
   /** modelOverrides 第三态（只读）。 */
   overrideOnly: boolean
   discovery: DiscoveryState
+  /** 恢复目录默认的两段确认态（第一击后 true；警示文案 restoreDirectoryWarning 随之渲染）。 */
+  restoreArmed: boolean
   saving: boolean
   /** 保存前置拒绝文案（空清单等）。 */
   blockedMessage: string | undefined
@@ -215,6 +218,7 @@ export class ProviderEditModel {
       customOnly: deps.target.customOnly,
       overrideOnly: storedModels.length === 0 && isNonEmptyRecord(existing?.modelOverrides),
       discovery: { running: false, outcome: undefined, selected: [], error: undefined },
+      restoreArmed: false,
       saving: false,
       blockedMessage: undefined,
       error: undefined,
@@ -283,11 +287,11 @@ export class ProviderEditModel {
 
   // ── 模型区 ──
 
-  /** 手动添加一条空白模型草案（转自定义清单态）。 */
+  /** 手动添加一条空白模型草案（转自定义清单态；清单变更即退出恢复目录的确认态）。 */
   addModel(): void {
     const blank: ModelDraft = { id: '', name: '', contextWindow: undefined, maxTokens: undefined, input: ['text'], thinkingStrategy: 'none' }
     const models = [...this.state.models, blank]
-    this.state = { ...this.state, models, directoryMode: false, blockedMessage: undefined }
+    this.state = { ...this.state, models, directoryMode: false, blockedMessage: undefined, restoreArmed: false }
     this.notify()
   }
 
@@ -299,17 +303,39 @@ export class ProviderEditModel {
     this.notify()
   }
 
-  /** 删除第 index 条模型草案（删空 = 目录默认态；customOnly 时保存会被前置拒绝）。 */
+  /** 删除第 index 条模型草案（删空 = 目录默认态；customOnly 时保存会被前置拒绝；清单变更退出确认态）。 */
   removeModel(index: number): void {
     const models = this.state.models.filter((_, at) => at !== index)
-    this.state = { ...this.state, models, directoryMode: models.length === 0 && !this.state.customOnly }
+    this.state = { ...this.state, models, directoryMode: models.length === 0 && !this.state.customOnly, restoreArmed: false }
     this.notify()
   }
 
-  /** 恢复目录默认（D11：清空 models 草案 = 保存时 unset models[]；带警示语义，由 UI 确认）。 */
+  // ── 恢复目录默认的两段确认（D11 采用段「明确警示自定义条目将移除、目录模型将恢复」，
+  //    形态对齐供应商删除动作：第一击进入确认态并展示警示文案，第二击执行）─────────────
+
+  /** 第一击：进入确认态（警示文案在渲染层展示；无可恢复清单时不进入）。 */
+  requestRestoreDirectory(): void {
+    if (this.state.customOnly || this.state.models.length === 0) return
+    this.state = { ...this.state, restoreArmed: true }
+    this.notify()
+  }
+
+  /** 第二击：真正恢复目录默认（清空 models 草案 = 保存时 unset models[]）。 */
+  confirmRestoreDirectory(): void {
+    this.restoreDirectory()
+  }
+
+  /** 退出确认态（models 草案不动）。 */
+  cancelRestoreDirectory(): void {
+    if (!this.state.restoreArmed) return
+    this.state = { ...this.state, restoreArmed: false }
+    this.notify()
+  }
+
+  /** 恢复目录默认（D11：清空 models 草案 = 保存时 unset models[]）。 */
   restoreDirectory(): void {
     if (this.state.customOnly || this.state.models.length === 0) return
-    this.state = { ...this.state, models: [], directoryMode: true }
+    this.state = { ...this.state, models: [], directoryMode: true, restoreArmed: false }
     this.notify()
   }
 
@@ -379,7 +405,7 @@ export class ProviderEditModel {
       .sort((left, right) => left - right)
       .flatMap((index) => discoveredToDraft(outcome.models[index]))
     if (models.length === 0) return
-    this.state = { ...this.state, models, directoryMode: false, discovery: { running: false, outcome: undefined, selected: [], error: undefined } }
+    this.state = { ...this.state, models, directoryMode: false, restoreArmed: false, discovery: { running: false, outcome: undefined, selected: [], error: undefined } }
     this.notify()
   }
 
@@ -631,11 +657,21 @@ export function ProviderEditBody({ t, model, focusModel, onCancel }: ProviderEdi
               <button type="button" className="ms-button" onClick={() => { model.addModel() }}>{t('action.addModel')}</button>
               <button type="button" className="ms-button" disabled={state.discovery.running} onClick={() => { void model.discover() }}>{t('action.discover')}</button>
               {!state.customOnly && (
-                <button type="button" className="ms-button ms-button-danger" onClick={() => { model.restoreDirectory() }}>
-                  {t('models.restoreDirectory')}
+                <button
+                  type="button"
+                  className={`ms-button ${state.restoreArmed ? 'ms-button-danger' : ''}`}
+                  onClick={() => { state.restoreArmed ? model.confirmRestoreDirectory() : model.requestRestoreDirectory() }}
+                >
+                  {state.restoreArmed ? t('action.confirmRestore') : t('models.restoreDirectory')}
                 </button>
               )}
             </div>
+            {state.restoreArmed && (
+              <div className="ms-note ms-note-warn">
+                <span>{t('models.restoreDirectoryWarning', { n: state.models.length })}</span>
+                <button type="button" className="ms-button" onClick={() => { model.cancelRestoreDirectory() }}>{t('action.cancel')}</button>
+              </div>
+            )}
             {state.customOnly && state.models.length === 0 && (
               <div className="ms-note ms-note-err">{t('models.saveBlockedEmpty')}</div>
             )}
@@ -724,17 +760,27 @@ function writableCompat(compat: Record<string, unknown>, api: string): Record<st
   return out
 }
 
-/** 存量 models[] 条目 → 编辑草案（未知字段不进草案——它们由字段级 diff 之外的读改写保留面保证）。 */
+/**
+ * 存量 models[] 条目 → 编辑草案（未知字段不进草案——它们由字段级 diff 之外的读改写保留面保证）。
+ *
+ * reasoningEfforts 归档（D3 读改写保真）：字典与 D6 三档映射**精确相等**才归档对应策略
+ * （写回值与既有值逐字段一致，用户未编辑推理档位时 models 无 diff）；不匹配的字典 / 布尔与
+ * 字典之外的形态 → preserve 原样保留态（草案携带原始值，写回逐字透传，不静默改写宿主权威
+ * 数据——宿主「模型」分区可编辑推理等级，非三档形态可达）。
+ */
 function modelToDraft(model: Record<string, unknown>): ModelDraft {
   const efforts = model.reasoningEfforts
-  let thinkingStrategy: ModelDraft['thinkingStrategy'] = 'none'
-  if (isRecord(efforts)) {
-    const keys = Object.keys(efforts)
-    const has = (level: string): boolean => keys.includes(level) && typeof efforts[level] === 'string' && (efforts[level] as string).length > 0
-    if (has('off') && has('high') && has('max') && efforts.max === 'xhigh') thinkingStrategy = 'high-max'
-    else if (has('off') && has('high') && keys.length <= 2) thinkingStrategy = 'on-off'
-    else if (keys.length >= 5) thinkingStrategy = 'all'
-    else thinkingStrategy = 'all'
+  let thinkingStrategy: ModelDraft['thinkingStrategy']
+  let reasoningEffortsRaw: ModelDraft['reasoningEffortsRaw']
+  if (isRecord(efforts) && matchesStrategy(efforts, 'high-max')) thinkingStrategy = 'high-max'
+  else if (isRecord(efforts) && matchesStrategy(efforts, 'on-off')) thinkingStrategy = 'on-off'
+  else if (isRecord(efforts) && matchesStrategy(efforts, 'all')) thinkingStrategy = 'all'
+  else if (efforts === false) thinkingStrategy = 'none' // 写回 false，与既有值一致（无损）
+  else {
+    // 非三档字典（含 off 值为空串的字典）、省略该字段（宿主语义 = 沿用目录能力）或其他
+    // 未知形态：原样保留，写回逐字透传。
+    thinkingStrategy = 'preserve'
+    reasoningEffortsRaw = efforts
   }
   return {
     id: typeof model.id === 'string' ? model.id : '',
@@ -743,7 +789,15 @@ function modelToDraft(model: Record<string, unknown>): ModelDraft {
     maxTokens: typeof model.maxTokens === 'number' ? model.maxTokens : undefined,
     input: Array.isArray(model.input) ? model.input.filter((item): item is 'text' | 'image' => item === 'text' || item === 'image') : [],
     thinkingStrategy,
+    ...(reasoningEffortsRaw !== undefined ? { reasoningEffortsRaw } : {}),
   }
+}
+
+/** reasoningEfforts 字典与 D6 三档映射的精确比对（键集与值全等；无损归档的判据）。 */
+function matchesStrategy(efforts: Record<string, unknown>, strategy: Exclude<ModelDraft['thinkingStrategy'], 'none' | 'preserve'>): boolean {
+  const target = thinkingEffortsOf(strategy)
+  const keys = Object.keys(efforts)
+  return keys.length === Object.keys(target).length && keys.every((key) => efforts[key] === target[key])
 }
 
 /** 发现结果 → 模型草案（目录分支字段齐备时带上下文/输入类型；缺失留空）。 */
