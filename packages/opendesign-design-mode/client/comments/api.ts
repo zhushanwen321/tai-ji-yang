@@ -10,7 +10,7 @@
  *
  * wire 形态（与 lib/serve/comments-api.ts 的路由处理器对齐；载荷字段 = 设计 D2 摘录）：
  *   GET  基路径 ?sessionId=… → 2xx JSON {threads: CommentThread[]}；评论数据文件损坏 /
- *   任何非 2xx / 响应体不可解析 → ok=false（面板显示错误态，不返回空列表伪装正常——V9）。
+ *   任何非 2xx / 响应体不可解析 → ok=false（面板显示错误态，不返回空列表伪装正常——comment-loop·V9）。
  *   POST .create {sessionId, artifactPath, text} / .reply {sessionId, threadId, text} /
  *   .retry {sessionId, threadId} / .resolve {sessionId, threadId, resolved:true} →
  *   2xx JSON = 落盘后的 CommentThread（含投递结果 delivery 字段）；失败 → ok=false。

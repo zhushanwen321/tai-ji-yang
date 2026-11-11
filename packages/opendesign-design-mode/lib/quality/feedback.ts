@@ -312,8 +312,10 @@ function contentFingerprint(content: string, p0: readonly LintFinding[]): string
 
 /**
  * deliverFeedback 四值结果词表（steered/followup = 已提交投递；no-agent/inject-error =
- * 放弃回注两形态）。导出仅供评论环回注复用（lib/comments/feedback.ts，评论设计 D4 把
- * steered/followup 归并为 delivered 后落 thread.delivery）——词表与行为零变化。
+ * 放弃回注两形态）。deliverFeedback 函数导出供评论环回注复用（lib/comments/feedback.ts
+ * import 本函数与 FeedbackUserMessage，评论设计 D4 把 steered/followup 归并为 delivered
+ * 后落 thread.delivery）；本类型随函数一并导出供 TS 消费方引用返回类型，当前仓内无直接
+ * import 方——词表与行为零变化。
  */
 export type DeliveryResult = 'steered' | 'followup' | 'no-agent' | 'inject-error'
 

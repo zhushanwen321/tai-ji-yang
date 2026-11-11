@@ -759,7 +759,7 @@ try {
     )
   })
 
-  await step('comment-loop·V10 步骤②③：agent 运行中经侧栏发评论——thread.delivery 回写 delivered + 徽标「Sent」', async () => {
+  await step('comment-loop·V10 步骤②③：agent 运行中经侧栏发评论——thread.delivery 回写 delivered（落盘轮询承载；徽标形态由 V8 步骤断言）', async () => {
     // V2 步骤③已展开侧栏；doctor 步不重挂面板——不在展开态则经 tab 展开（tab 仅折叠态在 DOM）。
     if (!(await page.locator('.odp-comments-panel').isVisible().catch(() => false))) {
       const tab = page.locator('button.odp-comments-tab')

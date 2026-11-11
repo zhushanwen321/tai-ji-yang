@@ -22,13 +22,15 @@ import { en, zh } from '../../client/preview-tab/locales.js'
  * 组件测试基建评估（前置评估结论，2026-11-11）：仓内无 react/react-dom/jsdom（client 打包
  * 的 react 是 external require，运行时由宿主模块表提供），渲染型组件测试不可用——UI 呈现
  * 降级为 e2e（A4 场景由 U6/D3 承接）。本文件覆盖渲染之下可单测的纯逻辑层：
- * 1. 状态徽标四值映射（任务书测试要求①的纯函数半区）：delivery 四值 → locales 文案 key，
+ * 1. 状态徽标四值映射（设计 §3.1 面板 UI 段「状态徽标四值直接映射 delivery + status」
+ *    的纯函数半区）：delivery 四值 → locales 文案 key，
  *    且每个 key 在 zh/en 字典都有条目（key 拼错 = 面板显示裸 key，此处红灯）；
- * 2. 「重试投递」可用性真值表（任务书测试要求③的纯函数半区；D5 转移⑤：仅
+ * 2. 「重试投递」可用性真值表（设计 §3.1「失败两态且 lifecycle 为 open 时显示『重试投递』
+ *    按钮」的纯函数半区；D5 转移⑤：仅
  *    open × no-agent / open × inject-error）；
  * 3. fetch 封装：相对路径路由族（常量从 contract.ts import）、POST 载荷、GET query、
  *    非 2xx / 非法 JSON / 越形响应统一收拢为失败态（不抛错——面板错误态的来源）。
- * 「非设计会话不出现」（任务书测试要求②）的裁决链 = probeDesignSession 探测语义
+ * 「非设计会话不出现」（设计 §3.1 面板 UI 段出现条件）的裁决链 = probeDesignSession 探测语义
  * （tests/present-card-link.test.ts 已锁）+ index.tsx 挂载条件（designSession === true），
  * 渲染行为归 e2e。
  */
@@ -89,7 +91,7 @@ describe('状态徽标四值映射（deliveryBadgeKey，§3.1 面板 UI 段）',
 })
 
 describe('「重试投递」可用性（canRetryDelivery，D5 转移⑤）', () => {
-  it('open × no-agent / open × inject-error 可重试（任务书测试要求③：失败态显示重试按钮）', () => {
+  it('open × no-agent / open × inject-error 可重试（设计 §3.1：失败态显示重试投递按钮）', () => {
     expect(canRetryDelivery({ status: 'open', delivery: 'no-agent' })).toBe(true)
     expect(canRetryDelivery({ status: 'open', delivery: 'inject-error' })).toBe(true)
   })
@@ -125,7 +127,7 @@ describe('GET 基路径封装（api.list）', () => {
     if (outcome.ok) expect(outcome.threads).toEqual([fixture])
   })
 
-  it('非 2xx（含损坏文件的错误态标记）→ ok=false 不抛错（不返回空列表伪装正常，V9）', async () => {
+  it('非 2xx（含损坏文件的错误态标记）→ ok=false 不抛错（不返回空列表伪装正常，comment-loop·V9）', async () => {
     const { api } = apiWithStub(() => jsonResponse(500, { code: 'comments-corrupt', message: 'parse failed' }))
     const outcome = await api.list('sess-1')
     expect(outcome.ok).toBe(false)

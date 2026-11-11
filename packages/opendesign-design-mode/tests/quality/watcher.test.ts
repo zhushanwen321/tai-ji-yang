@@ -6,8 +6,8 @@
  * 1. 真实写盘触发（RL2）：临时目录真实写 .html → 防抖后回调携带检查发现与会话产物分类；
  * 2. 防抖合并（D4）：同文件窗口内多次写盘合并为一次检查，窗口外重写为新一次检查；
  * 3. 过滤（D4）：.od-frames 与 .od-quality 任意层级排除、非监听后缀零读取、.htm 与子目录
- *    递归在域内；环间隔离（comment-loop 设计包 D7/AX6，RL2/V7）：.od-comments 下写文件
- *    零质量环回调，同目录产物照常触发（两环互不误触）；
+ *    递归在域内；环间隔离（comment-loop 设计包 D7/AX6；comment-loop·RL2 / comment-loop·V7）：
+ *    .od-comments 下写文件零质量环回调，同目录产物照常触发（两环互不误触）；
  * 4. 完整性哨兵（RL8 / SI1 ②）：无文末 </html> 的半写零检查零记录（不耗额度留待重查），
  *    补全后同一文件重查放行；哨兵纯函数边界（尾随空白 / 大小写 / 中段标签）；
  * 5. 快照豁免三类命中分类（RL10 / D5④）：resume 上一代产物豁免出快照照常回注、陌生既有
@@ -20,7 +20,7 @@
  * 真实性口径：监听/防抖/哨兵/快照全部走真实 fs.watch 与真实写盘（RL2 的「真实写盘触发」
  * 本体）；检查函数用 lintArtifact 正源注入，回注器在第 5/7 组用真实 createQualityFeedbackHandler
  * 接线（agents 服务缺席 → 放弃回注仅落记录，恰好验证记录面）。
- * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀；opendesign-comment-loop 设计包编号带「comment-loop·」前缀（环间隔离组的 comment-loop·RL2 / comment-loop·V7 与 assets-quality 域同号 RL2/V7 语义不同：前者 = .od-comments 写入不触发质量环与两环隔离场景，后者 = 真实写盘触发与非设计会话零侵入）。
  */
 
 import { readFileSync } from 'node:fs'
@@ -261,9 +261,9 @@ describe('监听过滤（后缀 + 排除目录任意层级 + 子目录递归）'
   })
 })
 
-// ── 3b. 环间隔离（comment-loop 设计包 D7/AX6；RL2/V7 两环互不误触）───────────
+// ── 3b. 环间隔离（comment-loop 设计包 D7/AX6；comment-loop·RL2 / comment-loop·V7 两环互不误触）───────────
 
-/** V7 形态的最小评论数据文件载荷（含一个新线程；schema 合法性由 comments store 单测锁）。 */
+/** comment-loop·V7 形态的最小评论数据文件载荷（含一个新线程；schema 合法性由 comments store 单测锁）。 */
 const COMMENTS_FILE_JSON = JSON.stringify({
   version: 1,
   threads: [
@@ -281,7 +281,7 @@ const COMMENTS_FILE_JSON = JSON.stringify({
 })
 
 describe('环间隔离（.od-comments 下写文件零质量环回调，comment-loop D7/AX6）', () => {
-  it('写 .od-comments/comments.json（含新线程）与目录内 .html：零回调零记录；同目录 P0 产物照常触发（V7 两环互不误触）', async () => {
+  it('写 .od-comments/comments.json（含新线程）与目录内 .html：零回调零记录；同目录 P0 产物照常触发（comment-loop·V7 两环互不误触）', async () => {
     const cwd = await makeCwd()
     const h = await startHarness(cwd)
     await mkdir(join(cwd, '.od-comments'), { recursive: true })
@@ -290,7 +290,7 @@ describe('环间隔离（.od-comments 下写文件零质量环回调，comment-l
     await writeFile(join(cwd, '.od-comments', 'snapshot.html'), P0_HTML, 'utf8')
     await delay(SETTLE_MS)
     expect(h.events).toHaveLength(0)
-    // 记录面零痕迹：无身份行无发现行（started 生命周期行除外——零质量环动作，V7 ③）
+    // 记录面零痕迹：无身份行无发现行（started 生命周期行除外——零质量环动作，comment-loop·V7 ③）
     expect((await readReport(cwd)).filter((line) => line.type !== 'watcher')).toEqual([])
 
     // 监听器仍活的对照面：同会话目录 P0 产物正常进检查环（零回调非监听器死亡所致）

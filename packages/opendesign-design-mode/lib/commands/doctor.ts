@@ -43,6 +43,7 @@
  * 之后的原文，/opendesign-doctor <clone 路径> 形态；宿主 commands/src/index.ts 契约实读）。
  * 持久 config 通道（preset plugins 行 config）归 cordis.patch.yml（U3a 领地），本命令按
  * 设计 D7 检查点备案的缺省形态交付：未登记 = 「无法比对」态 + 登记路径的恢复动作指引。
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀；opendesign-comment-loop 设计包编号带「comment-loop 设计包 / comment-loop·」前缀。
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
@@ -682,7 +683,7 @@ function renderQualityFindingsSection(sessionCwd: string | null): string[] {
   return out
 }
 
-// ── ⑫ 评论环（comment-loop 设计包 D7/G7；parse 健康度消费 U1 store 唯一判定点）──
+// ── ⑫ 评论环（comment-loop 设计包 D7/G7；parse 健康度消费 comment-loop·U1 store 唯一判定点）──
 
 /**
  * 第⑫节：评论环。呈现会话工作目录评论数据文件（.od-comments/comments.json）的存在性与
@@ -690,12 +691,12 @@ function renderQualityFindingsSection(sessionCwd: string | null): string[] {
  * 设计包 D7 采用条款四要素）。
  *
  * parse 健康度走 parseCommentsFileText 唯一判定点（与读侧 GET / 写事务开头共用同一实现，
- * D1——四处理损坏语义一致，不另造第二套判定）；损坏 = CommentStoreCorruptError，其
+ * comment-loop·D1——四处理损坏语义一致，不另造第二套判定）；损坏 = CommentStoreCorruptError，其
  * message 自带恢复指引（手工修复或整文件删除重建，插件不自动重建），随本节 ✗ 行就地
  * 呈现，不并入第⑦节汇总（⑨⑩⑪ 同款——V1 ⑦「未发现异常」零回归面不受新节降级影响）。
  * 文件不存在 = 正常态（首次评论经写通道 POST .create 时才创建，不伪装成损坏也不自动建）。
  *
- * 写通道路由族按契约词表 COMMENTS_API_PATHS 呈现（唯一路由词表，U2 注册与测试同源）；
+ * 写通道路由族按契约词表 COMMENTS_API_PATHS 呈现（唯一路由词表，comment-loop·U2 注册与测试同源）；
  * doctor 无宿主 connection 路由表的进程态感知（本行只 inject commands，且不做 0.1.7 会
  * 永久 pending 的新 inject），如实标注声明形态不冒充运行时核验（第⑪节监听器状态同款
  * 诚实口径）。

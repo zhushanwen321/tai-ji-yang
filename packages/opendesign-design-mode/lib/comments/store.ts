@@ -2,12 +2,13 @@
  * 评论数据文件读写（U1；机制权威 = 设计 §3.3 D1「会话级单文件 .od-comments/comments.json」
  * 与公理 AX1「评论数据的唯一权威是会话工作目录下的评论数据文件」）。
  *
- * 写入协议（D1 + 任务书泄漏约定）：
+ * 写入协议（D1 + impl-plan U1 责任声明）：
  *   1. 进程内互斥队列（per-cwd Promise 链）串行化同一进程的全部读-改-写事务——消费方
  *      （U2 comments-api 路由处理器 / U3 delivery 回写）在 Node 单线程事件循环下多请求
  *      于 await 点交错，队列保证事务无交错（RL4「多请求交错后 parse 恒成功」的支柱）；
- *   2. lock 文件跨进程兜底（D1 判定本设计无跨进程写者、不取 lock 维度——按任务书补充：
- *      防未来跨进程写者误入 + 崩溃残留自愈的双重保险防线）：wx 独占创建，已存在时按
+ *   2. lock 文件跨进程兜底（D1 已按 impl-plan U1 责任声明回写 lock 维度：本设计当前无
+ *      跨进程写者，lock 定位为防未来跨进程写者误入 + 崩溃残留自愈的双重保险防线）：
+ *      wx 独占创建，已存在时按
  *      mtime 陈旧判定夺锁，否则有限轮询等待，超时抛 CommentStoreLockError（不无限等）；
  *   3. 持锁临界区内全同步 fs（读现有文件 → 变换 → 临时文件 → renameSync 原子替换）——
  *      临界区无 await 无交错点；rename 同目录原子性保证任何瞬间盘上要么完整旧文件要么
@@ -45,7 +46,7 @@ import { applyThreadTransition, createInitialThreadFields, type DeliverOutcome }
 export const COMMENTS_LOCK_NAME = 'comments.json.lock'
 
 /**
- * lock 陈旧阈值毫秒数（任务书泄漏约定：按面板单用户场景取保守值）。
+ * lock 陈旧阈值毫秒数（impl-plan U1 责任声明授权补充：按面板单用户场景取保守值）。
  * 依据：单用户场景一次写事务 = 读现有文件 + 变换 + 写临时文件 + rename，百 KB 级数据
  * 在本地磁盘为毫秒级（量级上界 << 100ms）；5000ms 是该上界 50 倍余量——活跃事务不可
  * 能持锁这么久，超时只能说明持锁进程已崩溃残留（泄漏），夺锁自愈。取保守值而非贴着
@@ -233,7 +234,7 @@ async function acquireLock(lockFile: string): Promise<void> {
       continue // stat 失败 = lock 刚被释放（竞态窗口），下轮重试创建
     }
     if (stale) {
-      // 泄漏自愈（任务书泄漏约定）：持锁进程已崩溃残留，删除后下轮重夺。
+      // 泄漏自愈（impl-plan U1 责任声明授权的兜底）：持锁进程已崩溃残留，删除后下轮重夺。
       // 本设计无跨进程写者（D1），他进程同判陈旧的竞态窗口纯理论；重夺走 wx
       // 独占创建，失败即再判，不放大窗口。
       try {
@@ -309,7 +310,7 @@ async function withCommentsTransaction<T>(
   return job
 }
 
-// ── 线程增改查（任务书四方法 + retry 转移落盘承载）─────────────────────────
+// ── 线程增改查（impl-plan U1 责任声明四方法 + retry 转移落盘承载）─────────────────────────
 
 /** 校验评论文本（D2 同权级：非空且 ≤ COMMENT_TEXT_MAX_LENGTH；首条与追加同限）。 */
 export function validateCommentText(text: string): void {

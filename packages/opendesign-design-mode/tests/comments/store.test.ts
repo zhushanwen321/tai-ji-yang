@@ -326,7 +326,7 @@ describe('RL7：损坏文件读侧报错不重建、写侧拒写', () => {
   })
 })
 
-describe('lock 文件协议（任务书泄漏约定）', () => {
+describe('lock 文件协议（impl-plan U1 责任声明授权）', () => {
   it('正常事务结束后 lock 不残留', async () => {
     await createCommentThread(cwd, { artifactPath: 'a.html', text: '首条' }, AT_T0)
     expect(() => statSync(commentsLockPath(cwd))).toThrow() // ENOENT = 无残留

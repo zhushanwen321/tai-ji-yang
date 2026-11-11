@@ -8,7 +8,7 @@
  *
  * 数据纪律（AX1/SC2）：权威是会话工作目录的评论数据文件；本组件是无内存态的派生视图——
  * 展开与每次操作成功后都经 GET 基路径重拉重建，不缓存、不反向写。GET 失败（含评论数据
- * 文件损坏）统一显示错误态（文案指引 /opendesign-doctor），不返回空列表伪装正常（V9）。
+ * 文件损坏）统一显示错误态（文案指引 /opendesign-doctor），不返回空列表伪装正常（comment-loop·V9）。
  *
  * 状态徽标四值映射与「重试投递」可用性判定在 api.ts（纯函数，单测直测）；本组件只渲染。
  * resolved 线程显示已解决标记、无重试钮；追加评论经 .reply 自动重开（服务端状态机裁决）。
@@ -111,6 +111,9 @@ function CommentsPanel(props: {
     })
   }
 
+  // 列表区：ready 渲染线程列表 / 空态；loading 渲染加载指示；error 不渲染加载行——
+  // 错误态行（上方 odp-note）是 error 相的唯一呈现（comment-loop·V9 终态口径，加载行
+  // 与错误态行同屏会让用户误判仍在加载）。
   const threadList = state.phase === 'ready'
     ? (
         state.threads.length === 0
@@ -123,7 +126,9 @@ function CommentsPanel(props: {
               </div>
             )
       )
-    : <div className="odp-note" role="status">{t('comments.loading')}</div>
+    : state.phase === 'loading'
+      ? <div className="odp-note" role="status">{t('comments.loading')}</div>
+      : null
 
   return (
     <div className="odp-comments-panel">

@@ -167,7 +167,7 @@ function createArtifactLister(ctx: PreviewApplyContext): ArtifactLister {
  * 认领排序——本 tab 的认领在该会话由此退出）。探测结果同时是评论元素的挂载裁决：
  * 评论侧栏只在 iframe 模式 × 设计会话 × 有当前产物时出现（opendesign-comment-loop
  * §3.1 面板 UI 段「出现条件 = 设计会话判定，与面板现状同源」）；列表兜底模式只对
- * 设计会话拉取各产物的评论计数（.odp-row 徽标），非设计会话列表现状不变（V5）。
+ * 设计会话拉取各产物的评论计数（.odp-row 徽标），非设计会话列表现状不变（comment-loop·V5）。
  */
 function createDesignPanelBody(
   listArtifacts: ArtifactLister,
