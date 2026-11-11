@@ -146,9 +146,10 @@ function assertCommentMessageText(message, thread, payloadText) {
     JSON.stringify(message.source) === JSON.stringify(expected.source),
     `回注消息 source 应与生产构造逐字一致（D3 五字段 kind/form/summary/artifactPath/threadId 随消息持久化）：\n实际：${JSON.stringify(message.source)}\n期望：${JSON.stringify(expected.source)}`,
   )
+  const expectedText = expected.content?.[0]?.text ?? ''
   assert(
-    message.text === expected.text,
-    `回注消息文本应逐字等于 buildCommentMessage 构造（D6 三段形态）：\n实际：${message.text.slice(0, 400)}\n期望：${expected.text.slice(0, 400)}`,
+    message.text === expectedText,
+    `回注消息文本应逐字等于 buildCommentMessage 构造（D6 三段形态）：\n实际：${String(message.text).slice(0, 400)}\n期望：${expectedText.slice(0, 400)}`,
   )
 }
 
@@ -692,11 +693,11 @@ try {
     await page.getByText('Design preview').first().click()
     await sleep(2000)
     await page.waitForFunction(
-      () => Array.from(document.querySelectorAll('.odp-row')).some((el) => el.textContent?.trim() === 'index.html'),
+      () => Array.from(document.querySelectorAll('.odp-row .odp-row-name')).some((el) => el.textContent?.trim() === 'index.html'),
       undefined,
       { timeout: 15000 },
     )
-    await page.locator('.odp-row').first().click()
+    await page.locator('.odp-row', { hasText: 'index.html' }).first().click()
     await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
     const tab = page.locator('button.odp-comments-tab')
     await tab.waitFor({ state: 'visible', timeout: 15000 })
