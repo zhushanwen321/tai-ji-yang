@@ -258,3 +258,139 @@ export interface LocaleInstallHost {
 export function installLocale(host: LocaleInstallHost): void {
   host.effect(() => host.locale.register(TAIJI_LOCALE_NS, LOCALE_DICTS), 'taiji: 内联双语字典（zh/en）')
 }
+
+/**
+ * 模型服务分区的私有命名空间（dsh-model-service 设计包，u-foundation 骨架）。
+ *
+ * 与 `taiji.shell` 分开的原因：宿主按（命名空间, revision）合成 `t` 座位——分区内的
+ * 全部组件共用同一个 `t` 即可取到本分区全部文案，不与壳字典互相牵动 key 域。注册与
+ * 撤除同样走 `ctx.effect`（AX8 全托管），形态裁决与 `taiji.shell` 一致（内联字典，
+ * 不建 locale/*.json）。
+ */
+export const TAIJI_MODEL_SERVICE_LOCALE_NS = 'taiji.model-service'
+
+/**
+ * 模型服务分区简体中文字典（骨架期，u-foundation 定键集；M1 填充只允许增键不改骨架）。
+ *
+ * 键集按 M1 组件清单推导（七类）：分区名 / 三视图标题 / 供应商表单字段 / 凭据徽章 /
+ * 模型区两来源态 / 空态文案 / 路由视图 M1 期空态引导。措辞来源：空态文案与两来源态
+ * 抄设计包空态矩阵与 D11 的界面语义原文；字段名对齐宿主 provider schema 字段语义。
+ */
+export const modelServiceZh = {
+  /* ── 分区与三视图 ── */
+  /** 导航条目与分区头标题（D2：唯一 id model-services、label「模型服务」）。 */
+  'section.label': '模型服务',
+  'view.providers': '供应商',
+  'view.models': '模型清单',
+  'view.routes': '模型路由',
+
+  /* ── 供应商表单字段（展开体；模型条目字段对齐宿主 models[] schema）── */
+  'provider.displayName': '显示名称',
+  'provider.baseURL': 'API 端点',
+  'provider.api': '协议',
+  'provider.apiKey': 'API 密钥',
+  /** 模型区标题（供应商展开体内按两来源态呈现的区块）。 */
+  'provider.modelsSection': '模型',
+  /** 协议兼容分组标题（D6：essential 常显 + advanced 折叠）。 */
+  'provider.compat': '协议兼容',
+  'model.id': '模型 ID',
+  'model.displayName': '显示名称',
+  'model.contextWindow': '上下文窗口',
+  'model.maxTokens': '最大输出',
+  'model.inputModalities': '输入类型',
+  'model.thinkingStrategy': '思考策略',
+
+  /* ── 凭据徽章（credentials describe 两态）── */
+  'credential.configured': '已配置',
+  'credential.missing': '未配置',
+
+  /* ── 模型区两来源态（D11：目录默认态与自定义清单态互斥）── */
+  /** 目录默认态的状态说明（models[] 空，目录模型只读）。 */
+  'models.directoryMode': '保持目录默认',
+  /** 自定义清单态的明示警示（写入 models[] 后目录默认整组被替换）。 */
+  'models.directoryReplaced': '目录默认已被替换',
+  /** 恢复目录默认动作（清空 models[]）。 */
+  'models.restoreDirectory': '恢复目录默认',
+
+  /* ── 空态文案（空态矩阵：说明为什么空 + 下一步动作）── */
+  /** 供应商视图空态：无任何 provider。 */
+  'providers.empty': '尚未接入任何供应商',
+  /** 供应商视图空态：托管 provider 只读行存在但无可编辑 provider。 */
+  'providers.emptyManagedOnly': '暂无可编辑供应商（现有供应商由宿主管理）',
+  /** 添加引导卡的动作文案。 */
+  'providers.emptyAddGuide': '添加供应商',
+  /** 模型清单空态：无模型。 */
+  'models.emptyNoModels': '没有已接入的模型',
+  /** 模型清单空态：供应商已接入但未写模型。 */
+  'models.emptyNoModelsButProviders': '供应商已接入，但还没有模型',
+  /** 模型清单空态：尚未接入供应商。 */
+  'models.emptyNoProviders': '尚未接入供应商',
+  /** 模型清单筛选空态（{q} = 筛选词，与宿主 t 插值同格式）。 */
+  'models.emptyNoMatch': '没有匹配「{q}」的模型',
+  /** 筛选空态的清除动作。 */
+  'models.clearFilter': '清除筛选',
+
+  /* ── 路由视图 M1 期空态引导（M2 交付路由能力后由 M2 增键扩展）── */
+  'routes.emptyM1': '路由能力将在下个版本提供',
+} satisfies LocaleDict
+
+/** 模型服务分区英文词典（与 modelServiceZh 同 key 集，相等性由 locale.test.ts 对账）。 */
+export const modelServiceEn = {
+  'section.label': 'Model Services',
+  'view.providers': 'Providers',
+  'view.models': 'Models',
+  'view.routes': 'Routes',
+
+  'provider.displayName': 'Display name',
+  'provider.baseURL': 'API endpoint',
+  'provider.api': 'Protocol',
+  'provider.apiKey': 'API key',
+  'provider.modelsSection': 'Models',
+  'provider.compat': 'Protocol compatibility',
+  'model.id': 'Model ID',
+  'model.displayName': 'Display name',
+  'model.contextWindow': 'Context window',
+  'model.maxTokens': 'Max output',
+  'model.inputModalities': 'Input types',
+  'model.thinkingStrategy': 'Thinking strategy',
+
+  'credential.configured': 'Configured',
+  'credential.missing': 'Not configured',
+
+  'models.directoryMode': 'Keeping directory defaults',
+  'models.directoryReplaced': 'Directory defaults have been replaced',
+  'models.restoreDirectory': 'Restore directory defaults',
+
+  'providers.empty': 'No providers yet',
+  'providers.emptyManagedOnly': 'No editable providers (existing ones are host-managed)',
+  'providers.emptyAddGuide': 'Add provider',
+  'models.emptyNoModels': 'No connected models',
+  'models.emptyNoModelsButProviders': 'Providers are connected, but no models yet',
+  'models.emptyNoProviders': 'No providers connected yet',
+  'models.emptyNoMatch': 'No models matching "{q}"',
+  'models.clearFilter': 'Clear filter',
+
+  'routes.emptyM1': 'Routing will arrive in a future version',
+} satisfies LocaleDict
+
+/** 模型服务分区文案 key 域（分区组件侧 `t` 的参数类型）。 */
+export type ModelServiceLocaleKey = keyof typeof modelServiceZh
+
+/** 模型服务分区两种语言字典的并表（register 的入参形态）。 */
+export const MODEL_SERVICE_LOCALE_DICTS: Record<string, LocaleDict> = {
+  zh: modelServiceZh,
+  en: modelServiceEn,
+}
+
+/**
+ * 注册模型服务分区的内联双语字典（经 ctx.effect 托管，卸载即撤除）。
+ *
+ * 装配序约束与 installLocale 相同：必须先于分区槽位的首次渲染（分区声明
+ * `locale: TAIJI_MODEL_SERVICE_LOCALE_NS` 时，宿主要从已安装的字典合成 `t` 座位）。
+ */
+export function installModelServiceLocale(host: LocaleInstallHost): void {
+  host.effect(
+    () => host.locale.register(TAIJI_MODEL_SERVICE_LOCALE_NS, MODEL_SERVICE_LOCALE_DICTS),
+    'taiji: 模型服务分区双语字典（zh/en）',
+  )
+}

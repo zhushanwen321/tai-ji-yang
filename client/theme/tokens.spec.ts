@@ -34,14 +34,30 @@ describe('tokens 表结构', () => {
     }
   })
 
-  it('20 个 token 名 = P1 核心 15 个 + 层 2 职能分色 5 个（13 白名单 alias + sidebar-fill + state-done + link/bubble/deep-diving 族）', () => {
-    expect(THEME_TOKEN_NAMES).toHaveLength(20)
-    expect(new Set(THEME_TOKEN_NAMES).size).toBe(20)
+  it('32 个 token 名 = P1 核心 15 个 + 层 2 职能分色 5 个 + 模型服务派生档 12 个', () => {
+    expect(THEME_TOKEN_NAMES).toHaveLength(32)
+    expect(new Set(THEME_TOKEN_NAMES).size).toBe(32)
     expect(THEME_TOKEN_NAMES).toContain('--dsw-alias-state-done-primary')
     expect(THEME_TOKEN_NAMES).toContain('--dsw-specific-sidebar-fill')
     expect(THEME_TOKEN_NAMES).toContain('--dsw-alias-link')
     expect(THEME_TOKEN_NAMES).toContain('--dsw-specific-bubble')
     expect(THEME_TOKEN_NAMES).toContain('--dsw-alias-label-deep-diving')
+    // 派生档（dsh-model-service D10）：soft/ring 8 个 + ink 4 个，--taiji-* 前缀，
+    // 顺序 = soft/ring 四族在前（brand/err/warn/ok）、ink 四档在后
+    expect(THEME_TOKEN_NAMES.slice(20)).toEqual([
+      '--taiji-brand-soft',
+      '--taiji-brand-ring',
+      '--taiji-err-soft',
+      '--taiji-err-ring',
+      '--taiji-warn-soft',
+      '--taiji-warn-ring',
+      '--taiji-ok-soft',
+      '--taiji-ok-ring',
+      '--taiji-ink',
+      '--taiji-ink-err',
+      '--taiji-ink-warn',
+      '--taiji-ink-ok',
+    ])
   })
 
   it('元数据的族归属与 taiji useTaijiThemes 一致（玄/黛蓝/暖墨暗，皓/青墨/朱印亮）', () => {
@@ -195,5 +211,137 @@ describe('跨族支 = 对族默认（taiji resolveTaijiTheme 回落语义，D2 �
     expect(touched('nuanmo', 'dark').length).toBeGreaterThan(0)
     expect(touched('qingmo', 'light').length).toBeGreaterThan(0)
     expect(touched('zhuyin', 'light').length).toBeGreaterThan(0)
+  })
+})
+
+// ── 模型服务分区派生档（dsh-model-service D10：soft/ring 8 + ink 4）──────────────
+
+/** sRGB 8bit 单通道 → 线性光（WCAG 2.x relative luminance 定义的通道变换）。 */
+function channelToLinear(c: number): number {
+  const s = c / 255
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+}
+
+/** WCAG 相对亮度。 */
+function luminance(rgb: [number, number, number]): number {
+  return 0.2126 * channelToLinear(rgb[0]) + 0.7152 * channelToLinear(rgb[1]) + 0.0722 * channelToLinear(rgb[2])
+}
+
+/** WCAG 对比度（亮者 +0.05 为分子）。 */
+function contrastRatio(a: [number, number, number], b: [number, number, number]): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+/** 解析本表用到的两种色值形态：#rrggbb 与 rgba(r, g, b[, a])。 */
+function parseColor(value: string): { rgb: [number, number, number]; alpha: number } {
+  const hex = /^#([0-9a-f]{6})$/i.exec(value)
+  if (hex) {
+    const n = parseInt(hex[1], 16)
+    return { rgb: [(n >> 16) & 255, (n >> 8) & 255, n & 255], alpha: 1 }
+  }
+  const rgba = /^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/.exec(value)
+  if (rgba) {
+    return {
+      rgb: [Number(rgba[1]), Number(rgba[2]), Number(rgba[3])],
+      alpha: Number(rgba[4]),
+    }
+  }
+  throw new Error(`token.spec 色值解析器不支持的形态：${value}`)
+}
+
+/** rgba 值按 sRGB 数值空间预混进背景（浏览器 alpha 合成的近似，用于对比度判读）。 */
+function blendOverBackground(fg: string, bg: [number, number, number]): [number, number, number] {
+  const { rgb, alpha } = parseColor(fg)
+  return [0, 1, 2].map((i) => Math.round(rgb[i] * alpha + bg[i] * (1 - alpha))) as [number, number, number]
+}
+
+describe('模型服务分区派生档（dsh-model-service D10：soft/ring 8 + ink 4）', () => {
+  it('基值（玄暗列/皓亮列）：soft/ring 色相 = 主档同模值同 α 档，ink 亮列压暗 / 暗列主档（err 例外提亮）', () => {
+    const xuan = THEME_TOKEN_TABLES.xuan
+    const hao = THEME_TOKEN_TABLES.hao
+    // soft/ring 的 rgba 三元组 = 主档（brand/err/warn/ok primary）同模值；α：soft 亮 0.12 / 暗 0.18，ring 亮 0.35 / 暗 0.45
+    expect(xuan['--taiji-brand-soft']).toEqual({ light: 'rgba(67, 118, 93, 0.12)', dark: 'rgba(127, 184, 156, 0.18)' })
+    expect(xuan['--taiji-brand-ring']).toEqual({ light: 'rgba(67, 118, 93, 0.35)', dark: 'rgba(127, 184, 156, 0.45)' })
+    expect(xuan['--taiji-err-soft']).toEqual({ light: 'rgba(178, 76, 74, 0.12)', dark: 'rgba(191, 107, 107, 0.18)' })
+    expect(xuan['--taiji-err-ring']).toEqual({ light: 'rgba(178, 76, 74, 0.35)', dark: 'rgba(191, 107, 107, 0.45)' })
+    expect(xuan['--taiji-warn-soft']).toEqual({ light: 'rgba(151, 118, 41, 0.12)', dark: 'rgba(183, 156, 84, 0.18)' })
+    expect(xuan['--taiji-warn-ring']).toEqual({ light: 'rgba(151, 118, 41, 0.35)', dark: 'rgba(183, 156, 84, 0.45)' })
+    expect(xuan['--taiji-ok-soft']).toEqual({ light: 'rgba(54, 128, 71, 0.12)', dark: 'rgba(120, 168, 126, 0.18)' })
+    expect(xuan['--taiji-ok-ring']).toEqual({ light: 'rgba(54, 128, 71, 0.35)', dark: 'rgba(120, 168, 126, 0.45)' })
+    // ink 亮列 = 主档亮值压暗档；暗列 = 主档暗值（err 例外：#bf6b6b on soft 仅 3.7:1，提亮 #d49191）
+    expect(xuan['--taiji-ink']).toEqual({ light: '#2f5a46', dark: '#7fb89c' })
+    expect(xuan['--taiji-ink-err']).toEqual({ light: '#9a3836', dark: '#d49191' })
+    expect(xuan['--taiji-ink-warn']).toEqual({ light: '#7a5d1f', dark: '#b79c54' })
+    expect(xuan['--taiji-ink-ok']).toEqual({ light: '#296339', dark: '#78a87e' })
+    // 皓 = 亮族默认：派生档两列与玄基值逐字一致（跨族回落语义下皓的暗列 = 玄暗列）
+    for (const name of THEME_TOKEN_NAMES.slice(20)) {
+      expect(hao[name], `皓 / ${name}`).toEqual(xuan[name])
+    }
+  })
+
+  it('黛蓝/暖墨暗列只动 brand 族三件（soft/ring/ink），其余九个派生档回落玄暗值', () => {
+    for (const id of ['dailan', 'nuanmo'] as const) {
+      const table = THEME_TOKEN_TABLES[id]
+      const brandPrimary = table['--dsw-alias-brand-primary'].dark
+      const triple = brandPrimary === '#8b9cc8' ? '139, 156, 200' : '203, 188, 147'
+      // 差异项：soft/ring 同 α 换色相；ink 暗列 = brand 主档值
+      expect(table['--taiji-brand-soft'].dark).toBe(`rgba(${triple}, 0.18)`)
+      expect(table['--taiji-brand-ring'].dark).toBe(`rgba(${triple}, 0.45)`)
+      expect(table['--taiji-ink'].dark).toBe(brandPrimary)
+      // 回落项：preset 块未改 err/warn/ok 主档，派生档照抄玄暗列
+      for (const name of ['--taiji-err-soft', '--taiji-err-ring', '--taiji-warn-soft', '--taiji-warn-ring', '--taiji-ok-soft', '--taiji-ok-ring', '--taiji-ink-err', '--taiji-ink-warn', '--taiji-ink-ok'] as const) {
+        expect(table[name].dark, `${id} / ${name} 回落玄暗列`).toBe(THEME_TOKEN_TABLES.xuan[name].dark)
+      }
+    }
+  })
+
+  it('青墨亮列只动 brand 族三件；朱印动 brand 与 err 两族各三件，其余回落皓亮值', () => {
+    const qingmo = THEME_TOKEN_TABLES.qingmo
+    expect(qingmo['--taiji-brand-soft'].light).toBe('rgba(53, 107, 122, 0.12)')
+    expect(qingmo['--taiji-brand-ring'].light).toBe('rgba(53, 107, 122, 0.35)')
+    expect(qingmo['--taiji-ink'].light).toBe('#28535f')
+    for (const name of ['--taiji-err-soft', '--taiji-err-ring', '--taiji-warn-soft', '--taiji-warn-ring', '--taiji-ok-soft', '--taiji-ok-ring', '--taiji-ink-err', '--taiji-ink-warn', '--taiji-ink-ok'] as const) {
+      expect(qingmo[name].light, `青墨 / ${name} 回落皓亮列`).toBe(THEME_TOKEN_TABLES.hao[name].light)
+    }
+
+    const zhuyin = THEME_TOKEN_TABLES.zhuyin
+    expect(zhuyin['--taiji-brand-soft'].light).toBe('rgba(156, 67, 53, 0.12)')
+    expect(zhuyin['--taiji-brand-ring'].light).toBe('rgba(156, 67, 53, 0.35)')
+    expect(zhuyin['--taiji-ink'].light).toBe('#7d3629')
+    expect(zhuyin['--taiji-err-soft'].light).toBe('rgba(178, 56, 85, 0.12)')
+    expect(zhuyin['--taiji-err-ring'].light).toBe('rgba(178, 56, 85, 0.35)')
+    expect(zhuyin['--taiji-ink-err'].light).toBe('#8f2a43')
+    // 朱印不改 warn/ok：六族 preset 块对 warn/success 零改动（照抄 taiji style.css 的 preset 覆盖范围）
+    for (const name of ['--taiji-warn-soft', '--taiji-warn-ring', '--taiji-ok-soft', '--taiji-ok-ring', '--taiji-ink-warn', '--taiji-ink-ok'] as const) {
+      expect(zhuyin[name].light, `朱印 / ${name} 回落皓亮列`).toBe(THEME_TOKEN_TABLES.hao[name].light)
+    }
+  })
+
+  it('12 个派生档不进首帧样式（FIRST_FRAME_TOKENS 只承载核心 15 个，消费点都在 mount 后）', () => {
+    for (const name of THEME_TOKEN_NAMES.slice(20)) {
+      expect(FIRST_FRAME_STYLE, `${name} 不应出现在首帧样式`).not.toContain(name)
+    }
+  })
+
+  it('ink on 对应族 soft 的对比度 ≥ 4.5:1（四族 × 六色 × 双模全 48 组合机器验算，D10 验收口径）', () => {
+    const INK_ON_SOFT = [
+      ['--taiji-ink', '--taiji-brand-soft'],
+      ['--taiji-ink-err', '--taiji-err-soft'],
+      ['--taiji-ink-warn', '--taiji-warn-soft'],
+      ['--taiji-ink-ok', '--taiji-ok-soft'],
+    ] as const
+    for (const id of THEME_IDS) {
+      const table = THEME_TOKEN_TABLES[id]
+      for (const mode of ['light', 'dark'] as const) {
+        // soft 消费点的底色取各族对应列的 bg-base（分区界面 soft 底铺在分区背景上）
+        const pageBackground = parseColor(table['--dsw-alias-bg-base'][mode]).rgb
+        for (const [inkName, softName] of INK_ON_SOFT) {
+          const softPixel = blendOverBackground(table[softName][mode], pageBackground)
+          const ratio = contrastRatio(parseColor(table[inkName][mode]).rgb, softPixel)
+          expect(ratio, `${id} ${mode} ${inkName} on ${softName}`).toBeGreaterThanOrEqual(4.5)
+        }
+      }
+    }
   })
 })

@@ -17,10 +17,12 @@
  *
  * token 集合 = 设计 §3.3.2 的 13 个白名单 alias + `--dsw-specific-sidebar-fill`（第 14 个
  * inspect token）+ 名单外语义色 `--dsw-alias-state-done-primary`，共 15 个；外观深化层 2
- * 增职能分色 5 个（link / bubble / bubble-highlight / label-deep-diving×2，见下），共 20 个。
- * 与 index.js 的 `FIRST_FRAME_TOKENS` 的关系：首帧表只承载原 15 个核心 token（层 2 的 5 个
- * 消费点都在 mount 后的组件里，boot 区间没有渲染内容，不进首帧），由 `tokens.spec.ts` 的漂移断言
- * 看守（对首帧子集逐 token 同源同值）。第三类「不覆盖且不跟随」的硬编码字面色板
+ * 增职能分色 5 个（link / bubble / bubble-highlight / label-deep-diving×2，见下），共 20 个；
+ * 模型服务分区（dsh-model-service 设计包）再增状态色派生档与亮族压暗档 12 个
+ * `--taiji-*` 子 token（soft/ring 8 + ink 4，见下方 THEME_TOKEN_NAMES 尾段）。
+ * 与 index.js 的 `FIRST_FRAME_TOKENS` 的关系：首帧表只承载原 15 个核心 token（层 2 与
+ * 派生档的消费点都在 mount 后的组件里，boot 区间没有渲染内容，不进首帧），由
+ * `tokens.spec.ts` 的漂移断言看守（对首帧子集逐 token 同源同值）。第三类「不覆盖且不跟随」的硬编码字面色板
  * （shiki / json-tree / file-type 的 *色板字面值*）见设计 §2；注意层 1（palette.ts）重定义
  * static 调色板后，file-type 经 `--dsw-static-deepseek-*` 引用的默认色会自动跟随灰绿——
  * 该登记从「不覆盖」升级为「经 static 层跟随」。
@@ -51,15 +53,26 @@ export interface TokenModes {
 export type TokenTable = Record<string, TokenModes>
 
 /**
- * 20 个受覆盖 token 的规范名（顺序即本表声明序，测试按它对账）。
+ * 32 个受覆盖 token 的规范名（顺序即本表声明序，测试按它对账）。
  *
- * 前 15 个 = P1 核心表（背景/文字/边框/状态色主档）；后 5 个 = 外观深化层 2 职能分色——
+ * 前 15 个 = P1 核心表（背景/文字/边框/状态色主档）；中间 5 个 = 外观深化层 2 职能分色——
  * 它们默认引用 `--dsw-static-deepseek-*`（层 1 染色后自动变绿），但 taiji 的职能分色裁决
  * （style.css「主行动 = 青玉 A9；链接正蓝见 --link-c；accent 不再兼职链接」）要求：
  *   · link 保持正蓝（taiji --link-c 六色各有值，非品牌色）；
  *   · bubble 是中性 elevated 色不是 accent 色（taiji --bubble-bg：暗族 = bg-elevated 派生、
  *     亮族独立档 #fefefe）；
  *   · label-deep-diving（宿主深度思考标签）对齐 taiji --reasoning 思考紫。
+ *
+ * 末尾 12 个 = 模型服务分区（dsh-model-service D10）的状态色派生档与亮族压暗档：
+ *   · soft/ring 8 个：四族状态色（brand/err/warn/ok）各两档——soft 是低透明度同色相底
+ *     （badge/chip 底），ring 是中透明度描边（焦点圈/警示边）。taiji 侧无对应档（PR5：
+ *     全仓无 -soft/-ring 先例），值为构造值，rgba 透明度形态使底色自动跟随消费点背景。
+ *   · ink 4 个：亮族 on-soft 文字压暗档（先例 = link 亮支 #2e6ae0「亮族压暗档」）。
+ *     亮列 = 主档亮值压暗到 on-soft 对比度 ≥ 4.5:1（对比度由 tokens.spec.ts 机器验算）；
+ *     暗列 = 主档暗值（暗族主档本就为暗底调亮，直接可读）——err 例外提亮为 #d49191，
+ *     因 err 主档暗值 #bf6b6b 亮度是四族中最低（L≈0.23），on err-soft 只有 3.7:1 不达标。
+ *
+ * 全部 12 个不进 index.js 的 `FIRST_FRAME_TOKENS`（消费点都在 mount 后的分区组件里）。
  */
 export const THEME_TOKEN_NAMES = [
   '--dsw-alias-bg-base',
@@ -83,6 +96,20 @@ export const THEME_TOKEN_NAMES = [
   '--dsw-specific-bubble-highlight',
   '--dsw-alias-label-deep-diving',
   '--dsw-alias-label-deep-diving-shimmer',
+  // ── 模型服务分区：状态色派生档 soft/ring（构造值，推导规则见 BASE_TOKENS 各条）──
+  '--taiji-brand-soft',
+  '--taiji-brand-ring',
+  '--taiji-err-soft',
+  '--taiji-err-ring',
+  '--taiji-warn-soft',
+  '--taiji-warn-ring',
+  '--taiji-ok-soft',
+  '--taiji-ok-ring',
+  // ── 模型服务分区：亮族 on-soft 文字压暗档 ──────────────────
+  '--taiji-ink',
+  '--taiji-ink-err',
+  '--taiji-ink-warn',
+  '--taiji-ink-ok',
 ] as const
 
 export type ThemeTokenName = (typeof THEME_TOKEN_NAMES)[number]
@@ -143,6 +170,31 @@ const BASE_TOKENS: Record<ThemeTokenName, TokenModes> = {
   '--dsw-alias-label-deep-diving': { light: '#71659c', dark: '#8e85ab' },
   // shimmer 动画端点色：主色提亮一档（构造值）
   '--dsw-alias-label-deep-diving-shimmer': { light: '#8a80b3', dark: '#a39bbd' },
+
+  // ── 模型服务分区：状态色派生档（dsh-model-service D10；基值 = 玄暗列 / 皓亮列）──
+  // 派生规则（构造值，taiji 侧无对应档）：rgba(R,G,B,α) 的 RGB 三元组 = 对应主档 token
+  // 的同模值（soft/ring 的色相永远跟随 brand/err/warn/ok 主档，六色 preset 差异经
+  // PRESET_OVERRIDES 只列主档变了的色）。α 档位：soft 亮 0.12 / 暗 0.18——亮族 0.12
+  // 落在 border-l1(0.07) 与 border-l2(0.14) 之间的「薄洗」域，暗族抬到 0.18 因暗底上
+  // 低透明色可见性衰减；ring 亮 0.35 / 暗 0.45——描边须比底实一档才成形。
+  // brand ← --dsw-alias-brand-primary（皓 #43765d / 玄 #7fb89c）
+  '--taiji-brand-soft': { light: 'rgba(67, 118, 93, 0.12)', dark: 'rgba(127, 184, 156, 0.18)' },
+  '--taiji-brand-ring': { light: 'rgba(67, 118, 93, 0.35)', dark: 'rgba(127, 184, 156, 0.45)' },
+  // err ← --dsw-alias-state-error-primary（皓 #b24c4a / 玄 #bf6b6b）
+  '--taiji-err-soft': { light: 'rgba(178, 76, 74, 0.12)', dark: 'rgba(191, 107, 107, 0.18)' },
+  '--taiji-err-ring': { light: 'rgba(178, 76, 74, 0.35)', dark: 'rgba(191, 107, 107, 0.45)' },
+  // warn ← --dsw-alias-state-warn-primary（皓 #977629 / 玄 #b79c54）
+  '--taiji-warn-soft': { light: 'rgba(151, 118, 41, 0.12)', dark: 'rgba(183, 156, 84, 0.18)' },
+  '--taiji-warn-ring': { light: 'rgba(151, 118, 41, 0.35)', dark: 'rgba(183, 156, 84, 0.45)' },
+  // ok ← --dsw-alias-state-success-primary（皓 #368047 / 玄 #78a87e）
+  '--taiji-ok-soft': { light: 'rgba(54, 128, 71, 0.12)', dark: 'rgba(120, 168, 126, 0.18)' },
+  '--taiji-ok-ring': { light: 'rgba(54, 128, 71, 0.35)', dark: 'rgba(120, 168, 126, 0.45)' },
+  // ink 亮列 = 主档亮值压暗到 on-soft ≥ 4.5:1（WCAG 4.5:1，tokens.spec.ts 逐六色验算）；
+  // 暗列 = 主档暗值（err 例外：主档暗值 on err-soft 仅 3.7:1，提亮到 #d49191 达 5.6:1）
+  '--taiji-ink': { light: '#2f5a46', dark: '#7fb89c' },
+  '--taiji-ink-err': { light: '#9a3836', dark: '#d49191' },
+  '--taiji-ink-warn': { light: '#7a5d1f', dark: '#b79c54' },
+  '--taiji-ink-ok': { light: '#296339', dark: '#78a87e' },
 }
 
 /**
@@ -153,6 +205,12 @@ const BASE_TOKENS: Record<ThemeTokenName, TokenModes> = {
  * 状态色未重声明，继承 `:root` 暗值）；亮族预设（青墨/朱印）只改 accent
  * 三件套里的 brand-primary（link-c/code-c 不在本包 15 token 集合内），朱印另改 danger
  * （taiji 朱印块唯一独立状态色，玫红防撞色）。
+ *
+ * 派生档（--taiji-* 12 个）只随主档差异传导：soft/ring 的色相 = 主档色相（α 固定），
+ * ink 亮列 = 主档亮值压暗、暗列 = 主档暗值（err 恒玄暗列——preset 对 err 的改动只在
+ * 亮族朱印块）。因此 preset 差异项 = 派生规则在「该 preset 改了哪个主档」上的机械展开：
+ * 黛蓝/暖墨只改 brand 族三件（soft/ring/ink 的暗列），青墨只改 brand 族三件（亮列），
+ * 朱印改 brand 与 err 两族各三件（亮列）；warn/ok 六色无 preset 改动、零差异项。
  */
 interface PresetOverrides {
   /** 只改自己族那一列；另一列保持族基值（回落规则见 buildTable）。 */
@@ -179,6 +237,10 @@ const PRESET_OVERRIDES: Record<ThemeId, PresetOverrides> = {
       '--dsw-alias-link': '#6196f0',
       '--dsw-specific-bubble': '#31333e',
       '--dsw-specific-bubble-highlight': '#2c2f3b',
+      // 派生档随 brand 主档（#8b9cc8）传导：soft/ring 同 α 换色相；ink 暗列 = 主档值
+      '--taiji-brand-soft': 'rgba(139, 156, 200, 0.18)',
+      '--taiji-brand-ring': 'rgba(139, 156, 200, 0.45)',
+      '--taiji-ink': '#8b9cc8',
     },
   },
   // 暖墨（暗 · 宣纸暖相）：style.css :root[data-theme-preset="nuanmo"]
@@ -197,6 +259,10 @@ const PRESET_OVERRIDES: Record<ThemeId, PresetOverrides> = {
       '--dsw-alias-link': '#5b8fdd',
       '--dsw-specific-bubble': '#35322c',
       '--dsw-specific-bubble-highlight': '#302d28',
+      // 派生档随 brand 主档（#cbbc93）传导：soft/ring 同 α 换色相；ink 暗列 = 主档值
+      '--taiji-brand-soft': 'rgba(203, 188, 147, 0.18)',
+      '--taiji-brand-ring': 'rgba(203, 188, 147, 0.45)',
+      '--taiji-ink': '#cbbc93',
     },
   },
   // 皓 = 亮族默认，两列皆基值
@@ -207,6 +273,10 @@ const PRESET_OVERRIDES: Record<ThemeId, PresetOverrides> = {
       '--dsw-alias-brand-primary': '#356b7a',
       // 层 2 preset 差异：link L463（亮族 preset 的链接压深档）
       '--dsw-alias-link': '#2d6cd4',
+      // 派生档随 brand 主档（#356b7a）传导：soft/ring 同 α 换色相；ink 亮列 = 主档压暗
+      '--taiji-brand-soft': 'rgba(53, 107, 122, 0.12)',
+      '--taiji-brand-ring': 'rgba(53, 107, 122, 0.35)',
+      '--taiji-ink': '#28535f',
     },
   },
   // 朱印（亮 · 宣纸朱砂）：style.css [data-theme="light"][data-theme-preset="zhuyin"]
@@ -216,6 +286,13 @@ const PRESET_OVERRIDES: Record<ThemeId, PresetOverrides> = {
       '--dsw-alias-state-error-primary': '#b23855',
       // 层 2 preset 差异：link L495
       '--dsw-alias-link': '#3163c8',
+      // 派生档随 brand 与 err 两族主档传导（朱印是唯一改状态色主档的亮族 preset）
+      '--taiji-brand-soft': 'rgba(156, 67, 53, 0.12)',
+      '--taiji-brand-ring': 'rgba(156, 67, 53, 0.35)',
+      '--taiji-ink': '#7d3629',
+      '--taiji-err-soft': 'rgba(178, 56, 85, 0.12)',
+      '--taiji-err-ring': 'rgba(178, 56, 85, 0.35)',
+      '--taiji-ink-err': '#8f2a43',
     },
   },
 }
