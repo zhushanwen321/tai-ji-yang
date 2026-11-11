@@ -16,8 +16,8 @@
  *
  * 载荷校验（D2 / V4）：sessionId 指向不存在的会话 404 fail-closed（resolveSessionCwdById
  * 同一通道，绝不回退部署级目录）；text 非空且 ≤ COMMENT_TEXT_MAX_LENGTH（400，store
- * validateCommentText 同一判定）；artifactPath 仅接受会话内相对路径、无 `..` 段（任务书
- * 明示输入契约），落点经词法 resolve + realpath 包含判定双层防护（照 artifacts-route.ts
+ * validateCommentText 同一判定）；artifactPath 仅接受会话内相对路径、无 `..` 段（设计
+ * §3.1/D2 明示输入契约），落点经词法 resolve + realpath 包含判定双层防护（照 artifacts-route.ts
  * resolveArtifactPath 同权级——realpath 对缺席目标不可判定，逐级上探最深存在祖先补全
  * 包含判定，防「父级符号链接指外 + 叶子缺席」逃逸）；校验全部先于任何 store 写动作，
  * 拒绝路径零落盘副作用（V4 判据）。
@@ -194,7 +194,7 @@ async function requireSessionRoot(cwd: string): Promise<string> {
  * artifactPath 是否落在会话工作目录内（词法 resolve + realpath 包含判定的双层防护）。
  *
  * 与产物伺服路由的两点差异都有明确理由：
- *   1. 前置拒绝 `..` 段与绝对路径（任务书对写通道载荷的明示输入契约；伺服路由放行
+ *   1. 前置拒绝 `..` 段与绝对路径（设计 §3.1/D2 对写通道载荷的明示输入契约；伺服路由放行
  *      cwd 内归一化形态是读路由的裁决，写通道按更严的输入契约执行——`..` 段在元数据
  *      路径上无表达力，拒绝零功能损失）；NUL 字节同拒（任何落点都不该含它）。
  *   2. 目标缺席时 realpath 不可判定（ENOENT 不回已解析前缀），逐级上探最深存在祖先
@@ -340,7 +340,8 @@ export function createCommentsApiRoutes(ctx: unknown): CommentsFetchRoute[] {
 
 /**
  * 评论写通道路由族注册（od-serve 装配调用；每条路由独立 effect——任一路由的卸载即撤除
- * 其注册，且 effect 标签携带方法与路径供 doctor 第⑫节路由注册状态探取与单测断言）。
+ * 其注册，effect 标签携带方法与路径供单测断言；doctor 第⑫节按契约词表 COMMENTS_API_PATHS
+ * 呈现路由族声明形态，不探取运行时 effect 标签）。
  *
  * @param scope - ctx.inject(['connection']) 子 scope（connection 服务已就位的消费面）。
  * @param ctx - 外层插件上下文（路由 handler 经它取会话 cwd 通道）。
