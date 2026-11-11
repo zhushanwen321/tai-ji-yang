@@ -86,6 +86,84 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+/* ---- 配色行第三换色入口（dsh-model-service D9）------------------------------------
+ * 「当前配色」行就地展开的六色色板：展开钮在行内（▸/▾ 三角），色板本体插在配色行与
+ * 指引行之间。三段式（swatch / dot / active）对照同目录 appearance-row.css 的六色平铺
+ * 同款口径——每枚 chip 一枚色点 + 色名竖排，选中态用品牌色细环（不抢色点本身的颜色）。
+ * 取色沿用本文件既有约定：全部经宿主令牌 --dsw-alias-*，零硬编码色；色点取色在组件侧
+ * （accentColorOf inline style，与外观行 / 输入框 chip 同源），CSS 不重复取色。 */
+
+/* 展开钮：行内次级三角，命中区放宽到可点尺寸，hover 提亮。 */
+.taiji-section-palette-toggle {
+  flex: none;
+  padding: 2px 6px;
+  font: inherit;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--dsw-radius-xs);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-section-palette-toggle:hover {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+/* 色板本体：六枚 chip 平铺换行；上下留呼吸间距（行 chrome 由相邻 row 自带）。 */
+.taiji-section-palette {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 0;
+}
+
+.taiji-section-swatch {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 0.5px solid transparent;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .taiji-section-swatch:hover {
+    border-color: var(--dsw-alias-border-l2);
+  }
+}
+
+/* 选中态描边：品牌色细环（appearance-row 同款）。 */
+.taiji-section-swatch-active {
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+/* 色点描边不可省（对照外观行色点约定）：色点在页面背景下需要一道 hairline 才立得住。 */
+.taiji-section-swatch-dot {
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 50%;
+}
+
+.taiji-section-swatch-name {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.taiji-section-swatch-active .taiji-section-swatch-name {
+  color: var(--dsw-alias-label-primary);
+}
+
 /* ---- 项目管理块（M1 数据通道；store 未接线时整块不渲染） --------------------------
  * 排版口径沿用本文件既有约定：行 chrome 的 0.5px hairline 分隔、标签色两档、圆角经
  * --dsw-radius-* 读取（覆盖层改圆角后自动跟随）。取色全部经宿主令牌，零硬编码色。 */
