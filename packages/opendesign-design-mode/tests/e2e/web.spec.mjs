@@ -54,6 +54,9 @@
  *      = 评论投递是否开启新轮 system 节点（followup 开新轮 / steer 不开）：steer 形态全量
  *      断言（无新轮 + 回合结束后消息仍在事件流）；followup 形态按设计 §4.1 V10 协议登记
  *      探针不适用（防弱化为对 followup 恒真的永绿断言），凭据环境长任务重造后补跑。
+ *   S15 comment-loop·V4 —— 写通道安全（原始 HTTP 形态，不经面板）：无凭据 POST 401 /
+ *      不可信 Host/Origin/cross-site 403（宿主 Host/Origin 围栏）/ 越界载荷 404·403·400
+ *      且零落盘；正向对照 = 带凭据 GET 基路径 200。
  *
  * 真实模型自纠行为（V2 的模型修复段）不在本套件（验收计划 A11：L4 归交付后行为观察）；
  * comment-loop·V1 的「agent 实际读产物改稿写盘（文件工具触达路径）」段同口径归 D3 真机
@@ -211,6 +214,7 @@ const {
   COMMENTS_DIR_NAME,
   COMMENTS_FILE_NAME,
   COMMENT_DELIVERY_STATES,
+  COMMENT_TEXT_MAX_LENGTH,
   COMMENT_THREAD_ID_PREFIX,
 } = await import(path.join(PKG_ROOT, 'lib', 'comments', 'contract.js'))
 const { buildCommentMessage } = await import(path.join(PKG_ROOT, 'lib', 'comments', 'feedback.js'))
@@ -2101,6 +2105,131 @@ async function scenarioShellCoexistRegression() {
   return results
 }
 
+// ── A7 / V4 写通道安全探针（原始 HTTP 形态，不经面板）────────────────────────
+
+/** 页面上下文里的宿主认证 cookie（dsh-auth-* 前缀；页面已由 token URL 建立会话）。 */
+async function authCookieHeader(page) {
+  const cookies = await page.context().cookies()
+  const auth = cookies.find((cookie) => cookie.name.startsWith('dsh-auth-'))
+  assert(auth !== undefined, `页面上下文缺宿主认证 cookie（dsh-auth-*）：${JSON.stringify(cookies.map((c) => c.name))}`)
+  return `${auth.name}=${auth.value}`
+}
+
+/**
+ * 原始 HTTP 探针：返回状态码。经 curl 复现浏览器寻址形态（Node fetch 不允许覆写 Host 头，
+ * V4 的不可信 Host 半场只能 curl 承载）；连接目标恒为 loopback origin，Host 头按用例覆写。
+ */
+function rawCurlStatus({ origin, pathname, method = 'POST', headers = [], body }) {
+  const args = ['-s', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '15', '-X', method, `${origin}${pathname}`]
+  for (const [name, value] of headers) args.push('-H', `${name}: ${value}`)
+  if (body !== undefined) args.push('-H', 'Content-Type: application/json', '--data-binary', JSON.stringify(body))
+  const result = spawnSync('curl', args, { encoding: 'utf8' })
+  if (result.error) throw new AssertionError(`curl 启动失败：${result.error.message}`)
+  if (result.status !== 0) throw new AssertionError(`curl 退出码 ${result.status}：${(result.stderr ?? '').slice(0, 200)}`)
+  return Number.parseInt(result.stdout.trim(), 10)
+}
+
+/**
+ * 场景 S15（comment-loop·V4，验收计划表 A7）：写通道安全验证（原始 HTTP，不经面板）。
+ *
+ * 判据（设计 §4.1 V4 + 宿主实现核实）：宿主连接层对 /api 请求先过 Host/Origin 围栏
+ * （isTrustedApiRequest → requestRejection：不可信 Host/Origin/cross-site 一律 403，未认证
+ * 401）；通过后再由插件路由做载荷校验。正向对照 = 带凭据 GET 基路径 200（证明拒绝不是路由
+ * 缺失或寻址错误）。越界载荷全部拒绝且零落盘（.od-comments 目录不因拒绝路径出现）。
+ * 落点约束「sessionId 指向其他存在会话」半场需第二会话，L1 已锁（isInsideSessionRoot），
+ * 本场景以单会话载荷拒绝与零落盘覆盖可脚本化半区。
+ */
+async function scenarioCommentSecurity() {
+  const results = []
+  const workspace = makeWorkspaceDir('cl-v4')
+  const { instance, page, workspace: ws, sessionId } = await bootDesignSessionWithArtifact({ label: 'cl-v4', workspace })
+  const origin = new URL(instance.url).origin
+  const createPath = `${COMMENTS_API_BASE_PATH}.create`
+  const commentsDir = path.join(fs.realpathSync(ws), COMMENTS_DIR_NAME)
+  try {
+    const cookie = await authCookieHeader(page)
+    const validBody = { sessionId, artifactPath: 'index.html', text: '安全探针评论' }
+
+    await stepAsync(results, 'comment-loop·V4 正向对照：带凭据 GET 基路径 200（路由在场 + 鉴权通过）', async () => {
+      const status = rawCurlStatus({
+        origin,
+        pathname: `${COMMENTS_API_BASE_PATH}?sessionId=${encodeURIComponent(sessionId)}`,
+        method: 'GET',
+        headers: [['Cookie', cookie]],
+      })
+      assert(status === 200, `带凭据 GET 基路径应 200：${status}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V4 ①无凭据 POST .create 被宿主鉴权层拒绝（401）', async () => {
+      const status = rawCurlStatus({ origin, pathname: createPath, body: validBody })
+      assert(status === 401, `无凭据 POST .create 应 401：${status}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V4 ②不可信 Host 头被拒（403）', async () => {
+      const status = rawCurlStatus({
+        origin, pathname: createPath, headers: [['Cookie', cookie], ['Host', 'evil.example']], body: validBody,
+      })
+      assert(status === 403, `不可信 Host 应 403：${status}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V4 ②不可信 Origin 头被拒（403）', async () => {
+      const status = rawCurlStatus({
+        origin, pathname: createPath, headers: [['Cookie', cookie], ['Origin', 'http://evil.example']], body: validBody,
+      })
+      assert(status === 403, `不可信 Origin 应 403：${status}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V4 ②cross-site 浏览器标记被拒（403）', async () => {
+      const status = rawCurlStatus({
+        origin, pathname: createPath, headers: [['Cookie', cookie], ['Sec-Fetch-Site', 'cross-site']], body: validBody,
+      })
+      assert(status === 403, `Sec-Fetch-Site: cross-site 应 403：${status}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V4 ③sessionId 指向不存在会话被拒（404 fail-closed）', async () => {
+      const status = rawCurlStatus({
+        origin, pathname: createPath, headers: [['Cookie', cookie]], body: { ...validBody, sessionId: 'no-such-session' },
+      })
+      assert(status === 404, `不存在会话应 404：${status}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V4 ③artifactPath 含 .. 段被拒（403）', async () => {
+      const status = rawCurlStatus({
+        origin, pathname: createPath, headers: [['Cookie', cookie]], body: { ...validBody, artifactPath: '../index.html' },
+      })
+      assert(status === 403, `含 .. 段路径应 403：${status}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V4 ③artifactPath 绝对路径被拒（403）', async () => {
+      const status = rawCurlStatus({
+        origin, pathname: createPath, headers: [['Cookie', cookie]], body: { ...validBody, artifactPath: '/etc/passwd' },
+      })
+      assert(status === 403, `绝对路径应 403：${status}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V4 ③空文本被拒（400）', async () => {
+      const status = rawCurlStatus({
+        origin, pathname: createPath, headers: [['Cookie', cookie]], body: { ...validBody, text: '' },
+      })
+      assert(status === 400, `空文本应 400：${status}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V4 ③超 10000 字符被拒（400）', async () => {
+      const status = rawCurlStatus({
+        origin, pathname: createPath, headers: [['Cookie', cookie]], body: { ...validBody, text: 'x'.repeat(COMMENT_TEXT_MAX_LENGTH + 1) },
+      })
+      assert(status === 400, `超长文本应 400：${status}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V4 ③全部拒绝零落盘副作用（.od-comments 目录未因拒绝路径出现）', async () => {
+      assert(!fs.existsSync(commentsDir), `拒绝路径不应创建评论目录：${commentsDir}`)
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
 // ── 主编排 ───────────────────────────────────────────────────────────────────
 
 /** 全局看门狗：卡死（等待永不返回）时按 PID 清场并以失败退出，不留孤儿 dsh（预算随评论回路五场景扩容）。 */
@@ -2135,6 +2264,7 @@ try {
     ['S12 comment-loop·V5 普通会话侧栏零出现+路由不判型', scenarioStandardSessionNoComments],
     ['S13 comment-loop·V6 resolve→reply重开+产物重写/删除边界', scenarioCommentResolveReply],
     ['S14 comment-loop·V10 steer前置评论投递（AS9探针载体）', scenarioCommentSteer],
+    ['S15 comment-loop·V4 写通道安全（无凭据/不可信Host-Origin/越界载荷）', scenarioCommentSecurity],
   ]
 
   const outcome = []
