@@ -131,6 +131,8 @@ Node 半场只承载默认色玄这一套的「宿主默认 palette 之上的最
 
 默认项目 id 固定为空串：空 id = 「未归类兜底聚合」的标志，不可重命名不可删除；「归回默认项目」= 删除映射键，不写空串占位。
 
+模型服务域（`client/model-service/` + Node 半场适配器）新增两类持久事实：①插件 Config 三个 volatile 字段（路由表 `routes`、白名单 `whitelist`、待清理凭据清单 `pendingCredentialUnsets`），沿用本节通道形态（整字段写 + revision 栅栏 + 失败重读重试）；②供应商与模型拓扑写**宿主**设置文档的 llm-pi-ai 命名空间（`settings.mutate` 跨命名空间写入，`providers.<route>` 路径操作）——该命名空间的唯一权威是宿主设置文档，插件不持第二份可编辑副本（目录默认模型权威在 pi-ai 安装目录、宿主托管 provider 由宿主包注册，两者只读）；写入前置 provider key 预检与凭据 ref 查重，保存顺序先设置后凭据，revision 快照按展开体打开时持有、冲突重读重试一次。密钥永不进插件 Config：只经宿主凭据通道落 `.credentials.yaml`，插件任何产物只出现 ref 名（`TAIJI_<KEY>_KEY` 派生）。路由虚拟模型由 Node 半场注册 LLM 适配器提供（provider id 强制 `taiji-route-` 前缀），请求按成员级时间条件求值后转发宿主 llm 服务；适配器注册随 fiber 生命周期注销，路由域数据全部在插件 Config，宿主拓扑不受插件卸载影响。
+
 ## 7. 槽位贡献总表
 
 | 宿主槽 | kind | 本包身份 | 优先级/排序 | 占位策略 |
@@ -140,13 +142,14 @@ Node 半场只承载默认色玄这一套的「宿主默认 palette 之上的最
 | `sidebar.brand.name` | single | 品牌栈（产品名 + 版本行） | -5（同上） | 替换宿主本地构建文案 |
 | `settings.general.item` | list | id `appearance` | priority -5、order 5 | **同 id 遮蔽**内置外观行（另起一行会出现两条「外观」） |
 | `conversation.input.left` | list | id `taiji-appearance` | order 100 | 新格追加，不遮蔽 |
-| `settings.section` | list | id `taiji` | order 25（末位） | 新格追加；插件分区排在宿主内置分区之后 |
+| `settings.section` | list | id `model-services` | order 11 | 新格追加；与宿主「模型」分区并存，卸载即撤除 |
+| `settings.section` | list | id `taiji` | order 12 | 新格追加；前移进宿主内置序列（DSH-PLUGIN-RULES D-2） |
 | `sidebar.workspaces` | single | 项目分组浏览器 | -10 起向下找空闲 | **整槽替换**（见第 8 节） |
 | `conversation.session.header.actions` | list | id `taiji-status-icon` | priority -1 | 追加，多占用者共存（见第 9 节） |
 
 single 槽的槽规则 = 按 priority 升序、数值最小者渲染，同优先级二次注册直接抛错。本包注册前先读槽内现有占用，目标值被占则步进找最近空闲值（品牌槽界内 -10..0；浏览器槽下界 -100），区间占满则**不注册并告警，回落宿主原生占用者**——失败可见，不静默错位，也不让装配失败。list 槽注册必须带 id（条目身份，缺 id 宿主直接抛错）。
 
-外观行与 composer chip 共用同一配色控制器实例：两处点选指向同一持久通道与换层，无双写。「太极」设置分区只读当前配色状态 + 项目管理，刻意不透传换色入口——换色的唯一写入口是外观行（与 chip），状态页出现第二个写入口会打破这一分工。
+三个换色写入口共用同一配色控制器实例：外观行、composer chip 与「太极」分区配色行（就地展开六色色板）指向同一持久通道与换层，无双写、无第二份偏好权威（DSH-PLUGIN-RULES D-3 登记）。
 
 ## 8. 项目分组浏览器（`client/projects/`）
 
