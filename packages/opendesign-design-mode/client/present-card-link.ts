@@ -187,6 +187,15 @@ export function artifactSessionIdOf(address: string): string | undefined {
 }
 
 /**
+ * 产物地址的 workspace 相对路径（不可解析形态返回 undefined）。评论侧栏用它承载评论挂靠
+ * （opendesign-comment-loop D8：评论挂当前预览产物，面板自动携带 artifactPath）——
+ * 地址→路径的唯一解析点仍在本文件的 parseArtifactAddress，面板不得自行反推。
+ */
+export function artifactPathOf(address: string): string | undefined {
+  return parseArtifactAddress(address)?.path
+}
+
+/**
  * 产物地址的 tab chip 文本：解码最后一段（documentpreview 的 basenameOf 同语义——
  * 只短化显示文本，地址本身仍是内容身份）。解析失败时原文显示，优于拒绝显示。
  */

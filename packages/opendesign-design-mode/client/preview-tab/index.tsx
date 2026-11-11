@@ -29,6 +29,7 @@ import {
   GENERIC_PREVIEW_KIND,
   OPENDESIGN_TAB_ID,
   OPENDESIGN_TAB_KIND,
+  artifactPathOf,
   artifactRouteUrlFor,
   artifactRouteUrlForPath,
   artifactSessionIdOf,
@@ -39,6 +40,8 @@ import {
 } from '../present-card-link'
 import { ArtifactIframeView, type PanelTranslate } from './iframe-view'
 import { ArtifactList, type ArtifactLister } from './artifact-list'
+import { CommentsSidebar } from '../comments/panel'
+import { createCommentsApi, type CommentsApi } from '../comments/api'
 import { en, zh } from './locales'
 import './panel.css'
 
@@ -152,18 +155,25 @@ function createArtifactLister(ctx: PreviewApplyContext): ArtifactLister {
 }
 
 /**
- * 构造面板体组件（闭包携带列表器与弹回通道）。
+ * 构造面板体组件（闭包携带列表器、弹回通道与评论写通道）。
  *
  * 模式分发（唯一裁决 = present-card-link 的地址解析）：navigation.address 可解析为产物
  * → iframe 视图（openResource 与交付卡片点击路由到的形态）；否则（guide 打开的页面地址
  * 等非产物地址）→ 产物列表兜底，行点击在本面板内载入 iframe（返回钮回列表）。
  *
  * 会话维度（FF6 认领范围裁决的执行点）：canOpen 对未探测会话乐观认领（同步否决函数
- * 无会话→preset 查询入口），面板体在产物地址模式探测所属会话（present-card-link 的
- * 材质化标记伺服可达性），非设计会话经弹回通道原位交回通用文件预览（具名 kind 跳过
- * 认领排序——本 tab 的认领在该会话由此退出）。
+ * 无会话→preset 查询入口），面板体探测所属会话（present-card-link 的材质化标记伺服
+ * 可达性），非设计会话在产物地址模式经弹回通道原位交回通用文件预览（具名 kind 跳过
+ * 认领排序——本 tab 的认领在该会话由此退出）。探测结果同时是评论元素的挂载裁决：
+ * 评论侧栏只在 iframe 模式 × 设计会话 × 有当前产物时出现（opendesign-comment-loop
+ * §3.1 面板 UI 段「出现条件 = 设计会话判定，与面板现状同源」）；列表兜底模式只对
+ * 设计会话拉取各产物的评论计数（.odp-row 徽标），非设计会话列表现状不变（V5）。
  */
-function createDesignPanelBody(listArtifacts: ArtifactLister, bounceToGenericPreview: (address: string, tabId: string) => void) {
+function createDesignPanelBody(
+  listArtifacts: ArtifactLister,
+  bounceToGenericPreview: (address: string, tabId: string) => void,
+  commentsApi: CommentsApi,
+) {
   return function DesignPreviewTab(props: {
     useTabInfo: () => DesignTabInfo
     sessionId: string
@@ -173,6 +183,10 @@ function createDesignPanelBody(listArtifacts: ArtifactLister, bounceToGenericPre
     const { tab } = useTabInfo()
     // 兜底模式的选中产物（地址寻址模式不消费；面板卸载即随组件消亡，不设持久状态）
     const [fallback, setFallback] = useState<{ path: string; name: string } | undefined>(undefined)
+    // 设计会话判定（探测终态；undefined = 在途/未探测——评论元素在定案 true 前不出现）
+    const [designSession, setDesignSession] = useState<boolean | undefined>(undefined)
+    // 各产物的评论线程数（列表行徽标；仅设计会话拉取，失败缺省无徽标不打扰列表主功能）
+    const [commentCounts, setCommentCounts] = useState<ReadonlyMap<string, number> | undefined>(undefined)
 
     const address = tab.navigation.address
     const routeUrl = artifactRouteUrlFor(address)
@@ -181,38 +195,77 @@ function createDesignPanelBody(listArtifacts: ArtifactLister, bounceToGenericPre
       : fallback !== undefined
         ? { url: artifactRouteUrlForPath(sessionId, fallback.path), name: fallback.name }
         : undefined
+    // 评论挂靠的当前产物（D8 文件级）：地址解析路径 / 兜底选中路径；列表模式无当前产物
+    const artifactPath = routeUrl !== undefined
+      ? artifactPathOf(address)
+      : fallback !== undefined ? fallback.path : undefined
+    // 评论 API 的会话维度跟产物走（地址可解析时以地址的 sessionId 为准，兜底用面板会话）
+    const commentsSessionId = artifactSessionIdOf(address) ?? sessionId
 
-    // 产物地址模式的会话探测（乐观认领的最终裁决）：非设计会话原位弹回通用文件预览。
-    // 依赖 tab.id——replaceTab 以本 tab 为落点，弹回即关闭本 tab，effect 随卸载取消。
+    // 会话探测（乐观认领的最终裁决 + 评论元素挂载条件）：非设计会话在产物地址模式
+    // 原位弹回通用文件预览。依赖 tab.id——replaceTab 以本 tab 为落点，弹回即关闭本
+    // tab，effect 随卸载取消。
     useEffect(() => {
-      if (routeUrl === undefined) return
-      const target = artifactSessionIdOf(address)
+      const target = artifactSessionIdOf(address) ?? sessionId
       const tabId = tab.id
-      if (target === undefined) return
+      const addressed = routeUrl !== undefined
       let cancelled = false
       void probeDesignSession(target).then((design) => {
-        if (!cancelled && !design) bounceToGenericPreview(address, tabId)
+        if (cancelled) return
+        setDesignSession(design)
+        if (!design && addressed) bounceToGenericPreview(address, tabId)
       })
       return () => { cancelled = true }
-    }, [address, routeUrl, tab.id, bounceToGenericPreview])
+    }, [address, routeUrl, sessionId, tab.id, bounceToGenericPreview])
+
+    // 列表兜底模式的设计会话评论计数（iframe 模式不拉——侧栏自己按当前产物拉全量）。
+    // 失败（含数据损坏）静默缺省：列表是兜底主功能，徽标不出现即可，错误态由侧栏承载。
+    useEffect(() => {
+      if (routeUrl !== undefined || designSession !== true) {
+        setCommentCounts(undefined)
+        return
+      }
+      const controller = new AbortController()
+      void commentsApi.list(sessionId, controller.signal).then((outcome) => {
+        if (controller.signal.aborted) return
+        if (!outcome.ok) { setCommentCounts(undefined); return }
+        const counts = new Map<string, number>()
+        for (const thread of outcome.threads) {
+          counts.set(thread.artifactPath, (counts.get(thread.artifactPath) ?? 0) + 1)
+        }
+        setCommentCounts(counts)
+      })
+      return () => controller.abort()
+    }, [routeUrl, designSession, sessionId, commentsApi])
 
     if (iframe === undefined) {
       return (
         <div className="odp-body">
-          <ArtifactList listArtifacts={listArtifacts} sessionId={sessionId} onSelect={setFallback} t={t} />
+          <ArtifactList
+            listArtifacts={listArtifacts}
+            sessionId={sessionId}
+            onSelect={setFallback}
+            t={t}
+            commentCounts={commentCounts}
+          />
         </div>
       )
     }
     return (
-      <div className="odp-body">
-        {routeUrl === undefined && (
-          <div className="odp-note">
-            <button type="button" className="odp-button" onClick={() => { setFallback(undefined) }}>
-              {t('list.back')}
-            </button>
-          </div>
+      <div className="odp-body odp-body--split">
+        <div className="odp-main">
+          {routeUrl === undefined && (
+            <div className="odp-note">
+              <button type="button" className="odp-button" onClick={() => { setFallback(undefined) }}>
+                {t('list.back')}
+              </button>
+            </div>
+          )}
+          <ArtifactIframeView url={iframe.url} name={iframe.name} t={t} />
+        </div>
+        {designSession === true && artifactPath !== undefined && (
+          <CommentsSidebar sessionId={commentsSessionId} artifactPath={artifactPath} t={t} />
         )}
-        <ArtifactIframeView url={iframe.url} name={iframe.name} t={t} />
       </div>
     )
   }
@@ -261,6 +314,6 @@ export function apply(ctx: PreviewApplyContext): void {
   }
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     { name: 'sidebar.right.pane.tab', key: OPENDESIGN_TAB_ID, locale: DESIGN_PANEL_LOCALE_NS },
-    createDesignPanelBody(createArtifactLister(ctx), bounceToGenericPreview),
+    createDesignPanelBody(createArtifactLister(ctx), bounceToGenericPreview, createCommentsApi()),
   )), 'opendesign-design-mode: 面板体')
 }

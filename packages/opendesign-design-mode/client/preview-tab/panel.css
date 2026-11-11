@@ -105,3 +105,202 @@
 .odp-button:hover {
   background: color-mix(in srgb, currentColor 8%, transparent);
 }
+
+/* ── 评论侧栏（opendesign-comment-loop §3.1 面板 UI 段）─────────────────────
+   iframe 预览模式下常驻右缘：折叠态 = 竖排条钮；展开态 = 固定宽面板（列表 + 输入）。
+   只写结构布局与继承性外观，配色沿用 currentColor 与其透明混合（明暗双模自动成立）。 */
+
+/* split 形态：iframe 模式的面板体改横向分栏（主区 + 右缘侧栏）；列表模式不加此修饰类 */
+.odp-body--split {
+  flex-direction: row;
+}
+
+/* 主区承接原 odp-body 的纵向语义（返回钮行 + iframe 视图） */
+.odp-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 折叠条：右缘竖排「评论」条钮 */
+.odp-comments-tab {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 6px;
+  border: none;
+  border-left: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.odp-comments-tab:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.odp-comments-tab-label {
+  writing-mode: vertical-rl;
+  letter-spacing: 2px;
+}
+
+/* 展开面板：纵向 = 头部 / 列表（滚动）/ 底部输入区 */
+.odp-comments-panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  min-height: 0;
+  border-left: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.odp-comments-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.odp-comments-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.odp-comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 10px;
+}
+
+/* 单条线程：元信息（已解决标记 + 状态徽标）/ 文本 / 追加列表 / 操作 / 追加输入 */
+.odp-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 6px;
+}
+
+.odp-thread-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.odp-badge {
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.odp-resolved-mark {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  white-space: nowrap;
+}
+
+.odp-thread-text {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.odp-thread-replies {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 12px;
+  border-left: 2px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.odp-reply {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.odp-thread-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.odp-reply-composer {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.odp-reply-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+/* 底部新评论输入区：textarea 占余量，发送钮随行 */
+.odp-comments-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.odp-comment-input {
+  resize: none;
+  min-height: 56px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.odp-comments-composer .odp-button {
+  align-self: flex-end;
+}
+
+.odp-comments-composer .odp-button:disabled {
+  cursor: default;
+  background: transparent;
+}
+
+/* 产物列表行的评论计数徽标（.odp-row 内右对齐；名称占余量） */
+.odp-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.odp-row-count {
+  flex: 0 0 auto;
+  min-width: 20px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 999px;
+  text-align: center;
+}

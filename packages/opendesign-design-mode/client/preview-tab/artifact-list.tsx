@@ -47,14 +47,18 @@ type ListState =
  * @param props.sessionId - 面板所在会话（列表范围 = 该会话 workspace 根）。
  * @param props.onSelect - 行点击回调（索引页交换给 iframe 视图）。
  * @param props.t - 面板文案。
+ * @param props.commentCounts - 各产物的评论线程数（workspace 相对路径 → 计数；可选——
+ *   仅设计会话由 index.tsx 传入，opendesign-comment-loop 的 .odp-row 评论计数徽标；
+ *   未传/无该产物条目时徽标不出现，列表行为与既有语义零变化）。
  */
 export function ArtifactList(props: {
   listArtifacts: ArtifactLister
   sessionId: string
   onSelect: (entry: ArtifactEntry) => void
   t: PanelTranslate
+  commentCounts?: ReadonlyMap<string, number>
 }): ReactNode {
-  const { listArtifacts, sessionId, onSelect, t } = props
+  const { listArtifacts, sessionId, onSelect, t, commentCounts } = props
   const [state, setState] = useState<ListState>({ phase: 'loading' })
   const [reloadToken, setReloadToken] = useState(0)
 
@@ -90,17 +94,23 @@ export function ArtifactList(props: {
   return (
     <div className="odp-list" role="list">
       {state.truncated && <div className="odp-note">{t('list.truncated')}</div>}
-      {state.artifacts.map(entry => (
-        <button
-          key={entry.path}
-          type="button"
-          role="listitem"
-          className="odp-row"
-          onClick={() => { onSelect(entry) }}
-        >
-          {entry.name}
-        </button>
-      ))}
+      {state.artifacts.map(entry => {
+        const count = commentCounts?.get(entry.path)
+        return (
+          <button
+            key={entry.path}
+            type="button"
+            role="listitem"
+            className="odp-row"
+            onClick={() => { onSelect(entry) }}
+          >
+            <span className="odp-row-name">{entry.name}</span>
+            {count !== undefined && count > 0 && (
+              <span className="odp-row-count" aria-label={t('comments.rowCount', { count })}>{count}</span>
+            )}
+          </button>
+        )
+      })}
     </div>
   )
 }
