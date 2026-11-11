@@ -32,7 +32,32 @@
  *      以自启形态对共存 home 跑 lifecycle（卸载 shell）——「preset 注册与 UI 注入不干扰
  *      shell 包」只在 opendesign 在场（两包共存 profile）时才可证明，单装态结果不作数。
  *
- * 真实模型自纠行为（V2 的模型修复段）不在本套件（验收计划 A11：L4 归交付后行为观察）。
+ * 评论回路场景（opendesign-comment-loop 设计 §4.1；编号带 comment-loop· 域前缀，与本文件
+ * 既有 opendesign-assets-quality 域 V 编号区分）：
+ *   S10 comment-loop·V1 —— 评论回路首评：设计面板预览产物 → 侧栏发送评论 → 聊天流回注
+ *      消息 kind 可辨（AX2 独立 kind + 文本与 buildCommentMessage 构造逐字对账）→ 线程
+ *      落盘 delivered（徽标 Sent）→ doctor 第⑫节评论环缺席/在场两形态（计数/分布/parse
+ *      健康度/路由族声明）→ 回合结束后回注消息仍在事件流（通用在轨断言）。
+ *   S11 comment-loop·V3 —— 无活 Agent 会话发评论：宿主重启后不重开会话（查无活 Agent）
+ *      → POST .create 落盘成功 + delivery=no-agent 如实落状态 → 重进会话徽标「Not
+ *      delivered - no active agent」+ Retry delivery 钮在位 → 重试后 delivered + 聊天流
+ *      出现消息 + 不产生重复线程/不重复写文本。
+ *   S12 comment-loop·V5 —— 普通（非 OpenDesign）会话：产物行点击弹回通用预览（FF6 现状），
+ *      评论侧栏折叠条/展开面板全页零出现；路由层不判型——普通会话写通道往返照常（仅受
+ *      鉴权与落点约束）。preset 清单零变化归根包 check-manifest 既有断言，不在本套件。
+ *   S13 comment-loop·V6 —— resolve → reply 重开循环：标记已解决（delivery 保留）→ 追加
+ *      评论自动回 open 且新投递周期 delivered（围栏载荷 text = 末条追加，旧内容不重投）→
+ *      产物同路径重写旧评论不消失不错挂（D8 文件级关联）→ 产物删除边界：线程保留列出、
+ *      伺服路由 404（预览行为与面板现状一致）。
+ *   S14 comment-loop·V10 —— steer 前置评论投递（AS9 探针载体）：长任务消息先置运行态 →
+ *      运行中经侧栏发评论 → delivery=delivered + 徽标 Sent + 消息 kind/载荷断言。通道判据
+ *      = 评论投递是否开启新轮 system 节点（followup 开新轮 / steer 不开）：steer 形态全量
+ *      断言（无新轮 + 回合结束后消息仍在事件流）；followup 形态按设计 §4.1 V10 协议登记
+ *      探针不适用（防弱化为对 followup 恒真的永绿断言），凭据环境长任务重造后补跑。
+ *
+ * 真实模型自纠行为（V2 的模型修复段）不在本套件（验收计划 A11：L4 归交付后行为观察）；
+ * comment-loop·V1 的「agent 实际读产物改稿写盘（文件工具触达路径）」段同口径归 D3 真机
+ * 验收（comment-loop U6 待验证检查点：A11 模式成本已知，交付后补验）。
  * 无 API key 的隔离实例上发消息：system 提示词在 provider 调用前已提交会话日志
  * （dsh-agent-loop step() 先 commit 后 request，亲读核实）——注入断言走该通道；质量环
  * 回注经宿主 agents 服务的 followup 开新轮，UserMessage 同样在 provider 调用前 commit
@@ -176,6 +201,24 @@ assert(
     && DECK_FILE_EXPECTED.includes('## Existing deck or selected template')
     && DECK_FILE_EXPECTED.includes('## New deck only'),
   'deck 协议铺盘文本应含三段结构（适用限定句 + Existing deck 兼容段 + New deck 规范段）',
+)
+
+// 评论环（comment-loop）契约词表与消息构造直接对账生产实现（同仓构建产物；词表/消息漂移即红）。
+const {
+  COMMENT_SOURCE_KIND,
+  COMMENTS_API_BASE_PATH,
+  COMMENTS_API_PATHS,
+  COMMENTS_DIR_NAME,
+  COMMENTS_FILE_NAME,
+  COMMENT_DELIVERY_STATES,
+  COMMENT_THREAD_ID_PREFIX,
+} = await import(path.join(PKG_ROOT, 'lib', 'comments', 'contract.js'))
+const { buildCommentMessage } = await import(path.join(PKG_ROOT, 'lib', 'comments', 'feedback.js'))
+const { DOCTOR_SECTIONS, DOCTOR_SECTION_COUNT } = await import(path.join(PKG_ROOT, 'lib', 'commands', 'doctor.js'))
+const { OPENDESIGN_ARTIFACTS_PREFIX_PATH } = await import(path.join(PKG_ROOT, 'lib', 'serve', 'artifacts-route.js'))
+assert(
+  COMMENT_SOURCE_KIND !== LINT_SOURCE_KIND,
+  `评论回注 kind 应与质量环 lint kind 并列不同值（comment-loop contract.ts）：${COMMENT_SOURCE_KIND}`,
 )
 
 // ── 隔离实例生命周期 ─────────────────────────────────────────────────────────
@@ -491,11 +534,12 @@ function collectSessionFiles(home) {
   return files
 }
 
-/** 读取一份会话日志的 system/message 文本清单、user/message 消息与 preset 选定记录。 */
+/** 读取一份会话日志的 system/message 文本清单、user/message 消息、preset 选定记录与 turn/start 轮次号。 */
 function readSessionLog(file) {
   const systemMessages = []
   const userMessages = []
   const presetSelections = []
+  const turnStarts = []
   for (const line of fs.readFileSync(file, 'utf8').trim().split('\n')) {
     if (line === '') continue
     const event = JSON.parse(line)
@@ -513,8 +557,14 @@ function readSessionLog(file) {
     if (event.type === 'agent-preset/selected') {
       presetSelections.push(event.data?.agentPreset ?? '')
     }
+    if (event.type === 'turn/start') {
+      // 宿主 turnBoundary 投影事件（dsh-agent-loop lib/index.js turnBoundaryProjectionDefinition，
+      // 亲读核实）；followup = next-turn 开新轮、steer = next-step 注入当前轮——轮次计数是
+      // 评论环投递通道判据（comment-loop·V10）。
+      turnStarts.push(event.data?.turn ?? null)
+    }
   }
-  return { systemMessages, userMessages, presetSelections }
+  return { systemMessages, userMessages, presetSelections, turnStarts }
 }
 
 /**
@@ -601,8 +651,8 @@ function dirtyArtifactHtml(title) {
   ].join('\n')
 }
 
-/** doctor 十一分节标题（lib/commands/doctor.ts DOCTOR_SECTIONS 字面对账；U6 扩展后形态）。 */
-const DOCTOR_SECTIONS_11 = [
+/** doctor 十二分节标题（lib/commands/doctor.ts DOCTOR_SECTIONS 字面对账；comment-loop U5 第⑫节评论环在列）。 */
+const DOCTOR_SECTIONS_12 = [
   '安装形态与资源根',
   '清单路径与三层版本',
   'roster 完整性核验',
@@ -614,13 +664,18 @@ const DOCTOR_SECTIONS_11 = [
   '资产丰富度',
   '协议与检查器对账',
   '质量发现',
+  '评论环',
 ]
 
-/** 断言 doctor 输出含全部十一分节标题行（`【N/11】标题`；前八节 = V1 零回归面）。 */
+/** 断言 doctor 输出含全部分节标题行（`【N/12】标题`；前八节 = V1 零回归面），并与 DOCTOR_SECTIONS 常量双向对账（漂移即红）。 */
 function expectDoctorSections(body) {
   assert(body.includes('OpenDesign 设计模式诊断报告'), '缺诊断报告标题')
-  DOCTOR_SECTIONS_11.forEach((title, index) => {
-    assert(body.includes(`【${index + 1}/11】${title}`), `缺分节 ${index + 1}/11 ${title}`)
+  assert(
+    JSON.stringify(Object.values(DOCTOR_SECTIONS)) === JSON.stringify(DOCTOR_SECTIONS_12),
+    `DOCTOR_SECTIONS 常量与本 spec 字面对账表漂移：${JSON.stringify(DOCTOR_SECTIONS)}`,
+  )
+  DOCTOR_SECTIONS_12.forEach((title, index) => {
+    assert(body.includes(`【${index + 1}/${DOCTOR_SECTION_COUNT}】${title}`), `缺分节 ${index + 1}/${DOCTOR_SECTION_COUNT} ${title}`)
   })
 }
 
@@ -643,6 +698,156 @@ function seedProbeArtifact(dir) {
   for (const name of ['index.html', 'secret-note.txt']) {
     fs.copyFileSync(path.join(E2E_FIXTURES, 'probe-artifact', name), path.join(dir, name))
   }
+}
+
+// ── 评论环（comment-loop）共享驱动与断言通道 ─────────────────────────────────
+
+/** 按注入标记找会话 id（collectSessionFiles 的 sessionId 段 = 宿主会话 id）。 */
+function findSessionIdBySystemMark(home, mark) {
+  const entry = collectSessionFiles(home)
+    .map((f) => ({ ...f, log: readSessionLog(f.file) }))
+    .find((f) => f.log.systemMessages.some((t) => t.includes(mark)))
+  if (entry === undefined) throw new AssertionError(`找不到 system 节点含 ${JSON.stringify(mark)} 的会话日志`)
+  return entry.sessionId
+}
+
+/** 读会话工作目录评论数据文件的线程全集（D1 单文件权威；文件缺席返回 null——区别于空清单）。 */
+function readCommentThreads(workspace) {
+  const file = path.join(workspace, COMMENTS_DIR_NAME, COMMENTS_FILE_NAME)
+  if (!fs.existsSync(file)) return null
+  return JSON.parse(fs.readFileSync(file, 'utf8')).threads
+}
+
+/** 轮询评论数据文件直到谓词满足（写侧事务即时落盘，轮询只为时序余量）。 */
+async function waitForCommentThreads(workspace, predicate, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs
+  let lastSeen = 'file absent'
+  while (Date.now() < deadline) {
+    const threads = readCommentThreads(workspace)
+    if (threads !== null && predicate(threads)) return threads
+    lastSeen = threads === null ? 'file absent' : `${threads.length} threads`
+    await sleep(400)
+  }
+  throw new AssertionError(`等待评论数据文件超时（${timeoutMs}ms；最后见到：${lastSeen}）`)
+}
+
+/** 收集隔离 home 全部会话日志里的评论回注消息（kind 匹配 COMMENT_SOURCE_KIND；AX2 独立 kind）。 */
+function collectCommentFeedbackMessages(home) {
+  return collectSessionFiles(home)
+    .flatMap((entry) => readSessionLog(entry.file).userMessages)
+    .filter((message) => message.kind === COMMENT_SOURCE_KIND)
+}
+
+/** 轮询直到评论回注消息计数达到 expected。 */
+async function waitForCommentFeedbackCount(home, expected, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs
+  let count = 0
+  while (Date.now() < deadline) {
+    count = collectCommentFeedbackMessages(home).length
+    if (count >= expected) return count
+    await sleep(500)
+  }
+  throw new AssertionError(`等待评论回注消息达到 ${expected} 条超时（${timeoutMs}ms；实际 ${count} 条）`)
+}
+
+/**
+ * 页面内同源 fetch（相对路径寻址——与面板 client/comments/api.ts 同一通道；返回
+ * status / text / JSON body，非 JSON 响应 body = null）。
+ */
+async function pageFetch(page, pathname, init) {
+  return page.evaluate(async ({ pathname, init }) => {
+    const response = await fetch(pathname, init)
+    const text = await response.text()
+    let body = null
+    try { body = JSON.parse(text) } catch { body = null }
+    return { status: response.status, text, body }
+  }, { pathname, init })
+}
+
+/** 展开评论侧栏折叠条（挂载条件 = iframe 模式 × 设计会话 × 有当前产物，client/comments/panel.tsx）。 */
+async function openCommentsSidebar(page) {
+  const tab = page.locator('button.odp-comments-tab')
+  await tab.waitFor({ state: 'visible', timeout: 15000 })
+  await tab.click()
+  await page.waitForSelector('.odp-comments-panel', { timeout: 10000 })
+}
+
+/** 经侧栏发送一条评论并等到线程徽标出现「Sent」（面板成功后自动 GET 重拉重建）。 */
+async function sendCommentViaPanel(page, text) {
+  await page.locator('.odp-comments-panel textarea.odp-comment-input').fill(text)
+  await page.locator('.odp-comments-composer button.odp-button').click()
+  await page.waitForFunction(
+    () => Array.from(document.querySelectorAll('.odp-thread .odp-badge')).some((el) => el.textContent?.trim() === 'Sent'),
+    undefined,
+    { timeout: 20000 },
+  )
+}
+
+/**
+ * 断言回注消息形态与生产构造逐字一致（AX2 独立 kind + D6 三段文本：自报身份句 /
+ * 围栏 JSON（threadId/artifactPath/text/createdAt）/ 改稿指引）——期望文本直接调
+ * buildCommentMessage 生成，生产实现漂移即红。
+ */
+function assertCommentMessageText(message, thread, payloadText) {
+  assert(
+    message.kind === COMMENT_SOURCE_KIND,
+    `回注消息 source.kind 应为 ${COMMENT_SOURCE_KIND}（AX2 独立 kind，不冒充 kind='user'）：${JSON.stringify(message.kind)}`,
+  )
+  const expected = buildCommentMessage({
+    threadId: thread.id,
+    artifactPath: thread.artifactPath,
+    text: payloadText,
+    createdAt: thread.createdAt,
+  })
+  assert(
+    message.text === expected.text,
+    `回注消息文本应逐字等于 buildCommentMessage 构造（D6 三段形态）：\n实际：${message.text.slice(0, 400)}\n期望：${expected.text.slice(0, 400)}`,
+  )
+}
+
+/** doctor 第⑫节评论环的计数/分布行（与 lib/commands/doctor.ts renderCommentsSection 同式拼装）。 */
+function commentDistributionLine(threads) {
+  const distribution = COMMENT_DELIVERY_STATES.map((state) => {
+    const count = threads.filter((thread) => thread.delivery === state).length
+    return `${state} ${count}`
+  }).join(' / ')
+  return `线程计数：${threads.length}；各 delivery 状态分布：${distribution}`
+}
+
+/** 隔离 home 全部会话日志的 turn/start 事件计数（comment-loop·V10 通道判据：followup 开新轮则 +1，steer 注入当前轮不变）。 */
+function totalTurnStartCount(home) {
+  return collectSessionFiles(home)
+    .map((f) => readSessionLog(f.file).turnStarts.length)
+    .reduce((sum, count) => sum + count, 0)
+}
+
+/**
+ * 设计会话 + 产物预览就位的共享搭建（comment-loop 场景与既有场景同形态：makeWorkspaceDir
+ * + withInstance + pick/pick/send 链 + 材质化标记在盘等待）。返回实例句柄与会话 id；
+ * 评论侧栏展开留给各场景按需执行。
+ */
+async function bootDesignSessionWithArtifact({ label, workspace }) {
+  seedProbeArtifact(workspace)
+  const instance = await withInstance({ label, fixtureRoot: MINI_OD_ROOT, workspaceDir: workspace })
+  const { page, home } = instance
+  await pickWorkspace(page, workspace)
+  await pickDesignPreset(page)
+  await sendUserMessage(page, 'design a landing page for the comment loop')
+  const sessionId = findSessionIdBySystemMark(home, DESIGN_INJECTION_MARK)
+  // 材质化标记在盘（probeDesignSession 伺服可达前提 = 评论侧栏挂载前提；S1 材质化同通道）
+  const framesReady = path.join(fs.realpathSync(workspace), '.od-frames', DECK_FRAMEWORK_FILE_NAME)
+  const deadline = Date.now() + 20000
+  while (!fs.existsSync(framesReady) && Date.now() < deadline) await sleep(500)
+  assert(fs.existsSync(framesReady), `材质化标记缺席（评论侧栏挂载前提）：${framesReady}`)
+  await openDesignPanel(page)
+  await page.waitForFunction(
+    () => Array.from(document.querySelectorAll('.odp-row')).some((el) => el.textContent?.trim() === 'index.html'),
+    undefined,
+    { timeout: 15000 },
+  )
+  await page.locator('.odp-row').first().click()
+  await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
+  return { instance, page, home, workspace, sessionId }
 }
 
 // ── 场景 ─────────────────────────────────────────────────────────────────────
@@ -817,15 +1022,15 @@ async function scenarioPanelAndDoctor() {
 
     await stepAsync(results, 'doctor ⑨ 资产丰富度：mini-od 三目录缺失降级形态带恢复动作（V6 降级口径）', async () => {
       const body = await runDoctor(page)
-      assert(body.includes('【9/11】资产丰富度'), '缺第⑨节资产丰富度')
-      assert(body.includes('craft/ 目录缺失'), `⑨ 应报 craft 目录缺失降级：${body.slice(body.indexOf('【9/11】'), body.indexOf('【10/11】'))}`)
+      assert(body.includes('【9/12】资产丰富度'), '缺第⑨节资产丰富度')
+      assert(body.includes('craft/ 目录缺失'), `⑨ 应报 craft 目录缺失降级：${body.slice(body.indexOf('【9/12】'), body.indexOf('【10/12】'))}`)
       assert(body.includes('design-templates/ 目录缺失'), '⑨ 应报形状包目录缺失降级')
       assert(body.includes('检查资产根（资源根见第①节）与 OD 安装完整性'), '⑨ 降级缺资产根完整性恢复动作')
     })
 
     await stepAsync(results, 'doctor ⑩ 协议对账：登记锚三行 + clone 未登记「无法比对」+ 登记恢复动作（V8 缺省态）', async () => {
       const body = await runDoctor(page)
-      assert(body.includes('【10/11】协议与检查器对账'), '缺第⑩节协议对账')
+      assert(body.includes('【10/12】协议与检查器对账'), '缺第⑩节协议对账')
       assert(body.includes('panel 评审团协议'), '⑩ 缺 panel 登记锚行')
       assert(body.includes('deck 演示稿协议'), '⑩ 缺 deck 登记锚行')
       assert(body.includes('反 AI 味检查项清单'), '⑩ 缺检查项清单登记锚行')
@@ -839,8 +1044,8 @@ async function scenarioPanelAndDoctor() {
       const workspaceReal = fs.realpathSync(workspace)
       await waitForReportLine(workspaceReal, (line) => line.type === 'watcher' && line.event === 'started')
       const body = await runDoctor(page)
-      assert(body.includes('【11/11】质量发现'), '缺第⑪节质量发现')
-      assert(body.includes('监听器状态：运行中推定'), `⑪ 应报监听器运行中推定：${body.slice(body.indexOf('【11/11】'), body.indexOf('【11/11】') + 600)}`)
+      assert(body.includes('【11/12】质量发现'), '缺第⑪节质量发现')
+      assert(body.includes('监听器状态：运行中推定'), `⑪ 应报监听器运行中推定：${body.slice(body.indexOf('【11/12】'), body.indexOf('【11/12】') + 600)}`)
       assert(body.includes('累计启动 1 次'), '⑪ 监听器累计启动计数不对')
       assert(body.includes('检查发现：共 0 条'), '⑪ 应报零发现（快照内既有文件未触碰不产生记录）')
       assert(body.includes('产物写盘身份记录：0 条'), '⑪ 应报零身份记录（尚未有快照外写盘）')
@@ -909,7 +1114,7 @@ async function scenarioDoctorRich() {
     await sendUserMessage(page, 'doctor richness check')
     await stepAsync(results, 'doctor ⑨ 资产丰富度非降级：craft 3 册（排除元文件）/ 形状包 1 / manifest 命中 1（V5/D10⑨）', async () => {
       const body = await runDoctor(page)
-      assert(body.includes('craft 手册：3 册'), `⑨ craft 册数不对（rich-assets 3 手册 + README 元文件应排除）：${body.slice(body.indexOf('【9/11】'), body.indexOf('【10/11】'))}`)
+      assert(body.includes('craft 手册：3 册'), `⑨ craft 册数不对（rich-assets 3 手册 + README 元文件应排除）：${body.slice(body.indexOf('【9/12】'), body.indexOf('【10/12】'))}`)
       assert(body.includes('排除 README.md 与 FUTURE_SECTIONS.md 两个元文件'), '⑨ 缺规则书口径说明')
       assert(body.includes('形状包：1 个（解析异常 0 个）'), '⑨ 形状包计数不对（rich-assets 恰 dashboard 一包）')
       assert(body.includes('设计系统 manifest 命中：1 个（解析异常 0 个）'), '⑨ manifest 命中计数不对（rich-assets 恰 sample-brand 一包）')
@@ -1404,6 +1609,405 @@ async function scenarioProjectWrites() {
   return results
 }
 
+// ── 评论回路场景（opendesign-comment-loop 设计 §4.1；无凭据环境可验判据子集）──
+
+/**
+ * 场景 S10（comment-loop·V1）：评论回路首评真机全链。
+ *
+ * 判据（设计 §4.1 V1 criteria 的无凭据可验子集）：聊天流出现 source.kind =
+ * opendesign-design-mode/comment 的回注消息（AX2 独立 kind；文本与 buildCommentMessage
+ * 构造逐字一致 = 自报身份句 + 围栏 JSON（正确 artifactPath 与评论文本）+ 改稿指引）；
+ * 线程落盘 open × delivered（面板徽标 Sent =「已发送」en 形态，deliveredAt 在场）；
+ * doctor 第⑫节评论环缺席/在场两形态（不存在=正常态 / 计数分布 / parse 健康度 / 路由族
+ * 声明形态）；回合结束后回注消息仍在事件流（通用在轨断言，非 steer 专属探针）。
+ * 「agent 实际读该产物源码改写并写盘（会话日志可见文件工具触达路径）」段需凭据环境
+ * 真模型，归 D3 真机验收承接（套件头 L4 口径）。设计步骤①「设计会话产出产物」在本套件
+ * 以 seed 产物 + 设计会话判定与材质化标记在盘承载（与 S1/S2 材质化同通道）。
+ */
+async function scenarioCommentLoopV1() {
+  const results = []
+  const workspace = makeWorkspaceDir('cl-v1')
+  const { instance, page, home, workspace: ws } = await bootDesignSessionWithArtifact({ label: 'cl-v1', workspace })
+  try {
+    await stepAsync(results, 'comment-loop·V1：doctor 第⑫节缺席常态——评论文件不存在/计数 0/路由族 5 条声明形态（首次评论前正常态）', async () => {
+      const body = await runDoctor(page)
+      expectDoctorSections(body)
+      assert(body.includes('【12/12】评论环'), '缺第⑫节评论环')
+      assert(body.includes('评论文件：不存在'), '⑫ 缺席常态应报评论文件不存在（不伪装损坏也不自动建）')
+      assert(body.includes('线程计数：0'), '⑫ 缺席常态线程计数应为 0')
+      assert(body.includes(`路由族契约共 ${COMMENTS_API_PATHS.length} 条`), `⑫ 路由族声明应为 ${COMMENTS_API_PATHS.length} 条`)
+      assert(body.includes('注册状态：声明形态'), '⑫ 注册状态应如实标注声明形态（不冒充运行时核验）')
+    })
+
+    await stepAsync(results, 'comment-loop·V1 步骤②：展开评论侧栏发送首条评论——面板线程徽标随投递结果显示 Sent（已发送）', async () => {
+      await openCommentsSidebar(page)
+      await sendCommentViaPanel(page, '主视觉配色太艳，压暗一档')
+    })
+
+    await stepAsync(results, 'comment-loop·V1：线程落盘 open × delivered——c_ 前缀 id / artifactPath 文件级挂靠 / deliveredAt 在场', async () => {
+      const threads = await waitForCommentThreads(ws, (list) => list.length >= 1)
+      assert(threads.length === 1, `首评应恰 1 线程：${JSON.stringify(threads.map((t) => t.id))}`)
+      const thread = threads[0]
+      assert(thread.id.startsWith(COMMENT_THREAD_ID_PREFIX), `线程 id 应带 ${COMMENT_THREAD_ID_PREFIX} 前缀：${thread.id}`)
+      assert(thread.artifactPath === 'index.html', `评论应挂靠当前预览产物（D8 文件级）：${thread.artifactPath}`)
+      assert(thread.text === '主视觉配色太艳，压暗一档', `落盘评论文本不对：${JSON.stringify(thread.text)}`)
+      assert(
+        thread.status === 'open' && thread.delivery === 'delivered',
+        `落盘状态机组合态应为 open × delivered：${JSON.stringify({ status: thread.status, delivery: thread.delivery })}`,
+      )
+      assert(typeof thread.deliveredAt === 'string' && thread.deliveredAt !== '', 'delivered 线程应有 deliveredAt（不变量：deliveredAt 存在 ⇔ delivery === delivered）')
+      assert(Array.isArray(thread.replies) && thread.replies.length === 0, '首评线程 replies 应为空数组')
+    })
+
+    await stepAsync(results, 'comment-loop·V1 步骤③：聊天流回注消息 kind 可辨——独立 kind + 文本与 buildCommentMessage 逐字一致（AX2/D6）', async () => {
+      await waitForCommentFeedbackCount(home, 1)
+      const messages = collectCommentFeedbackMessages(home)
+      assert(messages.length === 1, `评论回注消息应恰 1 条：${messages.length}`)
+      assertCommentMessageText(messages[0], readCommentThreads(ws)[0], readCommentThreads(ws)[0].text)
+    })
+
+    await stepAsync(results, 'comment-loop·V1 末条（通用在轨断言）：回合结束后回注消息仍在会话事件流（未被 discard）', async () => {
+      await sleep(2500) // 回合结束（无凭据环境 MISSING_CREDENTIAL 失败收场）与日志 batch flush 余量
+      const messages = collectCommentFeedbackMessages(home)
+      assert(messages.length === 1, `回合结束后回注消息应仍在事件流（未被 discard）：${messages.length}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V1：doctor 第⑫节在场形态——线程计数 1 / delivered 分布 / parse 健康度正常', async () => {
+      const body = await runDoctor(page)
+      const threads = readCommentThreads(ws)
+      assert(body.includes('【12/12】评论环'), '缺第⑫节评论环')
+      assert(body.includes('评论文件：存在'), '⑫ 在场形态应报评论文件存在')
+      assert(body.includes(commentDistributionLine(threads)), `⑫ 计数/分布行不对：期望「${commentDistributionLine(threads)}」`)
+      assert(body.includes('parse 健康度：正常'), '⑫ 应报 parse 健康（与读侧 GET 共用同一判定点）')
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
+/**
+ * 场景 S11（comment-loop·V3）：无活 Agent 会话的评论投递失败态与重试投递闭环。
+ *
+ * 无活 Agent 形态 = 宿主重启后不重开会话（会话已结束 → deliverFeedback 查无活 Agent，
+ * lib/quality/feedback.ts no-agent 分支）；恢复 Agent = 重进会话重挂。判据（设计 §4.1 V3
+ * criteria）：评论落盘成功（线程入 comments.json）；投递结果 no-agent 如实落状态与徽标
+ * （不抛错不静默）；重试（POST .retry 纯重投）后 delivery 更新 delivered 且聊天流出现
+ * 消息——不产生重复线程、不重复写文本。
+ */
+async function scenarioCommentNoAgent() {
+  const results = []
+  const workspace = makeWorkspaceDir('cl-v3')
+  seedProbeArtifact(workspace)
+  const home = path.join(RUN_ROOT, 'home-cl-v3')
+  fs.cpSync(TEMPLATE_HOME, home, { recursive: true })
+  fs.rmSync(path.join(home, 'sessions'), { recursive: true, force: true })
+  fs.rmSync(path.join(home, 'storages'), { recursive: true, force: true })
+  fs.mkdirSync(path.join(home, 'storages'), { recursive: true })
+  const workspaceId = crypto.randomUUID()
+  const workspaceReal = fs.realpathSync(workspace)
+  const writeWorkspaceSeed = () => {
+    fs.writeFileSync(path.join(home, 'storages', 'workspace.json'), JSON.stringify({
+      unit: { name: 'workspace', version: 2 },
+      global: { initialized: true, workspaceIds: [workspaceId], archivedSessionIds: [], pinnedSessionIds: [], defaultWorkspaceId: workspaceId },
+      tables: { workspaces: { [workspaceId]: { path: workspaceReal, title: path.basename(workspace), sessionIds: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } } },
+    }, null, 2))
+  }
+  writeWorkspaceSeed()
+  const patchFile = writeSessionLogPatch(home)
+  const launch = () => startInstance({ label: 'cl-v3', home, fixtureRoot: MINI_OD_ROOT, patchFile, cwd: workspace })
+
+  let first = null
+  let second = null
+  try {
+    first = await launch()
+    await pickWorkspace(first.page, workspace)
+    await pickDesignPreset(first.page)
+    await sendUserMessage(first.page, 'design a page whose agent will be gone')
+    const sessionId = findSessionIdBySystemMark(home, DESIGN_INJECTION_MARK)
+    await first.close()
+    first = null
+
+    // 重启宿主（同 home），停在 hero 不进入会话：agents 服务对该会话查无活 Agent。
+    writeWorkspaceSeed()
+    second = await launch()
+
+    await stepAsync(results, 'comment-loop·V3 步骤②③：无活 Agent 会话发评论——落盘成功 + delivery=no-agent 如实落状态，不抛错不静默', async () => {
+      const outcome = await pageFetch(second.page, COMMENTS_API_BASE_PATH + '.create', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId, artifactPath: 'index.html', text: '无活 Agent 探针评论' }),
+      })
+      assert(outcome.status === 200, `POST .create 应落盘成功（200）：${JSON.stringify({ status: outcome.status, body: outcome.body })}`)
+      assert(outcome.body?.delivery === 'no-agent', `投递结果应如实落 no-agent：${JSON.stringify(outcome.body)}`)
+      assert(outcome.body?.status === 'open', `no-agent 线程 lifecycle 应保持 open（重试前提，D5 转移⑤）：${JSON.stringify(outcome.body)}`)
+      const threads = await waitForCommentThreads(workspace, (list) => list.length >= 1)
+      assert(
+        threads.length === 1 && threads[0].delivery === 'no-agent',
+        `落盘线程应恰 1 条 no-agent：${JSON.stringify(threads.map((t) => ({ id: t.id, delivery: t.delivery })))}`,
+      )
+      assert(collectCommentFeedbackMessages(home).length === 0, 'no-agent 投递不应产生回注消息（查无活 Agent 放弃投递仅落状态）')
+    })
+
+    await stepAsync(results, 'comment-loop·V3 步骤③：重进会话后侧栏如实显示「Not delivered - no active agent」徽标与「Retry delivery」按钮（open × no-agent 可重投）', async () => {
+      const row = second.page.locator(`.taiji-pb-row[data-session-id="${sessionId}"]`)
+      assert(await row.count() > 0, `侧栏缺目标会话行（${sessionId}）`)
+      await row.click()
+      await second.page.waitForTimeout(2500)
+      await clearModalGates(second.page)
+      await openDesignPanel(second.page)
+      await second.page.waitForFunction(
+        () => Array.from(document.querySelectorAll('.odp-row')).some((el) => el.textContent?.trim() === 'index.html'),
+        undefined,
+        { timeout: 15000 },
+      )
+      await second.page.locator('.odp-row').first().click()
+      await second.page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
+      await openCommentsSidebar(second.page)
+      await second.page.waitForFunction(
+        () => Array.from(document.querySelectorAll('.odp-thread .odp-badge')).some((el) => el.textContent?.trim() === 'Not delivered - no active agent'),
+        undefined,
+        { timeout: 15000 },
+      )
+      const retry = second.page.locator('.odp-thread button.odp-button', { hasText: 'Retry delivery' })
+      assert(await retry.isVisible(), 'open × no-agent 线程应显示重试投递按钮（D5 转移⑤）')
+    })
+
+    await stepAsync(results, 'comment-loop·V3 步骤④：恢复 Agent 后重试投递——delivery 更新 delivered + 聊天流出现消息 + 不产生重复线程/不重复写文本', async () => {
+      await second.page.locator('.odp-thread button.odp-button', { hasText: 'Retry delivery' }).click()
+      await second.page.waitForFunction(
+        () => Array.from(document.querySelectorAll('.odp-thread .odp-badge')).some((el) => el.textContent?.trim() === 'Sent'),
+        undefined,
+        { timeout: 20000 },
+      )
+      await waitForCommentFeedbackCount(home, 1)
+      const messages = collectCommentFeedbackMessages(home)
+      const threads = readCommentThreads(workspace)
+      assert(threads.length === 1, `.retry 纯重投不产生重复线程：${JSON.stringify(threads.map((t) => t.id))}`)
+      assert(
+        threads[0].text === '无活 Agent 探针评论' && threads[0].replies.length === 0,
+        `重投不重复写文本（text/replies 不变）：${JSON.stringify({ text: threads[0].text, replies: threads[0].replies })}`,
+      )
+      assert(threads[0].delivery === 'delivered', `重试后 delivery 应为 delivered：${threads[0].delivery}`)
+      assert(messages.length === 1, `重试后聊天流应恰出现 1 条回注消息：${messages.length}`)
+      assertCommentMessageText(messages[0], threads[0], threads[0].text)
+    })
+  } finally {
+    if (first !== null) await first.close()
+    if (second !== null) await second.close()
+  }
+  return results
+}
+
+/**
+ * 场景 S12（comment-loop·V5）：普通（非 OpenDesign）会话的面板行为。
+ *
+ * 判据（设计 §4.1 V5 criteria）：普通会话产物仍按现状预览（FF6 现状——产物行点击经弹回
+ * 通道交回通用文件预览，设计面板认领退出）；无 .od-frames 标记文件的会话评论侧栏不出现
+ * （UI 出现条件 = 设计会话判定，与面板现状同源）；路由层不判定会话类型（普通会话调用
+ * 仅受鉴权与落点约束——写通道往返照常）。preset 声明清单与 standard 基线零变化归根包
+ * check-manifest 既有断言（§4.3 独立需跑项，不在本套件）。
+ */
+async function scenarioStandardSessionNoComments() {
+  const results = []
+  const workspace = makeWorkspaceDir('cl-v5')
+  const instance = await withInstance({ label: 'cl-v5', fixtureRoot: MINI_OD_ROOT, workspaceDir: workspace })
+  const workspaceReal = fs.realpathSync(workspace)
+  try {
+    const { page, home } = instance
+    await pickWorkspace(page, workspace)
+    await sendUserMessage(page, 'plain session with one html artifact')
+    const entry = await waitForSessionLog(home, (_e, l) => l.systemMessages.length > 0)
+    const sessionId = path.basename(path.dirname(entry.file))
+    fs.writeFileSync(path.join(workspaceReal, 'legacy.html'), '<!doctype html><html lang="en"><body><h1>plain session page</h1></body></html>')
+
+    await stepAsync(results, 'comment-loop·V5：普通会话产物行点击——评论侧栏全页零出现（弹回通道交回通用预览，FF6 现状不变）', async () => {
+      await openDesignPanel(page)
+      await page.waitForFunction(
+        () => Array.from(document.querySelectorAll('.odp-row')).some((el) => el.textContent?.trim() === 'legacy.html'),
+        undefined,
+        { timeout: 15000 },
+      )
+      await page.locator('.odp-row').first().click()
+      // 非设计会话 + 产物地址模式 → 弹回（client/preview-tab/index.tsx bounceToGenericPreview），
+      // 设计面板认领退出：.odp-body 消失即 FF6 现状裁决的可证伪检查。
+      await page.waitForFunction(() => document.querySelectorAll('.odp-body').length === 0, undefined, { timeout: 10000 })
+      const counts = await page.evaluate(() => ({
+        tab: document.querySelectorAll('.odp-comments-tab').length,
+        panel: document.querySelectorAll('.odp-comments-panel').length,
+      }))
+      assert(counts.tab === 0 && counts.panel === 0, `非设计会话不应出现评论侧栏（折叠条/展开面板均零）：${JSON.stringify(counts)}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V5：路由层不判定会话类型——普通会话写通道往返照常（POST .create 200 + 落盘 + GET 基路径可读）', async () => {
+      const outcome = await pageFetch(page, COMMENTS_API_BASE_PATH + '.create', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sessionId, artifactPath: 'legacy.html', text: '普通会话路由不判型探针' }),
+      })
+      assert(outcome.status === 200, `普通会话 POST .create 应照常受理（仅受鉴权与落点约束）：${JSON.stringify({ status: outcome.status, body: outcome.body })}`)
+      assert(outcome.body?.delivery === 'delivered', `普通会话评论投递应照常 delivered（空闲 agent → followup）：${JSON.stringify(outcome.body)}`)
+      const threads = await waitForCommentThreads(workspaceReal, (list) => list.length >= 1)
+      assert(threads.length === 1 && threads[0].artifactPath === 'legacy.html', `落盘线程挂靠不对：${JSON.stringify(threads.map((t) => t.artifactPath))}`)
+      const list = await pageFetch(page, `${COMMENTS_API_BASE_PATH}?sessionId=${encodeURIComponent(sessionId)}`)
+      assert(
+        list.status === 200 && Array.isArray(list.body?.threads) && list.body.threads.length === 1,
+        `GET 基路径应返回线程清单：${JSON.stringify({ status: list.status, threads: list.body?.threads?.length })}`,
+      )
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
+/**
+ * 场景 S13（comment-loop·V6）：resolve → reply 重开循环 + 产物重写/删除边界。
+ *
+ * 判据（设计 §4.1 V6 criteria）：首线程经 resolved → open 重开、追加评论在 replies 数组、
+ * 旧内容未重投（回注消息恰 2 条且第二条载荷 text = 末条追加）；旧评论不因产物重写消失
+ * 或错挂（artifactPath 文件级关联，重写同路径不失效——「agent 改写产物」以同路径文件
+ * 重写站在文件级关联不变量的断言位，模型改稿段归 D3 真机）；产物被删除的边界：线程保留
+ * 列出（历史不删），预览行为与面板现状一致（伺服路由 404）。
+ */
+async function scenarioCommentResolveReply() {
+  const results = []
+  const workspace = makeWorkspaceDir('cl-v6')
+  const { instance, page, home, workspace: ws, sessionId } = await bootDesignSessionWithArtifact({ label: 'cl-v6', workspace })
+  const workspaceReal = fs.realpathSync(ws)
+  try {
+    // 前置：首评 delivered（与 S10 同形态；判据已在 S10 全量断言，此处只置态）
+    await openCommentsSidebar(page)
+    await sendCommentViaPanel(page, '首条评论：主视觉配色压暗一档')
+    const seeded = await waitForCommentThreads(ws, (list) => list.length >= 1 && list[0].delivery === 'delivered')
+    const threadId = seeded[0].id
+
+    await stepAsync(results, 'comment-loop·V6 步骤①：标记已解决——resolved × delivered 保留（resolve 不触发投递，Resolved 标记在位）', async () => {
+      await page.locator('.odp-thread button.odp-button', { hasText: 'Mark resolved' }).click()
+      await page.waitForFunction(() => document.querySelectorAll('.odp-resolved-mark').length > 0, undefined, { timeout: 15000 })
+      const current = readCommentThreads(ws)[0]
+      assert(current.id === threadId && current.status === 'resolved', `resolve 后 lifecycle 应为 resolved：${JSON.stringify(current.status)}`)
+      assert(current.delivery === 'delivered', `resolve 不触发投递、delivery 原样保留（D5 转移③）：${current.delivery}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V6 步骤②：对已解决线程追加评论——自动回 open 且新投递周期 delivered（replies 追加、旧内容不重投、载荷 text = 末条追加）', async () => {
+      await page.locator('.odp-reply-composer input.odp-reply-input').fill('标题字号太大')
+      await page.locator('.odp-reply-composer button.odp-button').click()
+      await page.waitForFunction(
+        () => Array.from(document.querySelectorAll('.odp-thread .odp-badge')).some((el) => el.textContent?.trim() === 'Sent'),
+        undefined,
+        { timeout: 20000 },
+      )
+      const current = readCommentThreads(ws)[0]
+      assert(current.status === 'open', `追加后线程应自动回 open（D5 转移④）：${current.status}`)
+      assert(current.replies.length === 1 && current.replies[0].text === '标题字号太大', `追加评论应在 replies 数组：${JSON.stringify(current.replies)}`)
+      assert(current.delivery === 'delivered' && typeof current.deliveredAt === 'string', '追加后的新投递周期应 delivered（徽标 Sent 同证）')
+      await waitForCommentFeedbackCount(home, 2)
+      const messages = collectCommentFeedbackMessages(home)
+      assert(messages.length === 2, `追加投递应恰第二条回注消息（旧内容未重投）：${messages.length}`)
+      assertCommentMessageText(messages[0], current, current.text)
+      assertCommentMessageText(messages[1], current, '标题字号太大')
+    })
+
+    await stepAsync(results, 'comment-loop·V6 步骤③：产物同路径重写——旧评论不消失不错挂（artifactPath 文件级关联，D8）', async () => {
+      // 「agent 改写该产物写盘」的文件级站立：同路径重写（模型改稿行为段归 D3 真机）
+      fs.writeFileSync(path.join(workspaceReal, 'index.html'), '<!doctype html><html lang="en"><body><h1>rewritten artifact stand-in</h1></body></html>')
+      const list = await pageFetch(page, `${COMMENTS_API_BASE_PATH}?sessionId=${encodeURIComponent(sessionId)}`)
+      assert(list.status === 200 && list.body?.threads?.length === 1, `产物重写后线程应保留：${JSON.stringify(list.body)}`)
+      assert(
+        list.body.threads[0].artifactPath === 'index.html' && list.body.threads[0].replies.length === 1,
+        '重写同路径不失效、不错挂（文件级关联）',
+      )
+      const artifact = await pageFetch(page, `${OPENDESIGN_ARTIFACTS_PREFIX_PATH}/${sessionId}/index.html`)
+      assert(artifact.status === 200 && artifact.text.includes('rewritten artifact stand-in'), `重写后产物应按新内容伺服（200）：${artifact.status}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V6 步骤④（删除边界）：产物删除后线程保留列出（历史不删），伺服路由 404（预览行为与面板现状一致）', async () => {
+      fs.rmSync(path.join(workspaceReal, 'index.html'))
+      const list = await pageFetch(page, `${COMMENTS_API_BASE_PATH}?sessionId=${encodeURIComponent(sessionId)}`)
+      assert(list.status === 200 && list.body?.threads?.length === 1, `产物删除后线程应保留列出（D1 无删除路由，历史不删）：${JSON.stringify(list.body)}`)
+      const gone = await pageFetch(page, `${OPENDESIGN_ARTIFACTS_PREFIX_PATH}/${sessionId}/index.html`)
+      assert(gone.status === 404, `产物删除后伺服路由应 404（预览行为与面板现状一致）：${gone.status}`)
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
+/**
+ * 场景 S14（comment-loop·V10，AS9 探针载体）：steer 前置下评论投递。
+ *
+ * 步骤（设计 §4.1 V10）：① 长任务消息先置运行态 → ② 运行中经侧栏发评论 → ③ delivery
+ * 回写 delivered + 徽标 Sent → ⑤ 检查会话事件流。通道判据 = 评论投递后 turn/start 事件
+ * 计数是否 +1（宿主 turnBoundary 投影事件，dsh-agent-loop lib/index.js 亲读核实：followup
+ * = send(input, 'next-turn') 开新轮、steer = send(input, 'next-step') 注入当前轮）。
+ * steer 形态全量断言（无新轮 + 回合结束后消息仍在事件流——AS9 未被 discard）；followup
+ * 形态按设计 §4.1 V10 criteria 协议登记探针不适用（防通道分流致断言假红、或弱化为对
+ * followup 恒真的永绿断言），凭据环境长任务重造后补跑。
+ */
+async function scenarioCommentSteer() {
+  const results = []
+  const workspace = makeWorkspaceDir('cl-v10')
+  const { instance, page, home, workspace: ws } = await bootDesignSessionWithArtifact({ label: 'cl-v10', workspace })
+  try {
+    // 步骤①：长任务消息 Send 即发（不等回合失败——给 steer 留运行窗口），等该轮 turn/start 提交
+    const composer = page.locator('[contenteditable="true"]').first()
+    await composer.click()
+    await page.keyboard.type('把三个页面都按新规范重做')
+    await page.waitForTimeout(300)
+    await page.getByRole('button', { name: 'Send message' }).click()
+    const baselineDeadline = Date.now() + 30000
+    while (totalTurnStartCount(home) < 2 && Date.now() < baselineDeadline) await sleep(500)
+    assert(totalTurnStartCount(home) >= 2, `长任务轮应已开启（turn/start 计数 ≥ 2）：${totalTurnStartCount(home)}`)
+    const baselineTurnStarts = totalTurnStartCount(home)
+
+    await stepAsync(results, 'comment-loop·V10 步骤②③：agent 运行中经侧栏发评论——thread.delivery 回写 delivered + 徽标「已发送」', async () => {
+      await openCommentsSidebar(page)
+      await sendCommentViaPanel(page, '主视觉配色太艳，压暗一档')
+      const threads = await waitForCommentThreads(ws, (list) => list.length >= 1 && list[0].delivery === 'delivered')
+      assert(threads[0].artifactPath === 'index.html', `评论挂靠不对：${threads[0].artifactPath}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V10 步骤⑤：回注消息 kind 可辨 + 载荷正确（AX2 独立 kind / D6 围栏 JSON）', async () => {
+      await waitForCommentFeedbackCount(home, 1)
+      const messages = collectCommentFeedbackMessages(home)
+      assert(messages.length === 1, `评论回注消息应恰 1 条：${messages.length}`)
+      assertCommentMessageText(messages[0], readCommentThreads(ws)[0], '主视觉配色太艳，压暗一档')
+    })
+
+    // 通道判定：等 followup 形态显形（新轮 turn/start）或 15s 预算耗尽（steer 形态——
+    // 评论注入当前轮不开新轮；凭据环境长任务仍在运行时亦落此分支）
+    let followupForm = false
+    const channelDeadline = Date.now() + 15000
+    while (Date.now() < channelDeadline) {
+      if (totalTurnStartCount(home) > baselineTurnStarts) { followupForm = true; break }
+      await sleep(500)
+    }
+
+    if (followupForm) {
+      await stepAsync(results, 'comment-loop·V10 探针登记（设计 §4.1 V10 协议）：本轮 followup 通道（评论投递开新轮，turn/start +1）——steer 形态断言不在本轮计数，凭据环境长任务重造后补跑', async () => {
+        await sleep(2500) // 回合结束与日志 flush 余量
+        const messages = collectCommentFeedbackMessages(home)
+        const current = readCommentThreads(ws)[0]
+        assert(totalTurnStartCount(home) === baselineTurnStarts + 1, `followup 形态应恰开一个新轮（turn/start ${baselineTurnStarts} → +1）：${totalTurnStartCount(home)}`)
+        assert(messages.length === 1, `followup 通道回注消息应仍在事件流（未被 discard）：${messages.length}`)
+        assert(current.delivery === 'delivered', `followup 通道 delivery 应回写 delivered：${current.delivery}`)
+        console.log('    [环境分界] comment-loop·V10：本轮评论走 followup 通道（agent 轮次先于评论结束——无凭据环境回合秒败的确定性形态）。设计 §4.1 V10 判据：该轮不适用 steer 探针、需重造 steer 场景后再断言（防通道分流致断言假红、或断言被弱化为对 followup 恒真的永绿断言）；steer 形态需凭据环境长任务，D3 真机验收承接')
+      })
+    } else {
+      await stepAsync(results, 'comment-loop·V10 步骤③⑤ steer 形态全量断言：评论注入当前轮（无新轮 turn/start）+ 回合结束后消息仍在事件流（AS9 未被 discard）', async () => {
+        assert(totalTurnStartCount(home) === baselineTurnStarts, `steer 形态不应开启新轮（turn/start 计数应保持 ${baselineTurnStarts}）：${totalTurnStartCount(home)}`)
+        const messages = collectCommentFeedbackMessages(home)
+        assert(messages.length === 1, `steered 消息在回合结束后应仍在事件流（AS9）：${messages.length}`)
+      })
+    }
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
 // ── shell 包共存回归（V1·A9/A10/A11；设计 §4.3 e2e 影响面第一行）───────────────
 
 /** verify runner 子进程（--json：stdout 尾部 JSON 行 = 聚合 verdict；日志走 stderr）。 */
@@ -1493,8 +2097,8 @@ async function scenarioShellCoexistRegression() {
 
 // ── 主编排 ───────────────────────────────────────────────────────────────────
 
-/** 全局看门狗：卡死（等待永不返回）时按 PID 清场并以失败退出，不留孤儿 dsh。 */
-const WATCHDOG_MS = 30 * 60 * 1000
+/** 全局看门狗：卡死（等待永不返回）时按 PID 清场并以失败退出，不留孤儿 dsh（预算随评论回路五场景扩容）。 */
+const WATCHDOG_MS = 45 * 60 * 1000
 const watchdog = setTimeout(() => {
   console.error(`\n[e2e watchdog] ${WATCHDOG_MS}ms 全局预算耗尽，按 PID 清场退出`)
   for (const pid of [...livePids]) void killProcessTree(pid)
@@ -1520,6 +2124,11 @@ try {
     ['S7 V9+V1·RL7 resume 代际重组+检查环不变量', scenarioResume],
     ['S8 V1·V11 项目目录写入形态（5 管理名）', scenarioProjectWrites],
     ['S9 V1·A9/A10/A11 shell 包共存回归（runner 串接）', scenarioShellCoexistRegression],
+    ['S10 comment-loop·V1 评论回路首评 回注kind+落盘delivered+doctor⑫两形态+在轨', scenarioCommentLoopV1],
+    ['S11 comment-loop·V3 无活Agent no-agent落盘+徽标+重试投递闭环', scenarioCommentNoAgent],
+    ['S12 comment-loop·V5 普通会话侧栏零出现+路由不判型', scenarioStandardSessionNoComments],
+    ['S13 comment-loop·V6 resolve→reply重开+产物重写/删除边界', scenarioCommentResolveReply],
+    ['S14 comment-loop·V10 steer前置评论投递（AS9探针载体）', scenarioCommentSteer],
   ]
 
   const outcome = []

@@ -11,10 +11,18 @@
  * lib/ 改动即生效）。
  *
  * 核心组（本轮 impl-plan 验收项 A9 的 L3 段；模型行为段归本轮 A11/A12/L4）：roster（选择器菜单 + 芯片选择）→
- * 注入（会话日志 system 节点特征句）→ doctor 十一分节（本轮 V5 的 0.2.2 形态，前八节零回归）→
- * 材质化恰 5 管理名（V1 设计包 D8 + opendesign-assets-quality D9）→ 预览面板 iframe 产物载入 + 探针（V1·RL6/V1·RL8 的 0.2.2 形态）→
+ * 注入（会话日志 system 节点特征句）→ doctor 十二分节（本轮 V5 的 0.2.2 形态 + comment-loop
+ * 设计包第⑫节评论环）→ 材质化恰 5 管理名（V1 设计包 D8 + opendesign-assets-quality D9）→ 预览面板 iframe 产物载入 + 探针（V1·RL6/V1·RL8 的 0.2.2 形态）→
  * 检查环桌面宿主可用性（本轮 V2 的 0.2.2 形态：真机写盘 P0 产物 → 回注消息 source.kind
- * 协议信号形态断言 + report.jsonl fed-back 记录——本轮 RL1 的 0.2.2 半场）。
+ * 协议信号形态断言 + report.jsonl fed-back 记录——本轮 RL1 的 0.2.2 半场）→ 评论回路桌面
+ * 半场（comment-loop 设计包，任务书 U6 桌面清单）：V8 首评循环（侧栏发送 → 落盘 delivered
+ * → 回注消息 kind/载荷断言 → 桌面宿主 /api 相对路径写通道可达）+ V2 重启后线程保留
+ * （kill + 同 home relaunch，delivered 不回退 pending，doctor ⑫ 重启后在场形态）。
+ *
+ * 桌面壳 /api 相对路径边界（comment-loop V8 新增验证点的复现形态口径）：本 spec 的宿主 =
+ * app 内嵌 0.2.2 宿主（http 形态，V1·AS7 同款复现法）——相对路径可达性以页面同源 fetch
+ * （client/comments/api.ts 同一寻址通道）对 asar 宿主实证；Electron dsh-app:// 壳层
+ * webview 的转发形态不在本复现套件驱动面内（V1·AS7 壳层结论以 runlog 登记的同款先例）。
  *
  * V1·AS7 混合内容（桌面 dsh-app:// 嵌 http://127.0.0.1 iframe，V1 设计包前提编号）：实测已于
  * V1·U6 交付门完成并关闭（V1 复审决议 RR3）：裸 iframe 与 sandbox="allow-scripts" 均触发 load、
@@ -77,8 +85,25 @@ const { MATERIALIZED_WRITE_LIST, DECK_FRAMEWORK_FILE_NAME } = await import(
 )
 const { renderDeckFrameworkFile } = await import(path.join(PKG_ROOT, 'lib', 'protocols', 'deck.js'))
 
-/** doctor 十一分节标题（lib/commands/doctor.ts DOCTOR_SECTIONS 字面对账；本轮 impl-plan U6 扩展后形态）。 */
-const DOCTOR_SECTIONS_11 = [
+// 评论环（comment-loop）契约词表与消息构造直接对账生产实现（同仓构建产物；词表/消息漂移即红）。
+const {
+  COMMENT_SOURCE_KIND,
+  COMMENTS_API_BASE_PATH,
+  COMMENTS_API_PATHS,
+  COMMENTS_DIR_NAME,
+  COMMENTS_FILE_NAME,
+  COMMENT_DELIVERY_STATES,
+  COMMENT_THREAD_ID_PREFIX,
+} = await import(path.join(PKG_ROOT, 'lib', 'comments', 'contract.js'))
+const { buildCommentMessage } = await import(path.join(PKG_ROOT, 'lib', 'comments', 'feedback.js'))
+const { DOCTOR_SECTIONS, DOCTOR_SECTION_COUNT } = await import(path.join(PKG_ROOT, 'lib', 'commands', 'doctor.js'))
+assert(
+  COMMENT_SOURCE_KIND !== LINT_SOURCE_KIND,
+  `评论回注 kind 应与质量环 lint kind 并列不同值（comment-loop contract.ts）：${COMMENT_SOURCE_KIND}`,
+)
+
+/** doctor 十二分节标题（lib/commands/doctor.ts DOCTOR_SECTIONS 字面对账；comment-loop U5 第⑫节评论环在列）。 */
+const DOCTOR_SECTIONS_12 = [
   '安装形态与资源根',
   '清单路径与三层版本',
   'roster 完整性核验',
@@ -90,7 +115,35 @@ const DOCTOR_SECTIONS_11 = [
   '资产丰富度',
   '协议与检查器对账',
   '质量发现',
+  '评论环',
 ]
+
+/** doctor 第⑫节评论环的计数/分布行（与 lib/commands/doctor.ts renderCommentsSection 同式拼装）。 */
+function commentDistributionLine(threads) {
+  const distribution = COMMENT_DELIVERY_STATES.map((state) => {
+    const count = threads.filter((thread) => thread.delivery === state).length
+    return `${state} ${count}`
+  }).join(' / ')
+  return `线程计数：${threads.length}；各 delivery 状态分布：${distribution}`
+}
+
+/** 断言回注消息形态与生产构造逐字一致（AX2 独立 kind + D6 三段文本；期望文本直接调 buildCommentMessage 生成）。 */
+function assertCommentMessageText(message, thread, payloadText) {
+  assert(
+    message.kind === COMMENT_SOURCE_KIND,
+    `回注消息 source.kind 应为 ${COMMENT_SOURCE_KIND}（AX2 独立 kind，不冒充 kind='user'）：${JSON.stringify(message.kind)}`,
+  )
+  const expected = buildCommentMessage({
+    threadId: thread.id,
+    artifactPath: thread.artifactPath,
+    text: payloadText,
+    createdAt: thread.createdAt,
+  })
+  assert(
+    message.text === expected.text,
+    `回注消息文本应逐字等于 buildCommentMessage 构造（D6 三段形态）：\n实际：${message.text.slice(0, 400)}\n期望：${expected.text.slice(0, 400)}`,
+  )
+}
 
 /** 构造一个含 P0 特征（紫渐变）且过完整性哨兵（文末 </html>）的产物 HTML 文本。 */
 function dirtyArtifactHtml(title) {
@@ -179,47 +232,63 @@ fs.writeFileSync(patchFile, [
 
 // ── 启动（app 内嵌宿主；cwd = 工作目录，0.2.2 伺服根 = workingDirectory.defaultDirectory
 //    缺省回退 process.cwd()，与 seed 工作区对齐）────────────────────────────────────
-const child = spawn(DESKTOP_CLI, ['--patch', patchFile, '--profile', 'web', '--no-open', '--port', '0'], {
-  env: { ...process.env, DSH_HOME: home, OD_RESOURCE_ROOT: MINI_OD_ROOT },
-  cwd: workspaceReal,
-  stdio: ['ignore', 'pipe', 'pipe'],
-  detached: true,
-})
-let hostOutput = ''
-child.stdout.on('data', (chunk) => { hostOutput += String(chunk) })
-child.stderr.on('data', (chunk) => { hostOutput += `[stderr] ${String(chunk)}` })
 
-const deadline = Date.now() + 90000
-let url = null
-while (url === null && Date.now() < deadline) {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    console.error(`[desktop-e2e] 宿主提前退出：\n${hostOutput.slice(-2500)}`)
-    console.error('[desktop-e2e] 恢复动作：检查手写 profile 形态（bundles 清单/依赖 link）与 0.2.2 宿主的兼容性。')
+/** 当前宿主进程（V2 重启语义：killProcessGroup 与 relaunch 都作用于它）。 */
+let hostChild = null
+
+/**
+ * 自启桌面宿主（app 内嵌 0.2.2）并从 stdout 解析认证 URL（不猜端口不猜 token）。
+ * 首启与 comment-loop·V2 的重启形态共用同一函数（同 home 重启 = 会话与评论数据持久性载体）。
+ */
+async function launchHost() {
+  const child = spawn(DESKTOP_CLI, ['--patch', patchFile, '--profile', 'web', '--no-open', '--port', '0'], {
+    env: { ...process.env, DSH_HOME: home, OD_RESOURCE_ROOT: MINI_OD_ROOT },
+    cwd: workspaceReal,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
+  })
+  hostChild = child
+  let hostOutput = ''
+  child.stdout.on('data', (chunk) => { hostOutput += String(chunk) })
+  child.stderr.on('data', (chunk) => { hostOutput += `[stderr] ${String(chunk)}` })
+
+  const deadline = Date.now() + 90000
+  let launchedUrl = null
+  while (launchedUrl === null && Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      console.error(`[desktop-e2e] 宿主提前退出：\n${hostOutput.slice(-2500)}`)
+      console.error('[desktop-e2e] 恢复动作：检查手写 profile 形态（bundles 清单/依赖 link）与 0.2.2 宿主的兼容性。')
+      process.exit(1)
+    }
+    for (const line of hostOutput.split('\n')) {
+      const match = /^dsh web: (https?:\/\/\S+)$/.exec(line.trim())
+      if (match !== null) { launchedUrl = match[1]; break }
+    }
+    if (launchedUrl !== null) break
+    await sleep(300)
+  }
+  if (launchedUrl === null) {
+    await killProcessGroup()
+    console.error(`[desktop-e2e] 等待 URL 行超时：\n${hostOutput.slice(-2500)}`)
     process.exit(1)
   }
-  for (const line of hostOutput.split('\n')) {
-    const match = /^dsh web: (https?:\/\/\S+)$/.exec(line.trim())
-    if (match !== null) { url = match[1]; break }
-  }
-  if (url !== null) break
-  await sleep(300)
+  console.log(`[desktop-e2e] URL 就绪：${launchedUrl.replace(/token=[^&]+/, 'token=REDACTED')}`)
+  return launchedUrl
 }
-if (url === null) {
-  await killProcessGroup()
-  console.error(`[desktop-e2e] 等待 URL 行超时：\n${hostOutput.slice(-2500)}`)
-  process.exit(1)
-}
-console.log(`[desktop-e2e] URL 就绪：${url.replace(/token=[^&]+/, 'token=REDACTED')}`)
-console.log(`[desktop-e2e] 运行根：${RUN_ROOT}${process.env.KEEP_E2E_STATE === '1' ? '（保留）' : ''}`)
 
 async function killProcessGroup() {
-  try { process.kill(-child.pid, 'SIGTERM') } catch { /* 已退出 */ }
+  const pid = hostChild?.pid
+  if (pid === undefined) return
+  try { process.kill(-pid, 'SIGTERM') } catch { /* 已退出 */ }
   const waitDeadline = Date.now() + 6000
   while (Date.now() < waitDeadline) {
-    try { process.kill(child.pid, 0); await sleep(200) } catch { return }
+    try { process.kill(pid, 0); await sleep(200) } catch { return }
   }
-  try { process.kill(-child.pid, 'SIGKILL') } catch { /* 已退出 */ }
+  try { process.kill(-pid, 'SIGKILL') } catch { /* 已退出 */ }
 }
+
+let url = await launchHost()
+console.log(`[desktop-e2e] 运行根：${RUN_ROOT}${process.env.KEEP_E2E_STATE === '1' ? '（保留）' : ''}`)
 
 // ── UI 驱动（0.2.2 web 宿主；选择器与 web spec 同源）──────────────────────────
 
@@ -334,6 +403,44 @@ async function waitForSessionContent(predicate, timeoutMs = 30000) {
   throw new AssertionError('等待会话日志内容超时（30s）')
 }
 
+/** 读 workspace 评论数据文件的线程全集（D1 单文件权威；文件缺席返回空清单）。 */
+function commentsThreads() {
+  const file = path.join(fs.realpathSync(workspace), COMMENTS_DIR_NAME, COMMENTS_FILE_NAME)
+  if (!fs.existsSync(file)) return []
+  return JSON.parse(fs.readFileSync(file, 'utf8')).threads
+}
+
+/** 收集全部会话日志里的评论回注消息（kind 匹配 COMMENT_SOURCE_KIND；AX2 独立 kind）。 */
+function collectCommentFeedbackMessages() {
+  return collectSessionFiles().flatMap((entry) => readUserMessages(entry.file)).filter((m) => m.kind === COMMENT_SOURCE_KIND)
+}
+
+/** 轮询直到评论回注消息计数达到 expected。 */
+async function waitForCommentFeedbackCount(expected, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs
+  let count = 0
+  while (Date.now() < deadline) {
+    count = collectCommentFeedbackMessages().length
+    if (count >= expected) return count
+    await sleep(500)
+  }
+  throw new AssertionError(`等待评论回注消息达到 ${expected} 条超时（${timeoutMs}ms；实际 ${count} 条）`)
+}
+
+/**
+ * 页面内同源 fetch（相对路径寻址——与面板 client/comments/api.ts 同一通道；返回
+ * status / text / JSON body，非 JSON 响应 body = null）。
+ */
+async function pageFetch(pathname, init) {
+  return page.evaluate(async ({ pathname, init }) => {
+    const response = await fetch(pathname, init)
+    const text = await response.text()
+    let body = null
+    try { body = JSON.parse(text) } catch { body = null }
+    return { status: response.status, text, body }
+  }, { pathname, init })
+}
+
 // ── 核心组 ───────────────────────────────────────────────────────────────────
 
 try {
@@ -412,7 +519,7 @@ try {
     assert(expected.includes('## New deck only') && expected.includes('## Existing deck or selected template'), 'deck 铺盘文本应含三段结构')
   })
 
-  await step('doctor：十一分节齐全（本轮 V5 的 0.2.2 形态，前八节零回归）', async () => {
+  await step('doctor：十二分节齐全（本轮 V5 的 0.2.2 形态，前八节零回归 + comment-loop 第⑫节评论环缺席常态）', async () => {
     const composer = page.locator('[contenteditable="true"]').first()
     await composer.click()
     await page.keyboard.type('/opendesign-doctor')
@@ -423,8 +530,12 @@ try {
     await sleep(3000)
     const body = await page.evaluate(() => document.body.innerText)
     assert(body.includes('OpenDesign 设计模式诊断报告'), '缺诊断报告标题')
-    DOCTOR_SECTIONS_11.forEach((title, index) => {
-      assert(body.includes(`【${index + 1}/11】${title}`), `缺分节 ${index + 1}/11 ${title}`)
+    assert(
+      JSON.stringify(Object.values(DOCTOR_SECTIONS)) === JSON.stringify(DOCTOR_SECTIONS_12),
+      `DOCTOR_SECTIONS 常量与本 spec 字面对账表漂移：${JSON.stringify(DOCTOR_SECTIONS)}`,
+    )
+    DOCTOR_SECTIONS_12.forEach((title, index) => {
+      assert(body.includes(`【${index + 1}/${DOCTOR_SECTION_COUNT}】${title}`), `缺分节 ${index + 1}/${DOCTOR_SECTION_COUNT} ${title}`)
     })
     // ⑩ 缺省态（clone 未登记）：无法比对 + 登记恢复动作；⑪ 监听器运行形态。
     assert(body.includes('源码仓 clone 探测：未登记'), '⑩ 未登记态应报「未登记」')
@@ -432,6 +543,12 @@ try {
     assert(body.includes('重新运行 /opendesign-doctor 并附 OpenDesign 源码仓 clone 路径参数'), '⑩ 缺登记路径恢复动作')
     assert(body.includes('监听器状态：运行中推定'), '⑪ 设计会话应报监听器运行中推定（检查环桌面宿主已起监听，doctor 按最后生命周期记录推定呈现）')
     assert(body.includes('检查发现：共 0 条'), '⑪ 尚无发现时应报零发现')
+    // ⑫ 评论环缺席常态（评论步之前）：文件不存在 = 正常态（不伪装损坏也不自动建）+ 路由族声明形态。
+    assert(body.includes('【12/12】评论环'), '缺第⑫节评论环')
+    assert(body.includes('评论文件：不存在'), '⑫ 缺席常态应报评论文件不存在')
+    assert(body.includes('线程计数：0'), '⑫ 缺席常态线程计数应为 0')
+    assert(body.includes(`路由族契约共 ${COMMENTS_API_PATHS.length} 条`), `⑫ 路由族声明应为 ${COMMENTS_API_PATHS.length} 条`)
+    assert(body.includes('注册状态：声明形态'), '⑫ 注册状态应如实标注声明形态（不冒充运行时核验）')
   })
 
   await step('预览：fixture 产物载入 iframe 且探针呈隔离形态（V1·RL6/V1·RL8 的 0.2.2 形态）', async () => {
@@ -468,6 +585,126 @@ try {
     const fedBack = readQualityReport().filter((line) => line.type === 'finding' && line.id === 'purple-gradient' && line.reason === 'fed-back')
     assert(fedBack.length === 1, `landing.html 的 purple-gradient fed-back finding 应恰 1 行：${JSON.stringify(fedBack)}`)
     assert(readQualityReport().some((line) => line.type === 'artifact' && line.path === 'landing.html'), '快照外新写产物应落身份行（本轮 D5④）')
+  })
+
+  // ── 评论回路桌面半场（comment-loop 任务书 U6 桌面清单：V8 + V2）────────────────
+
+  /** 设计会话 id（注入步的设计 system 节点定位；写通道载荷与会话行重入都用它）。 */
+  const designSessionId = (() => {
+    const entry = collectSessionFiles().find((e) => readSystemMessages(e.file).some((t) => t.includes(DESIGN_INJECTION_MARK)))
+    if (entry === undefined) throw new AssertionError('找不到设计会话日志（注入步应有设计 system 节点）')
+    return entry.sessionId
+  })()
+
+  await step('comment-loop·V8 步骤②③：设计面板评论侧栏发送首条评论——徽标「Sent」+ 线程落盘 open × delivered（桌面 0.2.2 形态）', async () => {
+    // 上一断言（检查环）不触碰面板：iframe 预览态仍在（预览步已载入 index.html）。
+    const tab = page.locator('button.odp-comments-tab')
+    await tab.waitFor({ state: 'visible', timeout: 15000 })
+    await tab.click()
+    await page.waitForSelector('.odp-comments-panel', { timeout: 10000 })
+    await page.locator('.odp-comments-panel textarea.odp-comment-input').fill('主视觉配色太艳，压暗一档')
+    await page.locator('.odp-comments-composer button.odp-button').click()
+    await page.waitForFunction(
+      () => Array.from(document.querySelectorAll('.odp-thread .odp-badge')).some((el) => el.textContent?.trim() === 'Sent'),
+      undefined,
+      { timeout: 20000 },
+    )
+    const threads = commentsThreads()
+    assert(threads.length === 1, `首评应恰 1 线程：${JSON.stringify(threads.map((t) => t.id))}`)
+    assert(threads[0].id.startsWith(COMMENT_THREAD_ID_PREFIX), `线程 id 应带 ${COMMENT_THREAD_ID_PREFIX} 前缀：${threads[0].id}`)
+    assert(
+      threads[0].status === 'open' && threads[0].delivery === 'delivered' && typeof threads[0].deliveredAt === 'string',
+      `落盘组合态应 open × delivered（deliveredAt 在场）：${JSON.stringify({ status: threads[0].status, delivery: threads[0].delivery, deliveredAt: threads[0].deliveredAt })}`,
+    )
+    assert(threads[0].artifactPath === 'index.html' && threads[0].text === '主视觉配色太艳，压暗一档', '落盘挂靠/文本不对（D8 文件级挂靠）')
+  })
+
+  await step('comment-loop·V8 步骤③：聊天流回注消息 kind 可辨——独立 kind + 文本与 buildCommentMessage 逐字一致（AX2/D6）+ 在轨（未被 discard）', async () => {
+    await waitForCommentFeedbackCount(1)
+    const messages = collectCommentFeedbackMessages()
+    assert(messages.length === 1, `评论回注消息应恰 1 条：${messages.length}`)
+    assertCommentMessageText(messages[0], commentsThreads()[0], commentsThreads()[0].text)
+    await sleep(2500) // 回合结束与日志 flush 余量后复查在轨
+    assert(collectCommentFeedbackMessages().length === 1, '回合结束后回注消息应仍在事件流（未被 discard）')
+  })
+
+  await step('comment-loop·V8：桌面宿主 /api 相对路径写通道可达——页面同源 GET 基路径 + POST .create 往返（client/comments/api.ts 同一寻址通道）', async () => {
+    const list = await pageFetch(`${COMMENTS_API_BASE_PATH}?sessionId=${encodeURIComponent(designSessionId)}`)
+    assert(
+      list.status === 200 && Array.isArray(list.body?.threads) && list.body.threads.length === 1,
+      `相对路径 GET 基路径应对桌面宿主可达：${JSON.stringify({ status: list.status, threads: list.body?.threads?.length })}`,
+    )
+    const probe = await pageFetch(COMMENTS_API_BASE_PATH + '.create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: designSessionId, artifactPath: 'index.html', text: '桌面宿主相对路径探针评论' }),
+    })
+    assert(probe.status === 200 && probe.body?.delivery === 'delivered', `相对路径 POST .create 应可达且投递 delivered：${JSON.stringify({ status: probe.status, delivery: probe.body?.delivery })}`)
+    assert(commentsThreads().length === 2, `探针线程应落盘（恰 2 线程）：${commentsThreads().length}`)
+  })
+
+  // comment-loop·V2：重启后线程保留（同一设计会话，评论发送并送达后重启宿主再进入该会话）。
+  const threadsBeforeRestart = commentsThreads()
+  assert(threadsBeforeRestart.length === 2, `重启前应有 2 条已投递线程：${threadsBeforeRestart.length}`)
+
+  await step('comment-loop·V2 步骤②：重启宿主（按 PID 杀进程组 + 同 home relaunch）——会话与评论数据持久性载体', async () => {
+    await killProcessGroup()
+    url = await launchHost()
+  })
+
+  await step('comment-loop·V2 步骤③：重进会话并打开评论侧栏——线程保留（id/文本/路径/状态/时间戳完整，delivered 不回退 pending）', async () => {
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
+    await page.waitForTimeout(3000)
+    await clearModalGates()
+    const row = page.locator(`.taiji-pb-row[data-session-id="${designSessionId}"]`)
+    assert(await row.count() > 0, `重启后侧栏缺设计会话行（${designSessionId}）`)
+    await row.click()
+    await page.waitForTimeout(2500)
+    await clearModalGates()
+    await page.getByRole('button', { name: 'Open right sidebar' }).click()
+    await sleep(900)
+    await page.getByText('Design preview').first().click()
+    await sleep(2000)
+    await page.waitForFunction(
+      () => Array.from(document.querySelectorAll('.odp-row')).some((el) => el.textContent?.trim() === 'index.html'),
+      undefined,
+      { timeout: 15000 },
+    )
+    await page.locator('.odp-row').first().click()
+    await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
+    const tab = page.locator('button.odp-comments-tab')
+    await tab.waitFor({ state: 'visible', timeout: 15000 })
+    await tab.click()
+    await page.waitForSelector('.odp-comments-panel', { timeout: 10000 })
+    // 持久性核心判据：评论数据文件逐字节保留（delivered 不回退 pending、时间戳不动）。
+    const threadsAfter = commentsThreads()
+    assert(
+      JSON.stringify(threadsAfter) === JSON.stringify(threadsBeforeRestart),
+      `重启后评论数据应逐字节保留：\n重启前：${JSON.stringify(threadsBeforeRestart)}\n重启后：${JSON.stringify(threadsAfter)}`,
+    )
+    await page.waitForFunction(
+      () => Array.from(document.querySelectorAll('.odp-thread .odp-badge')).some((el) => el.textContent?.trim() === 'Sent'),
+      undefined,
+      { timeout: 15000 },
+    )
+    const threadTexts = await page.evaluate(() => Array.from(document.querySelectorAll('.odp-thread-text')).map((el) => el.textContent?.trim()))
+    assert(threadTexts.includes('主视觉配色太艳，压暗一档'), `重启后侧栏应列出原评论：${JSON.stringify(threadTexts)}`)
+  })
+
+  await step('comment-loop·V2：重启后 doctor 第⑫节评论环在场形态（线程计数 2 / delivered 2 / parse 正常）——持久性 doctor 视角复核', async () => {
+    const composer = page.locator('[contenteditable="true"]').first()
+    await composer.click()
+    await page.keyboard.type('/opendesign-doctor')
+    await sleep(1800)
+    const option = page.getByRole('option', { name: /opendesign-doctor/ }).first()
+    assert(await option.count() > 0, '/opendesign-doctor 未出现在 slash 菜单')
+    await option.click()
+    await sleep(3000)
+    const body = await page.evaluate(() => document.body.innerText)
+    assert(body.includes('【12/12】评论环'), '缺第⑫节评论环')
+    assert(body.includes('评论文件：存在'), '⑫ 重启后应报评论文件存在')
+    assert(body.includes(commentDistributionLine(commentsThreads())), `⑫ 计数/分布行不对：期望「${commentDistributionLine(commentsThreads())}」`)
+    assert(body.includes('parse 健康度：正常'), '⑫ 应报 parse 健康（与读侧 GET 共用同一判定点）')
   })
 
   await step('V1·AS7 衔接结论：asar 宿主 http 形态 iframe 隔离语义复核通过（dsh-app:// 壳层形态以 V1·U6 交付门实测为准：无混合内容阻拦，V1 复审决议 RR3 关闭）', async () => {
