@@ -67,6 +67,37 @@ export async function waitFor(cond, timeoutMs = 5000) {
 }
 
 /**
+ * 从 cordis.patch.yml 文本提取 tai-ji-yang-shell config 的 whitelist 字段值（条目 id 数组）。
+ * 判定只落在 whitelist 键自身的值域，不受 routes 段路由 id/name（deriveRouteId 派生，取消
+ * 勾选不删 routes）同名文本干扰——whitelist 断言必须走这里，禁止全文件 includes。
+ * 两种实测序列化形态（DSH 宿主 dump）都支持：空/短值 flow 形态 `whitelist: []`、
+ * 非空 block 形态 `whitelist:` 换行更深缩进 `- 条目`。键不存在返回 null（调用方按未落盘处理）。
+ */
+function readWhitelistEntries(patchText) {
+  const sectionStart = patchText.indexOf('tai-ji-yang-shell')
+  if (sectionStart < 0) return null
+  const lines = patchText.slice(sectionStart).split('\n')
+  const keyIdx = lines.findIndex((line) => /^\s*whitelist:/.test(line))
+  if (keyIdx < 0) return null
+  const keyLine = lines[keyIdx]
+  const inline = keyLine.slice(keyLine.indexOf('whitelist:') + 'whitelist:'.length).trim()
+  if (inline !== '') {
+    const inner = inline.replace(/^\[/, '').replace(/\]$/, '').trim()
+    return inner === '' ? [] : inner.split(',').map((entry) => entry.trim().replace(/^['"]|['"]$/g, ''))
+  }
+  const keyIndent = (keyLine.match(/^\s*/) ?? [''])[0].length
+  const entries = []
+  for (let i = keyIdx + 1; i < lines.length; i++) {
+    const line = lines[i]
+    if (line.trim() === '') continue
+    if ((line.match(/^\s*/) ?? [''])[0].length <= keyIndent) break
+    const item = line.trim()
+    if (item.startsWith('- ')) entries.push(item.slice(2).trim().replace(/^['"]|['"]$/g, ''))
+  }
+  return entries
+}
+
+/**
  * waitFor 自证（check-credentials-hygiene.mjs 的负样本纪律同源）：恒 false 的异步 cond
  * 必须超时后返回 false（漏 await 时恒真——轮询失效），同步 true cond 必须立即通过
  * （await 不得误拦既有同步调用点）。返回失败描述清单，空 = 通过。
@@ -583,13 +614,18 @@ export async function run(ctx) {
 
   // V5 步骤 3 + V6 步骤 1：白名单勾选 → Config whitelist 落盘（SC8 权威语义）。
   await page.locator('.ms-route-item', { hasText: 'verify-route' }).first().locator('.ms-check input[type="checkbox"]').first().check()
-  const whitelistWritten = await waitFor(() => readFileSync(patchFile, 'utf8').includes('whitelist:'), 6000)
-    && await waitFor(() => readFileSync(patchFile, 'utf8').includes('verify-route'), 4000)
+  // 判定对象 = whitelist 字段的值（readWhitelistEntries 提取）——全文件 includes('verify-route')
+  // 会被 routes 段路由 id/name 结构性命中，勾没勾都绿，属无效验证。
+  const whitelistWritten = await waitFor(() => (readWhitelistEntries(readFileSync(patchFile, 'utf8')) ?? []).includes('verify-route'), 6000)
   ev.assert('V6/白名单勾选落盘（whitelist 含 verify-route）', whitelistWritten, {
     expected: '插件 Config whitelist 段出现 verify-route',
     actual: String(whitelistWritten),
   })
-  const emptyMatrixGone = !(await page.locator('.ms-empty-title', { hasText: '已配置路由，但白名单还没有勾选' }).first().isVisible().catch(() => false))
+  // 空态退场是异步 UI 更新：与本场景其余断言一致走 waitFor 轮询，不即时读一次 DOM。
+  const emptyMatrixGone = await waitFor(async () => {
+    const emptyVisible = await page.locator('.ms-empty-title', { hasText: '已配置路由，但白名单还没有勾选' }).first().isVisible().catch(() => false)
+    return !emptyVisible
+  }, 6000)
   ev.assert('V6/有路由未勾白名单的空态指向在勾选后消失', emptyMatrixGone, {
     expected: 'routes.emptyNotWhitelisted 空态退场',
     actual: String(emptyMatrixGone),
@@ -597,10 +633,12 @@ export async function run(ctx) {
 
   // V6 步骤 2/3：取消勾选 → whitelist 移除；重新勾选 → 恢复（Config 侧启停语义）。
   await page.locator('.ms-route-item', { hasText: 'verify-route' }).first().locator('.ms-check input[type="checkbox"]').first().uncheck()
-  const whitelistCleared = await waitFor(async () => {
-    const text = readFileSync(patchFile, 'utf8')
-    const section = text.slice(text.indexOf('tai-ji-yang-shell'))
-    return !section.includes('verify-route') || !section.includes('whitelist:')
+  // 取消勾选只写 whitelist 字段、不删 routes：routes 段路由 id/name 永含 verify-route 文本、
+  // whitelist 键空数组形态也永在——原全 section 文本两分支结构性恒 false（勾没勾都红）。
+  // 判定对象改为 whitelist 值：值为空数组或不含 verify-route 才算移除。
+  const whitelistCleared = await waitFor(() => {
+    const entries = readWhitelistEntries(readFileSync(patchFile, 'utf8'))
+    return entries !== null && !entries.includes('verify-route')
   }, 6000)
   ev.assert('V6/取消勾选即从白名单移除（Config 侧）', whitelistCleared, {
     expected: 'whitelist 不再含 verify-route',
@@ -665,11 +703,10 @@ export async function run(ctx) {
   })
 
   // V6 步骤 6 前半：空白名单 = 全不暴露（Config whitelist 空断言；对话流选择器侧归 D3）。
-  const blankWhitelist = await waitFor(async () => {
-    const text = readFileSync(patchFile, 'utf8')
-    const section = text.slice(text.indexOf('tai-ji-yang-shell'))
-    const whitelistPart = section.split('whitelist:')[1]?.split(/\n {4}/)[0] ?? ''
-    return !whitelistPart.includes('verify-route')
+  // 提取统一走 readWhitelistEntries（值域判定），不再各自内联 split。
+  const blankWhitelist = await waitFor(() => {
+    const entries = readWhitelistEntries(readFileSync(patchFile, 'utf8'))
+    return entries !== null && entries.length === 0
   }, 6000)
   ev.assert('V6/空白名单 = 全不暴露（Config whitelist 空）', blankWhitelist, {
     expected: 'whitelist 无路由条目',
