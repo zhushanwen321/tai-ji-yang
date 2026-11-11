@@ -15,10 +15,19 @@
  * **本包的认领形态**（preview-tab/index.tsx 注册的 design tab 定义）：
  *   patterns = `dsh-resource://file/[\s\S]+`（含 `:` 的全地址形态，ui-sidebar-documentpreview
  *   definition.ts:50 同款写法）；canOpen 收窄到「session 作用域 + workspace 相对路径 +
- *   .html/.htm 后缀」；优先级带缺省 extension——高于 documentpreview 对全部 file 地址的
- *   fallback 带认领，故 HTML 产物的卡片点击与本包发起的 openResource 都路由进设计面板；
- *   非 HTML 文件被 canOpen 否决，回落通用文件预览。地址形态与 patterns 的对齐点 = 本文件
+ *   .html/.htm 后缀 + 设计会话」；优先级带缺省 extension——高于 documentpreview 对全部
+ *   file 地址的 fallback 带认领，故设计会话的 HTML 产物路由进设计面板；非 HTML 文件与
+ *   非设计会话被 canOpen 否决，回落通用文件预览。地址形态与 patterns 的对齐点 = 本文件
  *   的解析与判定函数，定义注册与面板体共用同一份。
+ *
+ * **认领范围的会话维度（FF6 裁决，OD 对齐——挂载范围 ≡ 能力范围）**：canOpen 只认领
+ *   设计会话（agent-preset 选定了本包 preset 的会话）的产物地址，判据与宿主侧监听器/
+ *   材质化的 presetId 过滤同源（下方 designSessions 探测块）。canOpen 是同步否决函数
+ *   （ui-sidebar-right tab-registry.ts:130 契约），会话→preset 在宿主客户端没有查询入口
+ *   （SessionSummary 无 preset 字段），故判定走「乐观认领 + 探测弹回」两段：探测已定
+ *   false 的会话直接否决；未探测会话乐观认领并由面板体异步探测（材质化标记文件伺服
+ *   可达性），非设计会话的地址原位弹回通用文件预览（openResource 具名 kind，preview-tab
+ *   的 bounce）。探测不可达时按可认领处理——回退通道兜底，窄化不放大故障。
  *
  * 「复制路径 + 面板列表打开」的退化路径不需要：卡片点击链路已在宿主公开契约上闭环。
  * 面板内产物列表（artifact-list.tsx）仍保留，职责是「openResource 地址路由之外的第二入口」
@@ -50,6 +59,67 @@ export const DESIGN_PANEL_LOCALE_NS = 'opendesign.designPanel'
  * U8 e2e（RL2/RL6）暴露。
  */
 export const OPENDESIGN_ARTIFACTS_ROUTE = 'opendesign/artifacts'
+
+/**
+ * 通用文件预览（宿主 ui-sidebar-documentpreview）的 tab kind 字面值。弹回通道用：
+ * 非设计会话产物经 `sidebarRight.openResource(address, { kind })` 具名打开跳过认领排序
+ * （service.ts:180 语义），原位落回通用预览。不直接 import 的原因同上（宿主包红线）；
+ * 字面漂移由弹回路径的 e2e/真机暴露。
+ */
+export const GENERIC_PREVIEW_KIND = 'text'
+
+/**
+ * 设计会话标记文件的 workspace 相对路径（材质化 5 文件之一）。preset 选定事件无条件
+ * 全量重铺（V1 设计包 D8，lib/materialize/copy.ts 写清单），resume 路径同样触发——
+ * 它的伺服可达性即「本会话是设计会话」的探测凭据，与 lib/index.js 的 presetId 过滤
+ * 同一判据源。文件名漂移由 materialize.test.ts 与 e2e S1/S8（恰 5 文件断言）拦截。
+ */
+const DESIGN_SESSION_MARKER_PATH = '.od-frames/deck-framework.md'
+
+/** sessionId → 设计会话判定（true/false 已探测定案；缺失 = 未知，canOpen 按可认领处理）。 */
+const designSessions = new Map<string, boolean>()
+
+/** 在途探测去重（canOpen 预热与面板体探测并发同会话只发一次请求）。 */
+const probesInFlight = new Map<string, Promise<boolean>>()
+
+/** 已知会话的设计会话判定；未知返回 undefined。 */
+export function knownDesignSession(sessionId: string): boolean | undefined {
+  return designSessions.get(sessionId)
+}
+
+/**
+ * 探测会话是否设计会话并缓存（幂等，在途去重）。响应 ok（含 403 之外的一切 2xx/3xx
+ * 到达形态）= 设计会话；非 ok（标记不存在 = preset 从未选定/被清）= 非设计会话；
+ * fetch 抛错（伺服不可达）= 不缓存并按可认领处理——返回值只有 false 有行为差异，
+ * 探测不可用时维持现状最稳（回退通道兜底，窄化不放大故障）。
+ */
+export async function probeDesignSession(sessionId: string): Promise<boolean> {
+  const known = designSessions.get(sessionId)
+  if (known !== undefined) return known
+  const inFlight = probesInFlight.get(sessionId)
+  if (inFlight !== undefined) return inFlight
+  const probe = (async () => {
+    try {
+      const url = artifactRouteUrlForSession(sessionId, DESIGN_SESSION_MARKER_PATH)
+      const response = await fetch(url)
+      const design = response.ok
+      designSessions.set(sessionId, design)
+      probesInFlight.delete(sessionId)
+      return design
+    } catch {
+      probesInFlight.delete(sessionId)
+      return true
+    }
+  })()
+  probesInFlight.set(sessionId, probe)
+  return probe
+}
+
+/** 清空判定缓存与在途探测（测试隔离用；产品路径不消费）。 */
+export function resetDesignSessionCache(): void {
+  designSessions.clear()
+  probesInFlight.clear()
+}
 
 /** file 地址的 session 作用域前缀（dsh-resource://file/session/<sessionId>/<path>）。 */
 const FILE_SESSION_PREFIX = 'dsh-resource://file/session/'
@@ -98,11 +168,22 @@ function parseArtifactAddress(address: string): ParsedArtifactAddress | undefine
 }
 
 /**
- * design tab 定义的 canOpen：否决一切非「session 作用域的 HTML 相对产物地址」。
- * 恒不抛（见 parseArtifactAddress）。
+ * design tab 定义的 canOpen：否决「非 session 作用域 / 非 workspace 相对 / 非 .html/.htm /
+ * 已探定的非设计会话」四类地址。未探测会话按可认领处理并顺手预热探测（在途去重）——
+ * 乐观分支只覆盖探测未返回的瞬态，面板体的探测弹回是最终裁决。恒不抛（同步否决函数
+ * 是路由热路径，见 parseArtifactAddress）。
  */
 export function canOpenArtifactAddress(address: string): boolean {
-  return parseArtifactAddress(address) !== undefined
+  const parsed = parseArtifactAddress(address)
+  if (parsed === undefined) return false
+  if (designSessions.get(parsed.sessionId) === false) return false
+  void probeDesignSession(parsed.sessionId)
+  return true
+}
+
+/** 产物地址所属的会话 id（无路径段/非 session 作用域等不可解析形态返回 undefined）。 */
+export function artifactSessionIdOf(address: string): string | undefined {
+  return parseArtifactAddress(address)?.sessionId
 }
 
 /**

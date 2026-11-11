@@ -4,11 +4,11 @@
  * 职责（本文件 = tab 注册 + 面板体；地址契约与呈现层分属 present-card-link.ts 与
  * iframe-view.tsx / artifact-list.tsx）：
  *   1. 经 `ctx.sidebarRightTabs` 注册右侧栏 design tab 类型（可停靠/分屏/浮动）：地址认领
- *      走 ui-sidebar-right 的公开注册面——patterns 全地址候选 + canOpen 收窄（形态照
+ *      走 ui-sidebar-right 的公开注册入口——patterns 全地址候选 + canOpen 收窄（形态照
  *      ui-schedule / ui-sidebar-documentpreview 范例），优先级带显式 extension（本包是
  *      宿主外类型，且必须压过 documentpreview 对全部 file 地址的 fallback 认领才能接到
- *      HTML 产物；窄化语义见 present-card-link.ts 文件头）。guide 入口胶囊提供「打开面板
- *      页（产物列表兜底）」的无地址入口。
+ *      HTML 产物；认领范围收窄到设计会话，见 present-card-link.ts 文件头）。guide 入口
+ *      胶囊提供「打开面板页（产物列表兜底）」的无地址入口。
  *   2. 把面板体注册进 keyed `sidebar.right.pane.tab` 槽（key = tab 定义 id，dispatch
  *      即按它路由）；槽位声明 `locale:` 让渲染机理合成 t 座位，组件只用本地状态、不设
  *      store。面板体两模式：地址可解析为产物 → iframe 视图；否则（guide 页面地址）→
@@ -22,17 +22,20 @@
  * （PreviewApplyContext），产物 require 字面量 ⊆ 宿主模块基线（check-require-baseline）。
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   DESIGN_PANEL_LOCALE_NS,
+  GENERIC_PREVIEW_KIND,
   OPENDESIGN_TAB_ID,
   OPENDESIGN_TAB_KIND,
   artifactRouteUrlFor,
   artifactRouteUrlForPath,
+  artifactSessionIdOf,
   artifactTitleFor,
   canOpenArtifactAddress,
   isArtifactName,
+  probeDesignSession,
 } from '../present-card-link'
 import { ArtifactIframeView, type PanelTranslate } from './iframe-view'
 import { ArtifactList, type ArtifactLister } from './artifact-list'
@@ -43,7 +46,7 @@ import './panel.css'
  * 本包浏览器半场消费的宿主服务名（fiber inject 声明；ctx.<name> 未声明即读即抛——
  * 根包 apply.ts 的 2026-11-07 真机教训）。取值 = apply 实际读到的 ctx 面，不多写。
  */
-export const inject = ['slots', 'sidebarRightTabs', 'locale', 'remote', 'remote.workspaceFiles'] as const
+export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'locale', 'remote', 'remote.workspaceFiles'] as const
 
 /** workspaceFiles.list 的目录列举返回（dsh-api-workspace-files 公开 wire 类型的局部同构）。 */
 interface WorkspaceListing {
@@ -82,6 +85,17 @@ export interface PreviewApplyContext {
         readonly description?: () => string
       }[]
     }): () => void
+  }
+  /**
+   * 右侧栏资源打开面（ui-sidebar-right ISidebarRight 的局部同构；只取弹回通道消费的
+   * 形态）。非设计会话产物经具名 kind 原位弹回通用文件预览——具名打开跳过认领排序，
+   * 该 kind 的 canOpen 仍然生效（FF6 认领范围裁决的回退通道）。
+   */
+  sidebarRight: {
+    openResource(address: string, options?: {
+      readonly kind?: string
+      readonly replaceTab?: string
+    }): void
   }
   /** 槽位注册面（inject 声明后注入面板体；register 返还 disposer）。 */
   slots: {
@@ -138,13 +152,18 @@ function createArtifactLister(ctx: PreviewApplyContext): ArtifactLister {
 }
 
 /**
- * 构造面板体组件（闭包携带列表器）。
+ * 构造面板体组件（闭包携带列表器与弹回通道）。
  *
  * 模式分发（唯一裁决 = present-card-link 的地址解析）：navigation.address 可解析为产物
  * → iframe 视图（openResource 与交付卡片点击路由到的形态）；否则（guide 打开的页面地址
  * 等非产物地址）→ 产物列表兜底，行点击在本面板内载入 iframe（返回钮回列表）。
+ *
+ * 会话维度（FF6 认领范围裁决的执行点）：canOpen 对未探测会话乐观认领（同步否决函数
+ * 无会话→preset 查询入口），面板体在产物地址模式探测所属会话（present-card-link 的
+ * 材质化标记伺服可达性），非设计会话经弹回通道原位交回通用文件预览（具名 kind 跳过
+ * 认领排序——本 tab 的认领在该会话由此退出）。
  */
-function createDesignPanelBody(listArtifacts: ArtifactLister) {
+function createDesignPanelBody(listArtifacts: ArtifactLister, bounceToGenericPreview: (address: string, tabId: string) => void) {
   return function DesignPreviewTab(props: {
     useTabInfo: () => DesignTabInfo
     sessionId: string
@@ -162,6 +181,20 @@ function createDesignPanelBody(listArtifacts: ArtifactLister) {
       : fallback !== undefined
         ? { url: artifactRouteUrlForPath(sessionId, fallback.path), name: fallback.name }
         : undefined
+
+    // 产物地址模式的会话探测（乐观认领的最终裁决）：非设计会话原位弹回通用文件预览。
+    // 依赖 tab.id——replaceTab 以本 tab 为落点，弹回即关闭本 tab，effect 随卸载取消。
+    useEffect(() => {
+      if (routeUrl === undefined) return
+      const target = artifactSessionIdOf(address)
+      const tabId = tab.id
+      if (target === undefined) return
+      let cancelled = false
+      void probeDesignSession(target).then((design) => {
+        if (!cancelled && !design) bounceToGenericPreview(address, tabId)
+      })
+      return () => { cancelled = true }
+    }, [address, routeUrl, tab.id, bounceToGenericPreview])
 
     if (iframe === undefined) {
       return (
@@ -215,8 +248,19 @@ export function apply(ctx: PreviewApplyContext): void {
   }), 'opendesign-design-mode: design tab 类型')
 
   // ③ 面板体：keyed sidebar.right.pane.tab 槽，key = tab 定义 id（dispatch 即按它路由）
+  // 弹回通道（FF6 认领范围裁决的回退路径）：非设计会话产物经具名 kind 原位交回通用文件
+  // 预览——具名打开跳过认领排序、目标 kind 的 canOpen 仍生效；本 tab 经 replaceTab 同步
+  // 关闭。render 路径禁抛：失败保持面板现状（探测缓存的 false 会让该会话后续地址在
+  // canOpen 直接否决，不再进入面板）。
+  const bounceToGenericPreview = (address: string, tabId: string): void => {
+    try {
+      ctx.sidebarRight.openResource(address, { kind: GENERIC_PREVIEW_KIND, replaceTab: tabId })
+    } catch {
+      // 保持面板现状；不向上抛
+    }
+  }
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     { name: 'sidebar.right.pane.tab', key: OPENDESIGN_TAB_ID, locale: DESIGN_PANEL_LOCALE_NS },
-    createDesignPanelBody(createArtifactLister(ctx)),
+    createDesignPanelBody(createArtifactLister(ctx), bounceToGenericPreview),
   )), 'opendesign-design-mode: 面板体')
 }
