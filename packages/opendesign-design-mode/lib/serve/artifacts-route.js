@@ -1,5 +1,6 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve, sep } from "node:path";
+import { registerCommentsApiRoutes } from "./comments-api.js";
 import { resolveSessionCwdById } from "./session-cwd.js";
 const name = "od-serve";
 const inject = ["webServer", "connection", "sessions"];
@@ -162,6 +163,7 @@ function apply(ctx) {
     // 单测双打同样以 await 驱动到响应结束，避免半结束态断言。
     handler: (req, res) => serveArtifactRequest(ctx, req, res)
   }), `od-serve: GET ${OPENDESIGN_ARTIFACTS_PREFIX_PATH}/<path>`);
+  host.inject?.(["connection"], (scope) => registerCommentsApiRoutes(scope, ctx));
 }
 export {
   OPENDESIGN_ARTIFACTS_PREFIX_PATH,

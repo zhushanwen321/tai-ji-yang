@@ -31,6 +31,7 @@
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, resolve, sep } from 'node:path'
 
+import { registerCommentsApiRoutes, type CommentsApiScope } from './comments-api.js'
 import { resolveSessionCwdById } from './session-cwd.js'
 
 /** Cordis 插件名（preset plugins 行的行内标识）。 */
@@ -288,12 +289,14 @@ async function serveArtifactRequest(ctx: unknown, req: ServeRequest, res: ServeR
 }
 
 /**
- * 产物伺服装配入口：webServer 前缀路由注册，生命周期挂 ctx.effect（卸载即撤除路由）。
+ * 产物伺服 + 评论写通道装配入口：webServer 前缀路由注册与评论路由族注册，
+ * 生命周期各自挂 effect（卸载即撤除）。
  *
  * @param ctx - Cordis 插件上下文（preset 组合 scope）。
  */
 export function apply(ctx: unknown): void {
   const host = ctx as {
+    inject?: (deps: readonly string[], callback: (scope: CommentsApiScope) => void) => unknown
     effect(factory: () => unknown, label?: string): unknown
     webServer: {
       register(route: {
@@ -310,4 +313,10 @@ export function apply(ctx: unknown): void {
     // 单测双打同样以 await 驱动到响应结束，避免半结束态断言。
     handler: (req, res) => serveArtifactRequest(ctx, req, res),
   }), `od-serve: GET ${OPENDESIGN_ARTIFACTS_PREFIX_PATH}/<path>`)
+  // 评论写通道路由族（opendesign-comment-loop D2 / AX5）：经 connection.fetch 注册器挂
+  // /api 共享鉴权层覆盖的 exact 路由——不经 webServer 路由（那条路线需在 handler 内复制
+  // 宿主信任判定，D2 明示不采用）。inject 子 scope 携带 connection 服务（baoyu 产线
+  // 同款 `ctx.inject(['connection'], sub => …)` 形态）；服务缺席时 cordis 令 scope
+  // pending，服务就位后注册照常发生，装配侧无需重试逻辑。
+  host.inject?.(['connection'], (scope) => registerCommentsApiRoutes(scope, ctx))
 }

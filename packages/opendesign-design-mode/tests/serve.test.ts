@@ -1,12 +1,13 @@
 /**
- * 产物伺服路由单测（U6，RL2 的单测层）。
+ * serve 层路由单测：产物伺服路由（V1 设计包 U6 的 RL2 单测层）+ 评论写通道路由族
+ * （opendesign-comment-loop U2 的 RL3/V4 单测层）。
  *
- * 双打形态：内存 webServer 双打——apply() 走真实注册路径（capture register 的 route），
- * handler 以最小 req/res 桩直驱后断言响应。不引宿主运行时（本仓测试零宿主依赖纪律，
- * DSH 仓 webserver.spec.ts 的「真实 composition + Loader」形态在本仓无依赖基础，故取
- * 任务书允许的最小 handler 桩形态）。
+ * 双打形态：内存 webServer / connection 双打——apply() 走真实注册路径（capture register
+ * 的 route），handler 以最小 req/res 桩或 WHATWG Request 直驱后断言响应。不引宿主运行时
+ * （本仓测试零宿主依赖纪律，DSH 仓 webserver.spec.ts 的「真实 composition + Loader」形态
+ * 在本仓无依赖基础，故取任务书允许的最小 handler 桩形态）。
  *
- * 断言结构（RL2 + U6 检查点「伺服根与材质化目标统一 = 会话 cwd」）：
+ * 断言结构——产物伺服（RL2 + U6 检查点「伺服根与材质化目标统一 = 会话 cwd」）：
  * 1. 围栏先行：connection.requestRejection 的 401/403 透传为空体响应；围栏拒绝对穿越
  *    路径同样生效（鉴权在解析之前）；围栏服务缺席 fail-closed（503 全拒）；
  * 2. 会话维度伺服根（V1 设计包 D7）：路由地址 = <前缀>/<sessionId>/<产物相对路径>，伺服根按
@@ -20,14 +21,27 @@
  * 5. 规范化语义边界：cwd 内的 .. 归一化（sub/../index.html）放行——判定是 realpath
  *    包含关系，不是段级黑名单；
  * 6. 注册形态：kind prefix + 前缀路径常量（U7 消费同一前缀）+ effect disposer 在册。
- * 编号口径：本文件编号默认属 V1 设计包（opendesign-design-mode impl-plan）；其他设计包域编号带包名前缀（opendesign-assets-quality / p1-shell-identity）。
+ *
+ * 断言结构——评论写通道（opendesign-comment-loop D2 / D4，RL3/V4 单测级）：
+ * 7. 注册形态：恰五条经 connection.fetch.register（宿主 /api 共享鉴权层的覆盖由该注册
+ *    形态承载，handler 内不自查鉴权），路径族 = contract.ts 词表，方法与 buffered 逐条对齐；
+ * 8. 载荷校验拒绝零落盘（V4 三类：会话 404 / 穿越 403 / 文本 400；含 `..` 段与绝对路径）；
+ * 9. 五路由行为：GET 列表与损坏文件错误态标记（V9）、.create/.reply/.retry 的投递回写
+ *    对账（RL6 消费侧，agents 双打控分流结果）、.resolve 零投递、状态机表外映射 409。
+ * 编号口径：本文件编号默认属 V1 设计包（opendesign-design-mode impl-plan）；其他设计包域编号带包名前缀（opendesign-assets-quality / p1-shell-identity / opendesign-comment-loop）。
  */
 
-import { copyFile, mkdtemp, mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdtemp, mkdir, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import {
+  COMMENTS_API_ACTION_PATHS,
+  COMMENTS_API_BASE_PATH,
+  COMMENTS_API_PATHS,
+  type CommentThread,
+} from '../lib/comments/contract.js'
 import {
   apply,
   contentTypeFor,
@@ -35,6 +49,7 @@ import {
   parseArtifactRoute,
   resolveArtifactPath,
 } from '../lib/serve/artifacts-route.js'
+import { type CommentsApiScope, type CommentsFetchRoute } from '../lib/serve/comments-api.js'
 import { resolveSessionCwdById } from '../lib/serve/session-cwd.js'
 
 // ── 内存 webServer 双打 ──────────────────────────────────────────────────────
@@ -448,5 +463,510 @@ describe('注册形态', () => {
     expect(mounted.route.path).toBe(OPENDESIGN_ARTIFACTS_PREFIX_PATH)
     expect(mounted.effectLabels).toHaveLength(1)
     expect(mounted.effectLabels[0]).toContain(OPENDESIGN_ARTIFACTS_PREFIX_PATH)
+  })
+})
+
+// ── 评论写通道路由族（opendesign-comment-loop D2/D4；RL3/V4 单测级）─────────────
+
+/** 评论域会话 id（comments 双打的注册表锚点；与产物域 SESSION_ID 分离防串扰）。 */
+const COMMENTS_SESSION_ID = 'session-comments'
+
+/** agents 服务双打：运行中 agent（steer 可用）——deliverFeedback 分流归 steered → 落盘 delivered。 */
+function steeredAgent(): unknown {
+  return { status: 'running', steer: () => undefined, followup: () => undefined }
+}
+
+/** steer 抛错的运行中 agent——deliverFeedback 分流归 inject-error（注入调用报错分支）。 */
+function injectErrorAgent(): unknown {
+  return {
+    status: 'running',
+    steer: () => {
+      throw new Error('inject failed')
+    },
+  }
+}
+
+interface CommentsMountOptions {
+  /** 会话 cwd（sessions 注册表 header.cwd 值）。 */
+  root: string
+  /** agents 服务双打的会话 agent 表（缺省 = ctx 无 get 方法 → deliverFeedback 归 no-agent）。 */
+  agents?: (sessionId: string) => unknown
+}
+
+interface CommentsMount {
+  commentRoutes: CommentsFetchRoute[]
+  effectLabels: string[]
+}
+
+/**
+ * 评论域装配双打：ctx.inject(['connection']) 走 apply() 真实注册路径，capture
+ * connection.fetch.register 的路由对象；webServer 双打仅计数（证明装配共入口不挤掉
+ * 既有产物伺服行）。
+ */
+function mountComments(options: CommentsMountOptions): CommentsMount {
+  const commentRoutes: CommentsFetchRoute[] = []
+  let artifactRoutes = 0
+  const effectLabels: string[] = []
+  const effect = (factory: () => unknown, label?: string): unknown => {
+    effectLabels.push(String(label))
+    return factory()
+  }
+  const ctx = {
+    webServer: {
+      register(): () => void {
+        artifactRoutes += 1
+        return () => undefined
+      },
+    },
+    sessions: {
+      get: (id: string): unknown => (id === COMMENTS_SESSION_ID ? { header: { cwd: options.root } } : undefined),
+    },
+    ...(options.agents !== undefined
+      ? { get: (name: string): unknown => (name === 'agents' ? { get: options.agents } : undefined) }
+      : {}),
+    logger: { debug: () => undefined, warn: () => undefined },
+    effect,
+    inject(deps: readonly string[], callback: (scope: CommentsApiScope) => void): unknown {
+      expect(deps).toEqual(['connection'])
+      callback({
+        effect,
+        connection: {
+          fetch: {
+            register(route: CommentsFetchRoute): unknown {
+              commentRoutes.push(route)
+              return () => undefined
+            },
+          },
+        },
+      })
+      return undefined
+    },
+  }
+  apply(ctx)
+  expect(artifactRoutes).toBe(1)
+  return { commentRoutes, effectLabels }
+}
+
+function commentRouteByPath(routes: CommentsFetchRoute[], path: string): CommentsFetchRoute {
+  const found = routes.find((route) => route.path === path)
+  expect(found, `路由 ${path} 未注册`).toBeDefined()
+  return found as CommentsFetchRoute
+}
+
+/** 直驱 fetch handler：WHATWG Request 载体（宿主 connection bridge 同款交换形态）。 */
+async function callCommentsRoute(
+  route: CommentsFetchRoute,
+  pathname: string,
+  init: { method?: string; body?: unknown } = {},
+): Promise<Response> {
+  const url = `http://dsh.internal${pathname}`
+  const request =
+    init.body !== undefined
+      ? new Request(url, { method: init.method ?? 'POST', body: JSON.stringify(init.body) })
+      : new Request(url, { method: init.method ?? 'GET' })
+  return route.fetch(request)
+}
+
+/** 落盘副作用哨兵：.od-comments 目录缺席 = 拒绝路径连目录创建都不发生（零落盘）。 */
+async function expectNoCommentsData(root: string): Promise<void> {
+  await expect(stat(join(root, '.od-comments'))).rejects.toThrow()
+}
+
+/** 经 API 创建一条线程并返回响应终态（测试内造数入口，走真实 .create 全链含投递回写）。 */
+async function createThreadViaApi(mount: CommentsMount, text = '主视觉配色太艳，压暗一档'): Promise<CommentThread> {
+  const res = await callCommentsRoute(
+    commentRouteByPath(mount.commentRoutes, COMMENTS_API_BASE_PATH + '.create'),
+    COMMENTS_API_BASE_PATH + '.create',
+    { body: { sessionId: COMMENTS_SESSION_ID, artifactPath: 'index.html', text } },
+  )
+  expect(res.status).toBe(200)
+  return (await res.json()) as CommentThread
+}
+
+/** GET 列表直驱（成功域回读对账用）。 */
+async function listThreadsViaApi(mount: CommentsMount): Promise<{ version: number; threads: CommentThread[] }> {
+  const res = await callCommentsRoute(
+    commentRouteByPath(mount.commentRoutes, COMMENTS_API_BASE_PATH),
+    `${COMMENTS_API_BASE_PATH}?sessionId=${encodeURIComponent(COMMENTS_SESSION_ID)}`,
+  )
+  expect(res.status).toBe(200)
+  return (await res.json()) as { version: number; threads: CommentThread[] }
+}
+
+describe('评论写通道路由族（connection.fetch 注册，opendesign-comment-loop D2/D4）', () => {
+  let commentsRoot: string // 成功路径域（线程真实落盘，各用例累计造数）
+  let rejectRoot: string // 拒绝路径域（全程零落盘哨兵）
+
+  beforeAll(async () => {
+    commentsRoot = await mkdtemp(join(tmpdir(), 'od-comments-api-'))
+    rejectRoot = await mkdtemp(join(tmpdir(), 'od-comments-reject-'))
+  })
+
+  afterAll(async () => {
+    await Promise.all([
+      rm(commentsRoot, { recursive: true, force: true }),
+      rm(rejectRoot, { recursive: true, force: true }),
+    ])
+  })
+
+  describe('注册形态（RL3 单测级：注册走宿主 connection 共享注册器）', () => {
+    it('恰五条经 connection.fetch.register：路径族 = contract 词表，GET/POST 与 buffered 逐条对齐', () => {
+      const m = mountComments({ root: commentsRoot })
+      expect(m.commentRoutes.map((route) => route.path)).toEqual([...COMMENTS_API_PATHS])
+      const base = commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH)
+      expect(base.methods).toEqual(['GET'])
+      expect(base.requestBody).toBe('buffered')
+      for (const actionPath of COMMENTS_API_ACTION_PATHS) {
+        const route = commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + actionPath)
+        expect(route.methods).toEqual(['POST'])
+        expect(route.requestBody).toBe('buffered')
+      }
+      // 每条路由独立 effect（卸载即撤除该条注册），标签携带方法与路径。
+      expect(m.effectLabels.filter((label) => label.includes(COMMENTS_API_BASE_PATH))).toHaveLength(5)
+    })
+
+    it('inject 依赖恰为 connection（/api 共享鉴权层覆盖的唯一承载；handler 内无 requestRejection 调用面）', () => {
+      // mountComments 的 inject 双打已断言 deps === ['connection']（断言在装配路径内）。
+      // 此处补证明：注册走 connection.fetch 注册器而非 webServer（webServer 只收到产物伺服行）。
+      const m = mountComments({ root: commentsRoot })
+      expect(m.commentRoutes.length).toBe(5)
+      expect(m.effectLabels.filter((label) => label.includes(OPENDESIGN_ARTIFACTS_PREFIX_PATH))).toHaveLength(1)
+    })
+  })
+
+  describe('载荷校验拒绝（零落盘副作用，V4 三类）', () => {
+    it('空文本 400 invalid-payload，零落盘', async () => {
+      const m = mountComments({ root: rejectRoot })
+      const res = await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.create'),
+        COMMENTS_API_BASE_PATH + '.create',
+        { body: { sessionId: COMMENTS_SESSION_ID, artifactPath: 'index.html', text: '' } },
+      )
+      expect(res.status).toBe(400)
+      expect(((await res.json()) as { code: string }).code).toBe('invalid-payload')
+      await expectNoCommentsData(rejectRoot)
+    })
+
+    it('超限文本 400：10001 字符超上限（上限 = COMMENT_TEXT_MAX_LENGTH）', async () => {
+      const m = mountComments({ root: rejectRoot })
+      const res = await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.create'),
+        COMMENTS_API_BASE_PATH + '.create',
+        { body: { sessionId: COMMENTS_SESSION_ID, artifactPath: 'index.html', text: 'x'.repeat(10001) } },
+      )
+      expect(res.status).toBe(400)
+      expect(((await res.json()) as { code: string }).code).toBe('invalid-payload')
+      await expectNoCommentsData(rejectRoot)
+    })
+
+    it('路径穿越 ../ 403 forbidden，零落盘', async () => {
+      const m = mountComments({ root: rejectRoot })
+      const res = await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.create'),
+        COMMENTS_API_BASE_PATH + '.create',
+        { body: { sessionId: COMMENTS_SESSION_ID, artifactPath: '../outside-secret.html', text: 'x' } },
+      )
+      expect(res.status).toBe(403)
+      expect(((await res.json()) as { code: string }).code).toBe('forbidden')
+      await expectNoCommentsData(rejectRoot)
+    })
+
+    it('绝对路径寻址 403 forbidden', async () => {
+      const m = mountComments({ root: rejectRoot })
+      const res = await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.create'),
+        COMMENTS_API_BASE_PATH + '.create',
+        { body: { sessionId: COMMENTS_SESSION_ID, artifactPath: '/etc/passwd', text: 'x' } },
+      )
+      expect(res.status).toBe(403)
+      expect(((await res.json()) as { code: string }).code).toBe('forbidden')
+      await expectNoCommentsData(rejectRoot)
+    })
+
+    it('含 .. 段的 cwd 内归一化形态按写通道输入契约拒绝 403（读路由放行、写通道更严）', async () => {
+      const m = mountComments({ root: rejectRoot })
+      const res = await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.create'),
+        COMMENTS_API_BASE_PATH + '.create',
+        { body: { sessionId: COMMENTS_SESSION_ID, artifactPath: 'sub/../index.html', text: 'x' } },
+      )
+      expect(res.status).toBe(403)
+      await expectNoCommentsData(rejectRoot)
+    })
+
+    it('不存在会话 404 session-unknown，零落盘', async () => {
+      const m = mountComments({ root: rejectRoot })
+      const res = await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.create'),
+        COMMENTS_API_BASE_PATH + '.create',
+        { body: { sessionId: 'no-such-session', artifactPath: 'index.html', text: 'x' } },
+      )
+      expect(res.status).toBe(404)
+      expect(((await res.json()) as { code: string }).code).toBe('session-unknown')
+      await expectNoCommentsData(rejectRoot)
+    })
+
+    it('非对象载荷（数组）400 invalid-payload', async () => {
+      const m = mountComments({ root: rejectRoot })
+      const route = commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.create')
+      const res = await route.fetch(
+        new Request(`http://dsh.internal${COMMENTS_API_BASE_PATH}.create`, { method: 'POST', body: '[1,2]' }),
+      )
+      expect(res.status).toBe(400)
+      expect(((await res.json()) as { code: string }).code).toBe('invalid-payload')
+      await expectNoCommentsData(rejectRoot)
+    })
+
+    it('非法 JSON 请求体 400 bad-request，零落盘', async () => {
+      const m = mountComments({ root: rejectRoot })
+      const route = commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.create')
+      const res = await route.fetch(
+        new Request(`http://dsh.internal${COMMENTS_API_BASE_PATH}.create`, { method: 'POST', body: 'not-json{{{' }),
+      )
+      expect(res.status).toBe(400)
+      expect(((await res.json()) as { code: string }).code).toBe('bad-request')
+      await expectNoCommentsData(rejectRoot)
+    })
+  })
+
+  describe('GET 基路径（列表与损坏文件错误态，V9 单测半区）', () => {
+    it('空存储返回初始空形态 {version:1, threads:[]}（json content-type）', async () => {
+      const m = mountComments({ root: commentsRoot })
+      const res = await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH),
+        `${COMMENTS_API_BASE_PATH}?sessionId=${encodeURIComponent(COMMENTS_SESSION_ID)}`,
+      )
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toBe('application/json; charset=utf-8')
+      const body = (await res.json()) as { version: number; threads: unknown[] }
+      expect(body.version).toBe(1)
+      expect(body.threads).toEqual([])
+    })
+
+    it('缺 sessionId query 400；未知会话 404 session-unknown', async () => {
+      const m = mountComments({ root: commentsRoot })
+      const base = commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH)
+      const missing = await callCommentsRoute(base, COMMENTS_API_BASE_PATH)
+      expect(missing.status).toBe(400)
+      const unknown = await callCommentsRoute(base, `${COMMENTS_API_BASE_PATH}?sessionId=no-such-session`)
+      expect(unknown.status).toBe(404)
+      expect(((await unknown.json()) as { code: string }).code).toBe('session-unknown')
+    })
+
+    it('损坏文件：GET 返回 500 comments-corrupt 错误态标记（不崩溃、不返回空列表伪装正常，V9）', async () => {
+      const corruptRoot = await mkdtemp(join(tmpdir(), 'od-comments-corrupt-'))
+      try {
+        await mkdir(join(corruptRoot, '.od-comments'), { recursive: true })
+        await writeFile(join(corruptRoot, '.od-comments', 'comments.json'), '{"version":1,"threads":', 'utf8')
+        const m = mountComments({ root: corruptRoot })
+        const res = await callCommentsRoute(
+          commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH),
+          `${COMMENTS_API_BASE_PATH}?sessionId=${encodeURIComponent(COMMENTS_SESSION_ID)}`,
+        )
+        expect(res.status).toBe(500)
+        expect(((await res.json()) as { code: string }).code).toBe('comments-corrupt')
+      } finally {
+        await rm(corruptRoot, { recursive: true, force: true })
+      }
+    })
+
+    it('损坏文件：POST .create 拒写且文件字节原样（零覆盖零重建，RL7/V9）', async () => {
+      const corruptRoot = await mkdtemp(join(tmpdir(), 'od-comments-corrupt-'))
+      try {
+        const corruptFile = join(corruptRoot, '.od-comments', 'comments.json')
+        await mkdir(join(corruptRoot, '.od-comments'), { recursive: true })
+        await writeFile(corruptFile, '{"version":1,"threads":', 'utf8')
+        const before = await readFile(corruptFile, 'utf8')
+        const m = mountComments({ root: corruptRoot, agents: () => steeredAgent() })
+        const res = await callCommentsRoute(
+          commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.create'),
+          COMMENTS_API_BASE_PATH + '.create',
+          { body: { sessionId: COMMENTS_SESSION_ID, artifactPath: 'index.html', text: 'x' } },
+        )
+        expect(res.status).toBe(500)
+        expect(((await res.json()) as { code: string }).code).toBe('comments-corrupt')
+        expect(await readFile(corruptFile, 'utf8')).toBe(before)
+      } finally {
+        await rm(corruptRoot, { recursive: true, force: true })
+      }
+    })
+  })
+
+  describe('POST 动作行为（D4 投递回写对账 + D5 状态机映射）', () => {
+    it('.create：落盘新线程 → steer 投递 delivered 回写 → 200 最终线程（RL6 消费侧对账）', async () => {
+      const m = mountComments({ root: commentsRoot, agents: () => steeredAgent() })
+      const thread = await createThreadViaApi(m)
+      expect(thread.id.startsWith('c_')).toBe(true)
+      expect(thread.artifactPath).toBe('index.html')
+      expect(thread.status).toBe('open')
+      expect(thread.delivery).toBe('delivered')
+      expect(typeof thread.deliveredAt).toBe('string')
+      // 落盘对账：GET 列表回读同一线程，终态与响应一致（投递回写真实落盘）。
+      const body = await listThreadsViaApi(m)
+      expect(body.threads).toHaveLength(1)
+      expect(body.threads[0]).toEqual(thread)
+    })
+
+    it('.create：无 agents 服务 → no-agent 落盘不抛错（失败态如实呈现，V3 单测半区）', async () => {
+      const m = mountComments({ root: commentsRoot }) // ctx 无 get → deliverFeedback 归 no-agent
+      const thread = await createThreadViaApi(m)
+      expect(thread.delivery).toBe('no-agent')
+      expect(thread.deliveredAt).toBeUndefined()
+    })
+
+    it('.create：steer 抛错 → inject-error 落盘（失败态不抛 5xx）', async () => {
+      const m = mountComments({ root: commentsRoot, agents: () => injectErrorAgent() })
+      const thread = await createThreadViaApi(m)
+      expect(thread.delivery).toBe('inject-error')
+    })
+
+    it('.reply：resolved 线程追加自动回 open + delivery 重置投递（D5 转移④ reopen 语义）', async () => {
+      const plain = mountComments({ root: commentsRoot }) // 先以 no-agent 落盘并 resolve
+      const created = await createThreadViaApi(plain)
+      const resolvedRes = await callCommentsRoute(
+        commentRouteByPath(plain.commentRoutes, COMMENTS_API_BASE_PATH + '.resolve'),
+        COMMENTS_API_BASE_PATH + '.resolve',
+        { body: { sessionId: COMMENTS_SESSION_ID, threadId: created.id, resolved: true } },
+      )
+      expect(resolvedRes.status).toBe(200)
+      // 换运行中 agent 追加：resolved → open 且 delivery 重新走投递周期。
+      const m = mountComments({ root: commentsRoot, agents: () => steeredAgent() })
+      const replyRes = await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.reply'),
+        COMMENTS_API_BASE_PATH + '.reply',
+        { body: { sessionId: COMMENTS_SESSION_ID, threadId: created.id, text: '标题字号太大' } },
+      )
+      expect(replyRes.status).toBe(200)
+      const thread = (await replyRes.json()) as CommentThread
+      expect(thread.status).toBe('open')
+      expect(thread.delivery).toBe('delivered')
+      expect(thread.replies).toHaveLength(1)
+      expect(thread.replies[0]?.text).toBe('标题字号太大')
+      expect(thread.text).toBe(created.text) // 首评内容不因追加改变
+    })
+
+    it('.reply：未知线程 404 thread-not-found', async () => {
+      const m = mountComments({ root: commentsRoot, agents: () => steeredAgent() })
+      const res = await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.reply'),
+        COMMENTS_API_BASE_PATH + '.reply',
+        { body: { sessionId: COMMENTS_SESSION_ID, threadId: 'c_missing', text: 'x' } },
+      )
+      expect(res.status).toBe(404)
+      expect(((await res.json()) as { code: string }).code).toBe('thread-not-found')
+    })
+
+    it('.reply：空文本 400 且线程零变化（连 reopen 副作用也不发生）', async () => {
+      const m = mountComments({ root: commentsRoot }) // no-agent 落盘 → resolve
+      const created = await createThreadViaApi(m)
+      await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.resolve'),
+        COMMENTS_API_BASE_PATH + '.resolve',
+        { body: { sessionId: COMMENTS_SESSION_ID, threadId: created.id, resolved: true } },
+      )
+      const res = await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.reply'),
+        COMMENTS_API_BASE_PATH + '.reply',
+        { body: { sessionId: COMMENTS_SESSION_ID, threadId: created.id, text: '' } },
+      )
+      expect(res.status).toBe(400)
+      const body = await listThreadsViaApi(m)
+      const thread = body.threads.find((candidate) => candidate.id === created.id)
+      expect(thread?.status).toBe('resolved')
+      expect(thread?.delivery).toBe('no-agent')
+      expect(thread?.replies).toEqual([])
+    })
+
+    it('.retry：open × no-agent 纯重投 → delivered，不写新文本（首评与 replies 不变）', async () => {
+      const plain = mountComments({ root: commentsRoot }) // 先以 no-agent 落盘
+      const created = await createThreadViaApi(plain)
+      const m = mountComments({ root: commentsRoot, agents: () => steeredAgent() })
+      const res = await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.retry'),
+        COMMENTS_API_BASE_PATH + '.retry',
+        { body: { sessionId: COMMENTS_SESSION_ID, threadId: created.id } },
+      )
+      expect(res.status).toBe(200)
+      const thread = (await res.json()) as CommentThread
+      expect(thread.delivery).toBe('delivered')
+      expect(thread.text).toBe(created.text)
+      expect(thread.replies).toEqual([])
+    })
+
+    it('.retry：delivered 线程拒绝 409 invalid-transition（D4：delivered 不接受重投）', async () => {
+      const m = mountComments({ root: commentsRoot, agents: () => steeredAgent() })
+      const created = await createThreadViaApi(m)
+      const res = await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.retry'),
+        COMMENTS_API_BASE_PATH + '.retry',
+        { body: { sessionId: COMMENTS_SESSION_ID, threadId: created.id } },
+      )
+      expect(res.status).toBe(409)
+      expect(((await res.json()) as { code: string }).code).toBe('invalid-transition')
+    })
+
+    it('.retry：resolved × 失败态拒绝 409（resolved 不重投旧内容，恢复走 .reply）', async () => {
+      const m = mountComments({ root: commentsRoot }) // no-agent 落盘 → resolve
+      const created = await createThreadViaApi(m)
+      await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.resolve'),
+        COMMENTS_API_BASE_PATH + '.resolve',
+        { body: { sessionId: COMMENTS_SESSION_ID, threadId: created.id, resolved: true } },
+      )
+      const res = await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.retry'),
+        COMMENTS_API_BASE_PATH + '.retry',
+        { body: { sessionId: COMMENTS_SESSION_ID, threadId: created.id } },
+      )
+      expect(res.status).toBe(409)
+    })
+
+    it('.resolve：open × no-agent → resolved，delivery 保留原值，不触发投递', async () => {
+      const plain = mountComments({ root: commentsRoot }) // 先以 no-agent 落盘
+      const created = await createThreadViaApi(plain)
+      let steerCalls = 0
+      const spyAgents = (): unknown => ({
+        get: () => ({
+          status: 'running',
+          steer: () => {
+            steerCalls += 1
+          },
+        }),
+      })
+      const m = mountComments({ root: commentsRoot, agents: spyAgents })
+      const res = await callCommentsRoute(
+        commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.resolve'),
+        COMMENTS_API_BASE_PATH + '.resolve',
+        { body: { sessionId: COMMENTS_SESSION_ID, threadId: created.id, resolved: true } },
+      )
+      expect(res.status).toBe(200)
+      const thread = (await res.json()) as CommentThread
+      expect(thread.status).toBe('resolved')
+      expect(thread.delivery).toBe('no-agent') // delivery 原样保留（D5 转移③）
+      expect(steerCalls).toBe(0) // 状态变更不触发投递（D2 .resolve 语义）
+    })
+
+    it('.resolve：对已 resolved 线程再 resolve 409（D5 ③ 表外 fail-fast）', async () => {
+      const m = mountComments({ root: commentsRoot })
+      const created = await createThreadViaApi(m)
+      const base = commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.resolve')
+      const payload = { sessionId: COMMENTS_SESSION_ID, threadId: created.id, resolved: true }
+      expect((await callCommentsRoute(base, COMMENTS_API_BASE_PATH + '.resolve', { body: payload })).status).toBe(200)
+      const again = await callCommentsRoute(base, COMMENTS_API_BASE_PATH + '.resolve', { body: payload })
+      expect(again.status).toBe(409)
+      expect(((await again.json()) as { code: string }).code).toBe('invalid-transition')
+    })
+
+    it('.resolve：resolved 非 true（false / 缺失）400 invalid-payload（重开走 .reply，不设 resolved:false）', async () => {
+      const m = mountComments({ root: commentsRoot })
+      const created = await createThreadViaApi(m)
+      const base = commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.resolve')
+      for (const resolved of [false, undefined]) {
+        const res = await callCommentsRoute(base, COMMENTS_API_BASE_PATH + '.resolve', {
+          body: { sessionId: COMMENTS_SESSION_ID, threadId: created.id, ...(resolved === undefined ? {} : { resolved }) },
+        })
+        expect(res.status).toBe(400)
+      }
+    })
   })
 })
