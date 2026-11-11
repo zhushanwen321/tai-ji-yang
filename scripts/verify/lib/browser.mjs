@@ -89,7 +89,11 @@ export async function openVerifyPage(playwright, { url, viewport = { width: 1440
   let context = null
   try {
     browser = await playwright.chromium.launch({ headless })
-    context = await browser.newContext({ viewport })
+    // 固定页面语言为中文：Playwright 全新上下文默认 navigator.language=en-US，
+    // 宿主 dsh-client-locale 按 navigator 主子标签匹配已注册语言、匹配不到回退英文，
+    // 页面会渲染英文文案，与场景里的中文文案断言（hasText）失配。验收断言以
+    // 插件 zh 字典文案为准，故上下文固定 locale: 'zh-CN'。
+    context = await browser.newContext({ viewport, locale: 'zh-CN' })
     const page = await context.newPage()
     const recorder = createConsoleRecorder(page)
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })

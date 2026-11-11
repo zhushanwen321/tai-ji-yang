@@ -22,7 +22,12 @@ function collectSourceFiles(dirAbs, repoRoot) {
       if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
       const child = path.join(abs, entry.name)
       if (entry.isDirectory()) walk(child)
-      else if (/\.(?:ts|tsx|css)$/.test(entry.name)) files.push(path.relative(repoRoot, child))
+      // CSS 与构建口径一致全量收集（build-client.mjs collectCssFiles 不排除任何 css）
+      else if (/\.css$/.test(entry.name)) files.push(path.relative(repoRoot, child))
+      // ts/tsx 与构建口径对齐：*.test.* / *.spec.* 不进任何产物（build-client.mjs
+      // collectTsFiles 同款排除；浏览器半场是 esbuild 入口打包，测试文件不被入口引用），
+      // 不排除会把「只改测试文件未重 build」误判为产物落后
+      else if (/\.(?:ts|tsx)$/.test(entry.name) && !/\.(?:test|spec)\./.test(entry.name)) files.push(path.relative(repoRoot, child))
     }
   }
   walk(dirAbs)

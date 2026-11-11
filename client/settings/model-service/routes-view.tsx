@@ -62,7 +62,7 @@ export function RoutesView({ t, model }: RoutesViewProps) {
       <NewRouteForm
         t={t}
         draftName={newDraftName.current}
-        onNameInput={(value) => { newDraftName.current = value }}
+        onNameInput={(value) => { newDraftName.current = value; rerender((count) => count + 1) }}
         onCreate={() => { void createRoute() }}
       />
       <RouteList t={t} state={state} model={model} />
@@ -369,7 +369,7 @@ export function RouteEditorBody({ t, route, model, selectableProviders, onCancel
           type="text"
           className="ms-input"
           value={nameRef.current}
-          onChange={(event) => { nameRef.current = event.target.value }}
+          onChange={(event) => { nameRef.current = event.target.value; rerenderNow() }}
         />
         <div className="ms-field-hint">{t('route.nameHint', { id: route.id })}</div>
       </div>
