@@ -25,9 +25,9 @@
  * 断言结构——评论写通道（opendesign-comment-loop D2 / D4，RL3/V4 单测级）：
  * 7. 注册形态：恰五条经 connection.fetch.register（宿主 /api 共享鉴权层的覆盖由该注册
  *    形态承载，handler 内不自查鉴权），路径族 = contract.ts 词表，方法与 buffered 逐条对齐；
- * 8. 载荷校验拒绝零落盘（V4 三类：会话 404 / 穿越 403 / 文本 400；含 `..` 段与绝对路径）；
- * 9. 五路由行为：GET 列表与损坏文件错误态标记（V9）、.create/.reply/.retry 的投递回写
- *    对账（RL6 消费侧，agents 双打控分流结果）、.resolve 零投递、状态机表外映射 409。
+ * 8. 载荷校验拒绝零落盘（comment-loop·V4 三类：会话 404 / 穿越 403 / 文本 400；含 `..` 段与绝对路径）；
+ * 9. 五路由行为：GET 列表与损坏文件错误态标记（comment-loop·V9）、.create/.reply/.retry 的投递回写
+ *    对账（comment-loop·RL6 消费侧，agents 双打控分流结果）、.resolve 零投递、状态机表外映射 409。
  * 编号口径：本文件编号默认属 V1 设计包（opendesign-design-mode impl-plan）；其他设计包域编号带包名前缀（opendesign-assets-quality / p1-shell-identity / opendesign-comment-loop）。
  */
 
@@ -609,7 +609,7 @@ describe('评论写通道路由族（connection.fetch 注册，opendesign-commen
     ])
   })
 
-  describe('注册形态（RL3 单测级：注册走宿主 connection 共享注册器）', () => {
+  describe('注册形态（comment-loop·RL3 单测级：注册走宿主 connection 共享注册器）', () => {
     it('恰五条经 connection.fetch.register：路径族 = contract 词表，GET/POST 与 buffered 逐条对齐', () => {
       const m = mountComments({ root: commentsRoot })
       expect(m.commentRoutes.map((route) => route.path)).toEqual([...COMMENTS_API_PATHS])
@@ -634,7 +634,7 @@ describe('评论写通道路由族（connection.fetch 注册，opendesign-commen
     })
   })
 
-  describe('载荷校验拒绝（零落盘副作用，V4 三类）', () => {
+  describe('载荷校验拒绝（零落盘副作用，comment-loop·V4 三类）', () => {
     it('空文本 400 invalid-payload，零落盘', async () => {
       const m = mountComments({ root: rejectRoot })
       const res = await callCommentsRoute(
@@ -729,7 +729,7 @@ describe('评论写通道路由族（connection.fetch 注册，opendesign-commen
     })
   })
 
-  describe('GET 基路径（列表与损坏文件错误态，V9 单测半区）', () => {
+  describe('GET 基路径（列表与损坏文件错误态，comment-loop·V9 单测半区）', () => {
     it('空存储返回初始空形态 {version:1, threads:[]}（json content-type）', async () => {
       const m = mountComments({ root: commentsRoot })
       const res = await callCommentsRoute(
@@ -753,7 +753,7 @@ describe('评论写通道路由族（connection.fetch 注册，opendesign-commen
       expect(((await unknown.json()) as { code: string }).code).toBe('session-unknown')
     })
 
-    it('损坏文件：GET 返回 500 comments-corrupt 错误态标记（不崩溃、不返回空列表伪装正常，V9）', async () => {
+    it('损坏文件：GET 返回 500 comments-corrupt 错误态标记（不崩溃、不返回空列表伪装正常，comment-loop·V9）', async () => {
       const corruptRoot = await mkdtemp(join(tmpdir(), 'od-comments-corrupt-'))
       try {
         await mkdir(join(corruptRoot, '.od-comments'), { recursive: true })
@@ -770,7 +770,7 @@ describe('评论写通道路由族（connection.fetch 注册，opendesign-commen
       }
     })
 
-    it('损坏文件：POST .create 拒写且文件字节原样（零覆盖零重建，RL7/V9）', async () => {
+    it('损坏文件：POST .create 拒写且文件字节原样（零覆盖零重建，comment-loop·RL7/comment-loop·V9）', async () => {
       const corruptRoot = await mkdtemp(join(tmpdir(), 'od-comments-corrupt-'))
       try {
         const corruptFile = join(corruptRoot, '.od-comments', 'comments.json')
@@ -792,8 +792,8 @@ describe('评论写通道路由族（connection.fetch 注册，opendesign-commen
     })
   })
 
-  describe('POST 动作行为（D4 投递回写对账 + D5 状态机映射）', () => {
-    it('.create：落盘新线程 → steer 投递 delivered 回写 → 200 最终线程（RL6 消费侧对账）', async () => {
+  describe('POST 动作行为（comment-loop·D4 投递回写对账 + comment-loop·D5 状态机映射）', () => {
+    it('.create：落盘新线程 → steer 投递 delivered 回写 → 200 最终线程（comment-loop·RL6 消费侧对账）', async () => {
       const m = mountComments({ root: commentsRoot, agents: () => steeredAgent() })
       const thread = await createThreadViaApi(m)
       expect(thread.id.startsWith('c_')).toBe(true)
@@ -807,7 +807,7 @@ describe('评论写通道路由族（connection.fetch 注册，opendesign-commen
       expect(body.threads[0]).toEqual(thread)
     })
 
-    it('.create：无 agents 服务 → no-agent 落盘不抛错（失败态如实呈现，V3 单测半区）', async () => {
+    it('.create：无 agents 服务 → no-agent 落盘不抛错（失败态如实呈现，comment-loop·V3 单测半区）', async () => {
       const m = mountComments({ root: commentsRoot }) // ctx 无 get → deliverFeedback 归 no-agent
       const thread = await createThreadViaApi(m)
       expect(thread.delivery).toBe('no-agent')
@@ -820,7 +820,7 @@ describe('评论写通道路由族（connection.fetch 注册，opendesign-commen
       expect(thread.delivery).toBe('inject-error')
     })
 
-    it('.reply：resolved 线程追加自动回 open + delivery 重置投递（D5 转移④ reopen 语义）', async () => {
+    it('.reply：resolved 线程追加自动回 open + delivery 重置投递（comment-loop·D5 转移④ reopen 语义）', async () => {
       const plain = mountComments({ root: commentsRoot }) // 先以 no-agent 落盘并 resolve
       const created = await createThreadViaApi(plain)
       const resolvedRes = await callCommentsRoute(
@@ -893,7 +893,7 @@ describe('评论写通道路由族（connection.fetch 注册，opendesign-commen
       expect(thread.replies).toEqual([])
     })
 
-    it('.retry：delivered 线程拒绝 409 invalid-transition（D4：delivered 不接受重投）', async () => {
+    it('.retry：delivered 线程拒绝 409 invalid-transition（comment-loop·D4：delivered 不接受重投）', async () => {
       const m = mountComments({ root: commentsRoot, agents: () => steeredAgent() })
       const created = await createThreadViaApi(m)
       const res = await callCommentsRoute(
@@ -942,11 +942,11 @@ describe('评论写通道路由族（connection.fetch 注册，opendesign-commen
       expect(res.status).toBe(200)
       const thread = (await res.json()) as CommentThread
       expect(thread.status).toBe('resolved')
-      expect(thread.delivery).toBe('no-agent') // delivery 原样保留（D5 转移③）
-      expect(steerCalls).toBe(0) // 状态变更不触发投递（D2 .resolve 语义）
+      expect(thread.delivery).toBe('no-agent') // delivery 原样保留（comment-loop·D5 转移③）
+      expect(steerCalls).toBe(0) // 状态变更不触发投递（comment-loop·D2 .resolve 语义）
     })
 
-    it('.resolve：对已 resolved 线程再 resolve 409（D5 ③ 表外 fail-fast）', async () => {
+    it('.resolve：对已 resolved 线程再 resolve 409（comment-loop·D5 ③ 表外 fail-fast）', async () => {
       const m = mountComments({ root: commentsRoot })
       const created = await createThreadViaApi(m)
       const base = commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.resolve')
