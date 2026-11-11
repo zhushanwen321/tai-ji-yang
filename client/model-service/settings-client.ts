@@ -27,7 +27,7 @@
  *     （.tmp/dsh-client-ui-settings-models.client.js :1724-1744 createOnce / :2053-2059 applyOnce），
  *     D3 的 revision 约定与宿主自身行为一致。
  *
- * 风格：无 any、无 eslint-disable；不 import 任何 dsh-client 包（D3 纪律，宿主面用最小
+ * 风格：无 any、无 lint 禁用注释；不 import 任何 dsh-client 包（D3 纪律，宿主面用最小
  * 结构类型声明）。
  */
 import { isSelfManagedRef, type PendingUnsetRegistration } from './credentials-client'
