@@ -316,9 +316,11 @@ describe('V5 卸载清洁度', () => {
     const childEffects: (() => void)[] = []
 
     // 宿主 services 的最小假件：credentials 预检（describe）记录调用，llm 供注册与转发。
-    // describe 双形态（宿主 dsh-api-settings-controller 语义）：单 ref 入参返回该 ref 的
-    // 视图对象本身（Node 半场 assertMemberAvailable 直接读 status.configured）；数组入参
-    // 返回按 ref 键控的视图表（浏览器半场 credentials-client 的读法）
+    // describe 双形态出处不同：单 ref 形态出自 dsh-credentials-local 进程内凭据服务
+    // （child.get('credentials') 的真身，Node 半场 assertMemberAvailable 直接读
+    // status.configured）；数组形态出自 dsh-api-settings-controller 的
+    // CredentialsController.describe 网关（{refs} 批量，浏览器半场 credentials-client
+    // 经 remote 通道的读法，返回按 ref 键控的视图表）
     const fakeCredentials = {
       describe: async (refs: string | string[]) => {
         const list = typeof refs === 'string' ? [refs] : refs

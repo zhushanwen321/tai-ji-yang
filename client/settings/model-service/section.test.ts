@@ -11,8 +11,9 @@ import type { ModelServiceSectionInjected } from './section'
  *     太极 12 之前——D8 前移序列）、label thunk、locale 命名空间、组件同一性；
  *   · 注册即撤除（AX7）：inject 回调返回 register 的 disposer（宿主自挂 ctx.effect）；
  *   · 挂载 wiring：视图模型构造（加载态文案）+ 三视图切换条齐备。
- * 三视图内容与交互的深断言归各视图模型单测（ProvidersListModel / ModelsListModel /
- * ProviderEditModel）；真实宿主渲染归 L3 场景。
+ * 三视图内容与交互的深断言：视图模型（ProvidersListModel / ModelsListModel /
+ * ProviderEditModel / RoutesListModel）单测未建，目前由 verify 场景（scripts/verify/
+ * scenarios/model-service.mjs，真实宿主 L3）承载。
  */
 
 const SECTION_PATH = fileURLToPath(new URL('./section.tsx', import.meta.url))

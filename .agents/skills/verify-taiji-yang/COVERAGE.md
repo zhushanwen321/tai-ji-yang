@@ -2,7 +2,7 @@
 
 P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工）↔ 场景断言行的对账。维护单元 = 本表矩阵行：交付触达某行时同步改场景并在本表更新状态。覆盖范围 = 根包 tai-ji-yang-shell；子包 opendesign-design-mode 的验收项不在本表，见文末「子包维度」节。
 
-状态：`covered`（场景断言已锁定）/ `degraded-channel`（有断言但缺通道，显式降级）/ `uncovered`（登记未做）。
+状态：`covered`（场景断言已锁定）/ `degraded-channel`（有断言但缺通道，显式降级）/ `uncovered`（登记未做）/ `notProvable`（验收项在 runner 通道不可自然构造，显式登记不判定，转单测或 D3 真机承接；与 runner 证据原语 `ev.notProvable` 及 verdict.json 顶层 notProvable 清单同名）。
 
 ## brand（品牌区与版本行）
 
@@ -85,14 +85,17 @@ P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工
 | 凭据 ref 撞名 a/b 两支文案（V4 步骤 9） | 保存被拒并出现按持有者可见性分流的提示 | notProvable（经界面构造撞 ref 需宿主分区写 taiji-* 路由或直改凭据文件，超出场景通道；credentials-client 单测覆盖） |
 | 待清理清单重试（V4 步骤 6，AX9） | unset 失败登记 → 重试成功移除 | notProvable（需让凭据服务在删除动作时不可用，超出场景通道；credentials-client 单测覆盖） |
 | 清单来源态与空态（V9） | 自定义行 ms-source-custom、筛选无结果空态 + 清除动作 | covered |
+| 清单目录默认态来源标注（V9 步骤 3） | 目录默认 provider 的清单行 ms-source-directory + 来源徽标文案 | notProvable（场景自然路径下供应商均带自定义清单，目录默认行不可达；归 D3 真机核验） |
 | 托管 provider 只读行（V9） | ms-source-managed 行渲染 | covered（隔离实例无托管行时登记 notProvable，不假红） |
 | 删除供应商双清除（V4 步骤 4/5，RL6 真机面） | 设置文档条目与凭据 ref 均清除（无孤儿） | covered |
+| 既有 provider 跨 profile 确认删除（V4 步骤 8，D7 删除侧） | 删除宿主侧派生 ref 的 provider 出现跨 profile 确认提示：确认才 unset、取消则 provider 条目与 ref 均保留 | notProvable（构造需在宿主「模型」分区接入供应商输入密钥，超出场景通道；分支判定由 credentials-client 单测覆盖，真机形态归 D3 复验） |
 | 路由创建与派生 id（V5 步骤 1-2） | 空态引导；同名二次创建不被拒、加序号并存、删第二条恢复 | covered |
 | 路由成员落盘（V5 步骤 3） | 成员引用物理 provider/model 进插件 Config routes | covered |
 | 白名单启停（V6 步骤 1-3，SC8） | 勾选落盘 whitelist / 取消移除 / 重新勾选恢复 | covered |
 | 白名单悬挂与清理（V6 步骤 4-5） | 删路由转悬挂（「路由已删除」标注不自动清理）；批量清理只移除悬挂 | covered |
 | 空白名单 = 全不暴露（V6 步骤 6） | Config whitelist 空断言 | covered（对话流选择器侧归 D3） |
 | 成员行可用性标注（V5 步骤 9-10，G18） | 删成员供应商后路由成员行「供应商已删」 | covered |
+| 路由命中与回退（V5 步骤 4-8，RL5 真机面） | 对话流选中虚拟模型发消息：命中成员响应、条件不命中回退下一成员、双不命中可行动错误（ROUTE_NO_ACTIVE_MEMBER）、凭据缺失不静默切换（ROUTE_MEMBER_UNAVAILABLE） | notProvable（发消息需真实可用端点，归 D3 真机；命中/回退/终结机制由 index.test.ts 假上游单测与 route-evaluate.test.ts 覆盖） |
 | 对话流真实报错（V7 步骤 1-5） | 成员不可用的流式终结与物理模型对照 | notProvable（发消息需真实可用端点，归 D3 真机；终结机制由 index.test.ts 假上游单测覆盖） |
 | 注册冲突状态条（V7 步骤 6，RL9） | ROUTE_REGISTRATION_FAILED 状态条 | notProvable（需宿主已注册同名 taiji-route-* 适配器，隔离实例不可自然构造；状态条渲染与探测判定由单测与 D3 复验） |
 | 配色对比度采样（V8 采样部分） | ink on soft ≥ 4.5:1（四族 × 六色 × 双模 48 组合） | covered（不在 runner 通道：由 pnpm check 的 client/theme/tokens.spec.ts 机器验算承载；runner 只做 DOM/解析值断言，不做像素采样——真机整体观感与六色跟随归 D3 人眼验收） |
