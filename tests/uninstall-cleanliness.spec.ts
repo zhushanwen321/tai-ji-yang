@@ -5,6 +5,7 @@ import { createTsxLoader } from '../client/testing/load-tsx'
 import { PLUGIN_ENTRY_ID } from '../client/persist'
 import { THEME_LAYER_SOURCE, STRUCTURE_LAYER_SOURCE } from '../client/theme/apply'
 import { deleteProvider, type SettingsOp } from '../client/model-service/settings-client'
+import type { PendingUnsetRegistration } from '../client/model-service/credentials-client'
 
 /**
  * 卸载清洁度单测（设计 RL4/RL6 的机器化通道 + 验收 V5 的可机器判部分）。
@@ -453,7 +454,7 @@ describe('V5 卸载清洁度', () => {
       key: 'foo',
       existing: providers.foo,
       crossProfileConfirmed: false,
-      registerPendingUnset: async (ref) => { pendingUnsets.push(ref) },
+      registerPendingUnset: async (ref): Promise<PendingUnsetRegistration> => { pendingUnsets.push(ref); return { ok: true } },
     } as DeleteParams)
     expect(result.kind).toBe('deleted')
     expect(providers.foo).toBeUndefined()
@@ -477,7 +478,7 @@ describe('V5 卸载清洁度', () => {
       key: 'bar',
       existing: { apiKeyEnv: 'TAIJI_BAR_KEY' },
       crossProfileConfirmed: false,
-      registerPendingUnset: async (ref) => { failingUnsets.push(ref) },
+      registerPendingUnset: async (ref): Promise<PendingUnsetRegistration> => { failingUnsets.push(ref); return { ok: true } },
     } as DeleteParams)
     expect(failedResult.kind).toBe('deleted')
     expect(failingUnsets).toEqual(['TAIJI_BAR_KEY'])
