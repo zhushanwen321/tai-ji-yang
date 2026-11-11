@@ -43,19 +43,25 @@ function fakeForm(initial: { status?: 'ready' | 'unavailable'; value?: Record<st
   return { form, writes, setUnavailable: () => { status = 'unavailable' }, setFailSet: (next: boolean) => { failSet = next } }
 }
 
-/** 假凭据通道：可配置已存在 refs 与失败注入。 */
+/** 假凭据通道：可配置已存在 refs 与失败注入（失败按宿主网关真实形态 resolve {ok:false}）。 */
 function fakeCredentials(existing: string[] = [], failUnset: (ref: string) => boolean = () => false) {
   const configured = new Set(existing)
   const unsetCalls: string[] = []
   const credentials: CredentialsRemoteLike = {
     async describe(refs) {
-      return Object.fromEntries(refs.map((ref) => [ref, { configured: configured.has(ref), writable: true }]))
+      return { ok: true, value: Object.fromEntries(refs.map((ref) => [ref, { configured: configured.has(ref), writable: true }])) }
     },
-    async set(ref) { configured.add(ref) },
+    async set(ref) {
+      configured.add(ref)
+      return { ok: true, value: undefined }
+    },
     async unset(ref) {
       unsetCalls.push(ref)
-      if (failUnset(ref)) throw new Error('credential service down')
+      if (failUnset(ref)) {
+        return { ok: false, error: { code: 'credential/rejected', message: 'credential service down', details: {} } }
+      }
       configured.delete(ref)
+      return { ok: true, value: undefined }
     },
   }
   return { credentials, configured, unsetCalls }

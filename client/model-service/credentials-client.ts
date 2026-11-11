@@ -26,15 +26,20 @@
 
 import { PLUGIN_ENTRY_ID, type ConfigFormLike } from '../persist'
 import { deriveCredentialRef } from './provider-key'
+import { unwrapRemote, type RemoteResult } from './remote-result'
 
-/** 宿主 credentials remote 的最小同构（describe/set/unset，dsh-api-settings-controller CredentialsController）。 */
+/**
+ * 宿主 credentials remote 的最小同构（describe/set/unset，dsh-api-settings-controller
+ * CredentialsController）。方法返回 typert 网关的 Result 包装——业务失败是 resolve 型
+ * {ok:false,error}，reject 只来自传输层异常。
+ */
 export interface CredentialsRemoteLike {
   /** 批量读凭据状态（至多 64 个；返回按 ref 键控的 configured/source/writable 视图）。 */
-  describe(refs: string[]): Promise<Record<string, { configured: boolean; source?: string; writable: boolean }>>
-  /** 写入一个 ref（值单向过线，无读回通道；失败抛 RemoteError credential/rejected）。 */
-  set(ref: string, value: string): Promise<void>
-  /** 移除一个 ref（对不存在的 ref 幂等；失败抛 RemoteError credential/rejected）。 */
-  unset(ref: string): Promise<void>
+  describe(refs: string[]): Promise<RemoteResult<Record<string, { configured: boolean; source?: string; writable: boolean }>>>
+  /** 写入一个 ref（值单向过线，无读回通道；业务失败 = {ok:false}，错误分类 credential/rejected）。 */
+  set(ref: string, value: string): Promise<RemoteResult<void>>
+  /** 移除一个 ref（对不存在的 ref 幂等；业务失败 = {ok:false}）。 */
+  unset(ref: string): Promise<RemoteResult<void>>
 }
 
 /** 插件 Config 表单面（读写 pendingCredentialUnsets；与 persist.ts 的 ConfigFormLike 同构）。 */
@@ -62,7 +67,7 @@ export interface RefCheckDeps {
  *   （重填同一把密钥是重试通道，不是撞名）。
  */
 export async function checkCredentialRefAvailable(deps: RefCheckDeps, ref: string, ownRef: string | undefined): Promise<RefCheckResult> {
-  const views = await deps.credentials.describe([ref])
+  const views = unwrapRemote(await deps.credentials.describe([ref]))
   const info = views[ref]
   if (info === undefined || info.configured !== true) return { ok: true } // 凭据文件不存在该 ref
   if (ref === ownRef) return { ok: true } // 当前 provider 自己的既有 ref（重填重试）
@@ -145,8 +150,14 @@ export async function retryPendingUnsets(form: PluginConfigFormLike, credentials
   const removed: string[] = []
   const kept: string[] = []
   for (const ref of pending) {
+    // unset 业务失败是 resolve 型 {ok:false}（不 reject）——不判 ok 会把失败静默当成功移出
+    // 清单；catch 只接管传输层异常。
     try {
-      await credentials.unset(ref)
+      const result = await credentials.unset(ref)
+      if (!result.ok) {
+        kept.push(ref)
+        continue
+      }
       removed.push(ref)
     } catch {
       kept.push(ref)

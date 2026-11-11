@@ -28,6 +28,7 @@ import {
   readLlmPiAi,
   deleteProvider,
   routeReferencesOf,
+  unwrapRemote,
   type ConfigurableProviderRow,
   type HostProviderProfile,
   type ModelServiceHost,
@@ -124,9 +125,12 @@ export class ProvidersListModel {
     }
     this.snapshot = snapshot
     const rows = this.buildRows(directory, snapshot.providers)
-    // 凭据徽章：批量 describe（refs ≤ 64 上限内；本视图行数远小于该界）。
+    // 凭据徽章：批量 describe（refs ≤ 64 上限内；本视图行数远小于该界）。Result 解包失败转
+    // rejection，由 .catch 降级为空表（徽章全 missing）。
     const refs = rows.flatMap((row) => row.ref !== undefined ? [row.ref] : [])
-    const described = refs.length > 0 ? await this.deps.remote.credentials.describe(refs).catch(() => ({})) : {}
+    const described = refs.length > 0
+      ? await this.deps.remote.credentials.describe(refs).then(unwrapRemote).catch(() => ({}))
+      : {}
     const withBadges = rows.map((row) => ({
       ...row,
       credentialConfigured: row.ref !== undefined && described[row.ref]?.configured === true,

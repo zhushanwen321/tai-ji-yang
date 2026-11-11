@@ -25,22 +25,23 @@ const bodyModule = loader.load(BODY_PATH) as unknown as BodyModule
 
 const t = (key: keyof typeof modelServiceZh) => modelServiceZh[key]
 
-/** 假宿主通道（构造器只在目录默认态才探目录；本文件用例均带存量 models，探测面不触发）。 */
+/** 假宿主通道（构造器只在目录默认态才探目录；本文件用例均带存量 models，探测面不触发；
+ * remote 返回按宿主 typert 网关真实形态包 RemoteResult）。 */
 function fakeRemote() {
   return {
     settings: {
-      describe: async () => ({ writable: true, namespaces: [] }),
-      mutate: async () => ({ ns: 'llm-pi-ai' }),
+      describe: async () => ({ ok: true, value: { writable: true, namespaces: [] } }),
+      mutate: async () => ({ ok: true, value: { ns: 'llm-pi-ai' } }),
     },
     llm: {
-      listProviders: async () => [],
-      listConfigurableProviders: async () => [],
-      discoverModels: async () => ({ kind: 'failed' as const, reason: 'endpoint' as const, message: 'offline', recovery: 'n/a' }),
+      listProviders: async () => ({ ok: true, value: [] }),
+      listConfigurableProviders: async () => ({ ok: true, value: [] }),
+      discoverModels: async () => ({ ok: true, value: [] }),
     },
     credentials: {
-      describe: async () => ({}),
-      set: async () => {},
-      unset: async () => {},
+      describe: async () => ({ ok: true, value: {} }),
+      set: async () => ({ ok: true, value: undefined }),
+      unset: async () => ({ ok: true, value: undefined }),
     },
   }
 }

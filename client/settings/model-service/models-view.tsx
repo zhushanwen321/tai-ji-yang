@@ -19,6 +19,7 @@ import {
   LLM_PI_AI_NS,
   listProviderDirectory,
   readLlmPiAi,
+  unwrapRemote,
   type ConfigurableProviderRow,
 } from '../../model-service/settings-client'
 import { discoverProviderModels, type DiscoveredModel } from '../../model-service/discovery'
@@ -102,7 +103,7 @@ export class ModelsListModel {
     const [directory, snapshot, catalog] = await Promise.all([
       listProviderDirectory(this.deps.remote.llm).catch(() => [] as ConfigurableProviderRow[]),
       readLlmPiAi(this.deps.remote.settings).catch(() => undefined),
-      this.deps.remote.session?.modelCatalog().catch(() => undefined) ?? Promise.resolve(undefined),
+      this.deps.remote.session?.modelCatalog().then(unwrapRemote).catch(() => undefined) ?? Promise.resolve(undefined),
     ])
     const rows: ModelListRow[] = []
     const reasoningOf = buildReasoningIndex(catalog)

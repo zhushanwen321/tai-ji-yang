@@ -32,7 +32,7 @@ import {
   type RouteEntry,
   type RouteMember,
 } from './route-evaluate'
-import { readLlmPiAi, type ModelServiceHost } from './settings-client'
+import { readLlmPiAi, unwrapRemote, type ModelServiceHost } from './settings-client'
 import type { PluginConfigFormLike } from './credentials-client'
 
 /** 路由 Config 字段名（index.js Config 声明）。 */
@@ -147,10 +147,11 @@ export class RoutesListModel {
     this.notify()
 
     // 派生面（异步探测；失败降级为「不标注」，不阻塞路由配置面——AX6 辅助功能接入点降级）。
+    // remote 方法返回 typert Result 包装，unwrapRemote 解包后失败转 rejection，由 .catch 降级。
     const [directory, llmPiAi, registeredProviders, credentials] = await Promise.all([
-      this.deps.remote.llm.listConfigurableProviders().catch(() => []),
+      this.deps.remote.llm.listConfigurableProviders().then(unwrapRemote).catch(() => []),
       readLlmPiAi(this.deps.remote.settings).catch(() => undefined),
-      this.deps.remote.llm.listProviders().catch(() => []),
+      this.deps.remote.llm.listProviders().then(unwrapRemote).catch(() => []),
       this.describeCredentials(routes).catch(() => new Map<string, { configured: boolean }>()), 
     ])
     const registeredRouteProviders = new Set(
@@ -201,7 +202,7 @@ export class RoutesListModel {
       }
     }
     if (refs.size === 0) return new Map()
-    const described = await this.deps.remote.credentials.describe([...refs])
+    const described = await this.deps.remote.credentials.describe([...refs]).then(unwrapRemote)
     const map = new Map<string, { configured: boolean }>()
     for (const [ref, info] of Object.entries(described)) map.set(ref, { configured: info?.configured === true })
     return map

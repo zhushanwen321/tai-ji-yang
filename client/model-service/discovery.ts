@@ -15,7 +15,7 @@
  * 保留是唯一稳定面）：401/403 → 密钥问题；「no model listing」→ 协议不可列表；其余 →
  * 端点/网络。每支文案都带恢复动作（「失败文案含可行动恢复动作」，任务书职责 2）。
  */
-import { LLM_PI_AI_NS } from './settings-client'
+import { LLM_PI_AI_NS, unwrapRemote, type RemoteResult } from './settings-client'
 
 /** discoverModels 的请求形状（宿主 LlmModelDiscoveryRequest 的最小同构）。 */
 export interface DiscoveryRequest {
@@ -34,9 +34,9 @@ export interface DiscoveredModel {
   inputModalities?: ('text' | 'image')[]
 }
 
-/** 宿主 llm remote 的发现消费面。 */
+/** 宿主 llm remote 的发现消费面（返回 typert 网关的 Result 包装，失败 resolve 不 reject）。 */
 export interface DiscoveryRemoteLike {
-  discoverModels(settingsNs: string, request: DiscoveryRequest): Promise<DiscoveredModel[]>
+  discoverModels(settingsNs: string, request: DiscoveryRequest): Promise<RemoteResult<DiscoveredModel[]>>
 }
 
 /** 发现结果三态：目录短路（零网络）/ 端点探测成功 / 失败（含可行动分类）。 */
@@ -55,7 +55,9 @@ export type DiscoveryOutcome =
 export async function discoverProviderModels(llm: DiscoveryRemoteLike, input: DiscoveryRequest): Promise<DiscoveryOutcome> {
   let models: DiscoveredModel[]
   try {
-    models = await llm.discoverModels(LLM_PI_AI_NS, { ...input })
+    // Result 解包后失败转 rejection，由下方 catch 接管失败分类（宿主 LlmError 的 message
+    // 原文经 unwrapRemote 保留，401/403 与「no model listing」文本判据照常工作）。
+    models = unwrapRemote(await llm.discoverModels(LLM_PI_AI_NS, { ...input }))
   } catch (error) {
     return failureOf(error)
   }

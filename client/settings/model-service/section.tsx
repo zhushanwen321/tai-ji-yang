@@ -21,7 +21,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { retryPendingUnsets, type PluginConfigFormLike } from '../../model-service/credentials-client'
 import { RoutesListModel } from '../../model-service/route-store'
-import type { ModelServiceHost } from '../../model-service/settings-client'
+import type { ModelServiceHost, RemoteResult } from '../../model-service/settings-client'
 import { TAIJI_MODEL_SERVICE_LOCALE_NS, type ModelServiceLocaleKey } from '../../locale'
 import { ModelsView, ModelsListModel } from './models-view'
 import { ProvidersView, ProvidersListModel } from './providers-view'
@@ -33,9 +33,9 @@ export const MODEL_SERVICES_SECTION_ID = 'model-services'
 /** 本分区的导航排序位（D8）：11，紧邻宿主「模型」（10）之后、太极（12）之前。 */
 export const MODEL_SERVICES_SECTION_ORDER = 11
 
-/** 宿主 session remote 的最小同构（模型清单视图的第一层读取源）。 */
+/** 宿主 session remote 的最小同构（模型清单视图的第一层读取源；返回 typert 网关 Result 包装）。 */
 export interface SessionRemoteLike {
-  modelCatalog(): Promise<ModelCatalogLike>
+  modelCatalog(): Promise<RemoteResult<ModelCatalogLike>>
 }
 
 /** session.modelCatalog 的返回形状最小同构（generated client 实读核对：groups 为空清单丢弃后的分组）。 */

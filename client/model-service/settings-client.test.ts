@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   deleteProvider,
+  listProviderDirectory,
   listRegisteredRoutes,
   modelFromDraft,
   profileDiffOps,
@@ -14,6 +15,8 @@ import {
   type LlmRemoteLike,
   type ModelDraft,
   type ModelServiceHost,
+  type RemoteResult,
+  type SettingsNamespaceViewLike,
   type SettingsOp,
   type SettingsRemoteLike,
 } from './settings-client'
@@ -40,11 +43,12 @@ function makeRecorder() {
   }
 }
 
-/** 假 settings remote：可脚本化的 describe/mutate（bumpRevision 供冲突场景模拟他写者提交）。 */
+/** 假 settings remote：可脚本化的 describe/mutate（bumpRevision 供冲突场景模拟他写者提交；
+ * 返回按宿主 typert 网关真实形态包 RemoteResult，业务失败由 mutateImpl 注入 {ok:false}）。 */
 function fakeSettings(options: {
   providers?: Record<string, unknown>
   revision?: number
-  mutateImpl?: (ns: string, ops: SettingsOp[], expectedRevision?: number) => Promise<unknown>
+  mutateImpl?: (ns: string, ops: SettingsOp[], expectedRevision?: number) => Promise<RemoteResult<SettingsNamespaceViewLike> | undefined>
 } = {}): SettingsRemoteLike & {
   mutations: { ns: string; ops: SettingsOp[]; revision?: number }[]
   bumpRevision(): void
@@ -56,19 +60,23 @@ function fakeSettings(options: {
     bumpRevision() { revision += 1 },
     async describe() {
       return {
-        writable: true,
-        namespaces: [{
-          ns: 'llm-pi-ai',
-          value: { providers: options.providers ?? {} },
-          revision,
-        }],
+        ok: true,
+        value: {
+          writable: true,
+          namespaces: [{
+            ns: 'llm-pi-ai',
+            value: { providers: options.providers ?? {} },
+            revision,
+          }],
+        },
       }
     },
     async mutate(ns, ops, expectedRevision) {
       mutations.push({ ns, ops, revision: expectedRevision })
-      if (options.mutateImpl !== undefined) await options.mutateImpl(ns, ops, expectedRevision)
+      const injected = options.mutateImpl !== undefined ? await options.mutateImpl(ns, ops, expectedRevision) : undefined
+      if (injected !== undefined) return injected
       revision += 1
-      return { ns: 'llm-pi-ai', value: { providers: options.providers ?? {} }, revision }
+      return { ok: true, value: { ns: 'llm-pi-ai', value: { providers: options.providers ?? {} }, revision } }
     },
   }
 }
@@ -76,10 +84,14 @@ function fakeSettings(options: {
 /** 假 llm remote：routes = 已注册适配器 route 集合。 */
 function fakeLlm(routes: string[]): LlmRemoteLike & { configurable: { provider: string; displayName: string; settingsNs: string; settingsPath: string[] }[] } {
   return {
-    async listProviders() { return routes.map((id) => ({ id, name: id })) },
+    async listProviders() { return { ok: true, value: routes.map((id) => ({ id, name: id })) } },
     async listConfigurableProviders() {
-      return routes.map((provider) => ({ provider, displayName: provider, settingsNs: 'llm-pi-ai', settingsPath: ['providers', provider] }))
+      return {
+        ok: true,
+        value: routes.map((provider) => ({ provider, displayName: provider, settingsNs: 'llm-pi-ai', settingsPath: ['providers', provider] })),
+      }
     },
+    async discoverModels() { return { ok: true, value: [] } },
     configurable: [],
   }
 }
@@ -92,16 +104,18 @@ function fakeCredentials(existingRefs: string[] = [], recorder = makeRecorder())
     setCalls,
     async describe(refs) {
       recorder.mark('credentials.describe')
-      return Object.fromEntries(refs.map((ref) => [ref, { configured: configured.has(ref), writable: true }]))
+      return { ok: true, value: Object.fromEntries(refs.map((ref) => [ref, { configured: configured.has(ref), writable: true }])) }
     },
     async set(ref, value) {
       recorder.mark('credentials.set')
       setCalls.push({ ref, value })
       configured.add(ref)
+      return { ok: true, value: undefined }
     },
     async unset(ref) {
       recorder.mark('credentials.unset')
       configured.delete(ref)
+      return { ok: true, value: undefined }
     },
   }
 }
@@ -206,23 +220,25 @@ describe('saveProvider 保存顺序（检查点 U1）', () => {
       refGuard: async () => { recorder.mark('refGuard'); return { ok: true } },
     })
     expect(result.kind).toBe('saved')
-    expect(result.refConfigured).toBe(true)
+    expect(result.kind === 'saved' && result.refConfigured).toBe(true)
     expect(recorder.calls).toEqual(['precheck.listProviders', 'settings.mutate'])
   })
 })
 
 describe('settings/conflict 重读重试（RL3 单进程分支）', () => {
-  it('第一次 mutate 抛 settings/conflict → describe 重读一次 → 第二次 mutate 成功（非盲重试：带新 revision）', async () => {
+  it('第一次 mutate 报 settings/conflict → describe 重读一次 → 第二次 mutate 成功（非盲重试：带新 revision）', async () => {
     const recorder = makeRecorder()
     let attempt = 0
     const settings = fakeSettings({
       mutateImpl: async () => {
         attempt += 1
         if (attempt === 1) {
-          // 他写者已提交：存储视图 revision 前移，然后本次写入被拒（conflict details.actual 同语义）。
+          // 他写者已提交：存储视图 revision 前移，然后本次写入被拒（resolve {ok:false}，
+          // 宿主网关对业务失败不 reject 的真实形态）。
           settings.bumpRevision()
-          throw Object.assign(new Error('stale revision'), { code: 'settings/conflict', expected: 7, actual: 8 })
+          return { ok: false, error: { code: 'settings/conflict', message: 'stale revision', details: { expected: 7, actual: 8 } } }
         }
+        return undefined
       },
     })
     const originalMutate = settings.mutate.bind(settings)
@@ -252,8 +268,8 @@ describe('settings/conflict 重读重试（RL3 单进程分支）', () => {
   })
 
   it('连续两次 conflict：返回 rejected 四段式（含命名空间与字段 + 出路），不再重试第三次', async () => {
-    const conflict = Object.assign(new Error('stale again'), { code: 'settings/conflict', expected: 8, actual: 9 })
-    const settings = fakeSettings({ mutateImpl: async () => { throw conflict } })
+    const conflict: RemoteResult<SettingsNamespaceViewLike> = { ok: false, error: { code: 'settings/conflict', message: 'stale again', details: { expected: 8, actual: 9 } } }
+    const settings = fakeSettings({ mutateImpl: async () => conflict })
     const host = makeHost({ settings })
     const result = await saveProvider(host, {
       draft: baseDraft,
@@ -273,7 +289,8 @@ describe('settings/conflict 重读重试（RL3 单进程分支）', () => {
   it('凭据 set 失败不回滚设置：saved + refConfigured=false + 重填重试指引', async () => {
     const settings = fakeSettings()
     const credentials = fakeCredentials([])
-    credentials.set = async () => { throw Object.assign(new Error('credential service down'), { code: 'credential/rejected' }) }
+    // 业务失败是 resolve 型 {ok:false}（宿主网关不 reject 的真实形态）。
+    credentials.set = async () => ({ ok: false, error: { code: 'credential/rejected', message: 'credential service down', details: {} } })
     const host = makeHost({ settings, credentials })
     const result = await saveProvider(host, {
       draft: baseDraft,
@@ -423,7 +440,7 @@ describe('deleteProvider 删除链路（D3/D7）', () => {
   it('unset 失败 → 登记 pendingCredentialUnsets（待清理重试的数据源）', async () => {
     const settings = fakeSettings()
     const credentials = fakeCredentials([])
-    credentials.unset = async () => { throw new Error('down') }
+    credentials.unset = async () => ({ ok: false, error: { code: 'credential/rejected', message: 'down', details: {} } })
     const host = makeHost({ settings, credentials })
     const pendings: string[] = []
     const result = await deleteProvider(host, {
@@ -440,7 +457,7 @@ describe('deleteProvider 删除链路（D3/D7）', () => {
   it('unset 失败且登记也失败：不外抛，unsetMessage 降级为宿主凭据界面人工清理指引（U13 边界）', async () => {
     const settings = fakeSettings()
     const credentials = fakeCredentials([])
-    credentials.unset = async () => { throw new Error('down') }
+    credentials.unset = async () => ({ ok: false, error: { code: 'credential/rejected', message: 'down', details: {} } })
     const host = makeHost({ settings, credentials })
     const result = await deleteProvider(host, {
       key: 'verify-a',
@@ -490,11 +507,28 @@ describe('provider-key 消费方集成（AX11）', () => {
 describe('readLlmPiAi 快照', () => {
   it('命名空间未被服务 → available=false（视图降级文案的数据源）', async () => {
     const settings: SettingsRemoteLike = {
-      describe: async () => ({ writable: true, namespaces: [{ ns: 'other', revision: 1 }] }),
-      mutate: async () => ({ ns: 'llm-pi-ai' }),
+      describe: async () => ({ ok: true, value: { writable: true, namespaces: [{ ns: 'other', revision: 1 }] } }),
+      mutate: async () => ({ ok: true, value: { ns: 'llm-pi-ai' } }),
     }
     const snapshot = await readLlmPiAi(settings)
     expect(snapshot.available).toBe(false)
+  })
+
+  it('describe 失败 Result（resolve 不 reject）→ readLlmPiAi 把宿主消息抛成 rejection（读降级分支接管）', async () => {
+    const settings: SettingsRemoteLike = {
+      describe: async () => ({ ok: false, error: { code: 'gateway/internal', message: 'settings service down', details: {} } }),
+      mutate: async () => ({ ok: true, value: { ns: 'llm-pi-ai' } }),
+    }
+    await expect(readLlmPiAi(settings)).rejects.toThrow('settings service down')
+  })
+
+  it('listProviderDirectory：成功 Result 解包出数组；失败 Result 抛宿主消息（.catch(() => []) 接管）', async () => {
+    const llm = fakeLlm(['a'])
+    const rows = await listProviderDirectory(llm)
+    expect(Array.isArray(rows)).toBe(true)
+    expect(rows).toHaveLength(1)
+    llm.listConfigurableProviders = async () => ({ ok: false, error: { code: 'gateway/internal', message: 'llm down', details: {} } })
+    await expect(listProviderDirectory(llm)).rejects.toThrow('llm down')
   })
 
   it('就绪命名空间 → revision/providers 读出（展开体打开时的持有快照）', async () => {

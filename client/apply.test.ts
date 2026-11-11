@@ -185,23 +185,24 @@ function createHarness(options: { persisted?: Record<string, unknown>; writeResu
       warn(message: string) { log.warnings.push(message) },
     },
     // 模型服务分区的宿主通道（apply 装配透传进注入面；本文件不断言其调用，stub 即可——
-    // remote 的方法签名对齐 client/apply.ts 的 ClientRemote 最小面）。
+    // remote 的方法签名对齐 client/apply.ts 的 ClientRemote 最小面，返回按宿主 typert
+    // 网关真实形态包 RemoteResult）。
     remote: {
       settings: {
-        describe: async () => ({ writable: true, namespaces: [{ ns: 'llm-pi-ai', value: { providers: {} }, revision: 1 }] }),
-        mutate: async () => ({ ns: 'llm-pi-ai' }),
+        describe: async () => ({ ok: true, value: { writable: true, namespaces: [{ ns: 'llm-pi-ai', value: { providers: {} }, revision: 1 }] } }),
+        mutate: async () => ({ ok: true, value: { ns: 'llm-pi-ai' } }),
       },
       llm: {
-        listProviders: async () => [],
-        listConfigurableProviders: async () => [],
+        listProviders: async () => ({ ok: true, value: [] }),
+        listConfigurableProviders: async () => ({ ok: true, value: [] }),
       },
       credentials: {
-        describe: async () => ({}),
-        set: async () => {},
-        unset: async () => {},
+        describe: async () => ({ ok: true, value: {} }),
+        set: async () => ({ ok: true, value: undefined }),
+        unset: async () => ({ ok: true, value: undefined }),
       },
       session: {
-        modelCatalog: async () => ({ groups: [] }),
+        modelCatalog: async () => ({ ok: true, value: { groups: [] } }),
       },
     },
     // 项目分组浏览器经闭包捕获的两个宿主动作服务（本文件不断言其调用，stub 即可）

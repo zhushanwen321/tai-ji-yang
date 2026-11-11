@@ -426,22 +426,34 @@ describe('V5 卸载清洁度', () => {
     const host = {
       settings: {
         describe: async () => ({
-          writable: true,
-          namespaces: [{ ns: 'llm-pi-ai', value: { providers, revision: 3 } }],
+          ok: true,
+          value: {
+            writable: true,
+            namespaces: [{ ns: 'llm-pi-ai', value: { providers, revision: 3 } }],
+          },
         }),
         mutate: async (_ns: string, ops: SettingsOp[]) => {
           for (const op of ops) {
             if (op.op === 'unset' && op.path[0] === 'providers') delete providers[op.path[1] as string]
           }
-          return { writable: true, namespaces: [{ ns: 'llm-pi-ai', value: { providers, revision: 4 } }] }
+          // mutate 回执 = 命名空间视图（SettingsNamespaceViewLike），非 describe 的文档形状。
+          return {
+            ok: true,
+            value: { ns: 'llm-pi-ai', value: { providers, revision: 4 } },
+          }
         },
       },
-      llm: { listProviders: async () => [], listConfigurableProviders: async () => [], discoverModels: async () => [] },
+      llm: {
+        listProviders: async () => ({ ok: true, value: [] }),
+        listConfigurableProviders: async () => ({ ok: true, value: [] }),
+        discoverModels: async () => ({ ok: true, value: [] }),
+      },
       credentials: {
-        describe: async () => ({}),
-        set: async () => {},
+        describe: async () => ({ ok: true, value: {} }),
+        set: async () => ({ ok: true, value: undefined }),
         unset: async (ref: string) => {
           credentialRefs = credentialRefs.filter((entry) => entry !== ref)
+          return { ok: true, value: undefined }
         },
       },
       logger: { error() {}, warn() {} },
@@ -472,7 +484,8 @@ describe('V5 卸载清洁度', () => {
       ...host,
       credentials: {
         ...host.credentials,
-        unset: async () => { throw new Error('credentials service unavailable') },
+        // unset 失败按宿主网关真实形态 resolve {ok:false}（业务失败不 reject）。
+        unset: async () => ({ ok: false, error: { code: 'credential/rejected', message: 'credentials service unavailable', details: {} } }),
       },
     } as DeleteHost, {
       key: 'bar',

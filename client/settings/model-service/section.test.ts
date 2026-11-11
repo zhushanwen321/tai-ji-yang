@@ -53,22 +53,23 @@ function fakeSectionHost() {
   }
 }
 
-/** 假注入面：remote 三通道 + 插件 Config 表单（load 异步Promise 立即可挂起）。 */
+/** 假注入面：remote 三通道 + 插件 Config 表单（load 异步Promise 立即可挂起；remote 返回按
+ * 宿主 typert 网关真实形态包 RemoteResult）。 */
 function fakeDeps(): ModelServiceSectionInjected {
   return {
     remote: {
       settings: {
-        describe: async () => ({ writable: true, namespaces: [{ ns: 'llm-pi-ai', value: { providers: {} }, revision: 1 }] }),
-        mutate: async () => ({ ns: 'llm-pi-ai' }),
+        describe: async () => ({ ok: true, value: { writable: true, namespaces: [{ ns: 'llm-pi-ai', value: { providers: {} }, revision: 1 }] } }),
+        mutate: async () => ({ ok: true, value: { ns: 'llm-pi-ai' } }),
       },
       llm: {
-        listProviders: async () => [],
-        listConfigurableProviders: async () => [],
+        listProviders: async () => ({ ok: true, value: [] }),
+        listConfigurableProviders: async () => ({ ok: true, value: [] }),
       },
       credentials: {
-        describe: async () => ({}),
-        set: async () => {},
-        unset: async () => {},
+        describe: async () => ({ ok: true, value: {} }),
+        set: async () => ({ ok: true, value: undefined }),
+        unset: async () => ({ ok: true, value: undefined }),
       },
     },
     configForm: {
