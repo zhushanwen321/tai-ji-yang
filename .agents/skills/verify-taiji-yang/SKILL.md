@@ -1,15 +1,15 @@
 ---
 name: verify-taiji-yang
-description: "tai-ji-yang 根包 tai-ji-yang-shell 的真实 DSH 宿主验收：隔离 DSH_HOME 自启 dsh web（或连接已为测试启动的 URL）、doctor 体检、Playwright 驱动五场景（brand / head / theme / projects / lifecycle）、证据三件套（verdict.json / summary.jsonl / 截图+控制台）、按 PID 清理。验收范围仅根包 tai-ji-yang-shell；子包 opendesign-design-mode 的真实宿主验收走 pnpm test:e2e:design-mode（node 直跑，web 与桌面双版本宿主），两套入口独立、互不替代。触发词：真机验收、宿主验收、verify taiji-yang、验收插件、DSH 验收。不用于静态自检（pnpm check）与单测（pnpm test），也不用于 taiji 本体的 verify-taiji。"
+description: "tai-ji-yang 根包 tai-ji-yang-shell 的真实 DSH 宿主验收：隔离 DSH_HOME 自启 dsh web（或连接已为测试启动的 URL）、doctor 体检、Playwright 驱动六场景（brand / head / theme / projects / model-service / lifecycle）、证据三件套（verdict.json / summary.jsonl / 截图+控制台）、按 PID 清理。验收范围仅根包 tai-ji-yang-shell；子包 opendesign-design-mode 的真实宿主验收走 pnpm test:e2e:design-mode（node 直跑，web 与桌面双版本宿主），两套入口独立、互不替代。触发词：真机验收、宿主验收、verify taiji-yang、验收插件、DSH 验收。不用于静态自检（pnpm check）与单测（pnpm test），也不用于 taiji 本体的 verify-taiji。"
 ---
 
 # verify-taiji-yang：tai-ji-yang-shell 真机验收技能
 
-本技能把根包 tai-ji-yang-shell 装进**隔离 DSH_HOME** 的 dsh web 实例，按用户可见路径驱动五类场景，落证据，收尾不留进程。写给冷启动的验收 agent 与 dev-flow D3 wrapper。
+本技能把根包 tai-ji-yang-shell 装进**隔离 DSH_HOME** 的 dsh web 实例，按用户可见路径驱动六类场景，落证据，收尾不留进程。写给冷启动的验收 agent 与 dev-flow D3 wrapper。
 
 分工边界：
 
-- **验收范围 = 根包 tai-ji-yang-shell**：runner 安装只 add 仓根（根包），五场景的 DOM 断言全部指向根包 `taiji-*` 目标。子包 `packages/opendesign-design-mode` 的真实宿主验收走它自己的 node 直跑 e2e（`pnpm test:e2e:design-mode`，场景在 `packages/opendesign-design-mode/tests/e2e/`，覆盖 web 与桌面 0.2.x 双版本宿主）——两套验收入口独立，互不替代。
+- **验收范围 = 根包 tai-ji-yang-shell**：runner 安装只 add 仓根（根包），六场景的 DOM 断言全部指向根包 `taiji-*` 目标。子包 `packages/opendesign-design-mode` 的真实宿主验收走它自己的 node 直跑 e2e（`pnpm test:e2e:design-mode`，场景在 `packages/opendesign-design-mode/tests/e2e/`，覆盖 web 与桌面 0.2.x 双版本宿主）——两套验收入口独立，互不替代。
 - `pnpm check`（静态断言 + 构建 + 全仓单测）验「代码结构与构建产物」；本技能验「真实宿主里的行为」。两者互补，互不替代。
 - 本技能不写 e2e spec、不进 CI；驱动只走用户路径（点击/重载），绝不向模型发送请求。
 
@@ -45,7 +45,7 @@ runner 依次执行：在隔离 DSH_HOME 里 `dsh plugin --profile web add <本�
 | `--dsh-home <dir>` | 形态 ② 必填；**显式隔离** DSH_HOME，指向 `~/.dsh` 会被拒绝（runner 永不碰用户真实 profile） |
 | `--port <n>` | 形态 ② 透传 `--port`；缺省由宿主配置决定 |
 | `--profile <name>` | 形态 ② 的目标 profile，缺省 `web` |
-| `--scenarios <清单>` | 逗号分隔内置 id / 场景文件路径；`all`（缺省）= brand,head,theme,projects,lifecycle |
+| `--scenarios <清单>` | 逗号分隔内置 id / 场景文件路径；`all`（缺省）= brand,head,theme,projects,model-service,lifecycle |
 | `--artifacts-dir <dir>` | 证据根；缺省 `~/.agents/skill-data/verify-taiji-yang`（runId 只出现在其下一层，不拼进缺省根） |
 | `--run-id <id>` | 默认 UTC 时间戳；只允许字母数字与 `. _ -`（防路径穿越） |
 | `--strict` | degraded 也以退出码 2 结束（缺省 degraded = 0） |
@@ -78,7 +78,7 @@ node scripts/verify/doctor.mjs --url "<测试URL>" --json     # 机读
 
 ## 3. 场景
 
-每个场景 = `scripts/verify/scenarios/<id>.mjs`（`export const meta` + `export async function run(ctx)`）；断言期望值依据 `client/` 源码当前值，源码改了场景会红，红即同步信号。场景串行执行，顺序固定为 brand → head → theme → projects → lifecycle（卸载类最后：跑完包已不在）。
+每个场景 = `scripts/verify/scenarios/<id>.mjs`（`export const meta` + `export async function run(ctx)`）；断言期望值依据 `client/` 源码当前值，源码改了场景会红，红即同步信号。场景串行执行，顺序固定为 brand → head → theme → projects → model-service → lifecycle（model-service 写隔离 home 的设置文档与凭据文件，排在只读观测类之后；卸载类最后：跑完包已不在）。
 
 | 场景 | 验什么 | 前置 |
 |------|--------|------|
@@ -86,6 +86,7 @@ node scripts/verify/doctor.mjs --url "<测试URL>" --json     # 机读
 | head | 空态：header 单行 ≤45px、无横向溢出、右侧栏开关贴最右；会话态：按钮视觉序单调、目标子序（对话→轨迹→打开方式→chevron→右侧栏）、两两无重叠、打开方式在场、More actions 隐藏、分段控件（高 30px / 底色 = bg-layer-1 / 激活 600 / ::after 隐藏）、header 高 41±2 | 会话态段需要测试 profile 已有会话 |
 | theme | composer 快速配色 chip（不可达时设置页外观行）切非默认色 → brand-primary 解析值变化 → reload 后持久（插件 Config 通道）→ 恢复默认玄 | chip 或外观行可达 |
 | projects | 整槽替换占位（`.taiji-pb-list` 在场）、数据就绪、默认项目组头、当前会话行 current 标记、「当前」chip 文字居中 | current 标记与 chip 需要已有会话 |
+| model-service | 设置导航「模型」与「模型服务」并存、点各自条目各渲染己页（无串页）；供应商接入全流程（零模型保存被拒给指引 → 手动加模型保存 → 设置文档 providers 条目 + 凭据文件 ref 落盘 → 宿主「模型」分区热可见且页面未重载）；并发冲突自动重读重试双方保留；密钥零泄漏（设置文档无 sk- 明文）；同名供应商预检拒绝且零写入；模型清单来源态标注、筛选空态、托管只读行；路由创建与同名派生 id、成员落盘、白名单勾选/取消/悬挂清理（插件 Config 落盘断言）；删除供应商后设置文档条目与凭据 ref 双清除（无孤儿） | **仅形态 ②**（要读隔离 DSH_HOME 的设置文档与凭据文件）；URL 模式显式降级 |
 | lifecycle | `dsh plugin remove` → reload → 品牌栈消失、`taiji-` 前缀元素清零、页面不白屏、无 Slot 崩溃、`--dump-config` 不含本包层 | **仅形态 ②**；禁用（disable）无 CLI 通道，显式登记 notProvable |
 
 前置缺失的处理（强制，不许假 pass）：场景显式降级（degraded）并在 verdict 的 blockers/degraded 里给恢复动作。例：head 在无会话 profile 上 = degraded，恢复动作「预置会话后重跑」。

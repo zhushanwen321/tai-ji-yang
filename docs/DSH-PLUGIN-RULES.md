@@ -55,7 +55,15 @@ DSH 公共 API 仍可能变化。使用 Service、Event、Slot、Theme、Config 
 - 每包配置只经自己的插件 Config 读写，不直接改写用户 profile 的 `cordis.patch.yml`，不把秘密信息写入普通 Config。
 - 浏览器 localStorage、sessionStorage、IndexedDB 不是任何包的持久通道。
 
-机器主责：根包 `tests/uninstall-cleanliness.spec.ts`、装配测试和 profile 探针。真实禁用、卸载与配置残留由 `verify-taiji-yang` 验证（只验根包）；子包走 `pnpm test:e2e:design-mode` 真实宿主 e2e。
+**宿主设置文档的跨命名空间写入（模型服务，架构事实）**：模型服务分区经宿主 `settings.mutate` 服务写入 `llm-pi-ai` 命名空间（providers 段 = 用户可编辑拓扑的权威归属）。这不是「直接改写 `cordis.patch.yml`」——文件编辑被禁止；写宿主权威数据走宿主提供的设置服务，宿主负责 revision 栅栏、冲突分类与 redactSecrets 视图。护栏（五条全为机器检查或可静态判定的纪律）：
+
+- 密钥材料永不进设置文档：插件只写 ref 名（apiKeyEnv 值为大写标识符），密钥明文只经凭据通道（`credentials.set`/`unset`）流转，唯一权威是宿主凭据文件。
+- 写入顺序锚定：provider key 预检 → 凭据 ref 查重（撞已有 ref 拒绝，防覆盖宿主密钥）→ `settings.mutate` → `credentials.set`；冲突按宿主 `settings/conflict` 分类重读一次重发一次，不做盲重试。
+- 字段级读改写：只对编辑面字段发 diff ops，`apiKeyEnv`/`headers` 等清单外字段原样保留，不丢宿主侧写入的字段。
+- 卸载语义：插件创建的 providers 条目与凭据 ref 是宿主权威数据，禁用/卸载不删除；无孤儿判据 = 凭据文件中 TAIJI_* ref 全部被 providers.apiKeyEnv 引用，唯一例外是卸载前已登记进插件 Config 待清理清单且未重试成功的 ref（宿主凭据界面人工清理，不判失败）。
+- 删除供应商时同步 unset 其凭据 ref；unset 失败登记进待清理清单（volatile 字段）幂等重试。
+
+机器主责：根包 `tests/uninstall-cleanliness.spec.ts`（卸载撤除与无孤儿 ref 断言）、`scripts/check-credentials-hygiene.mjs`（静态密钥扫描）、装配测试和 profile 探针。真实禁用、卸载、配置残留与设置文档/凭据文件落盘由 `verify-taiji-yang` 验证（只验根包；`model-service` 场景承载设置文档与凭据的真机断言）；子包走 `pnpm test:e2e:design-mode` 真实宿主 e2e。
 
 ## 5. 首次绘制与页面注入
 
@@ -67,7 +75,7 @@ DSH 公共 API 仍可能变化。使用 Service、Event、Slot、Theme、Config 
 
 ## 6. 有意偏离登记
 
-以下形态与通用插件实践不同。P-5（各包 `lib/` 入库）对每个包生效；其余偏离均属根包 tai-ji-yang-shell 的产品目标和明确架构决策。Reviewer 不得仅凭「使用了全局 CSS」或「替换了 Slot」重复报警；应检查决策理由和护栏是否仍成立。
+以下形态与通用插件实践不同。编号分两系列：P 系列登记包纪律与视觉身份（其中 P-5 对每个包生效，其余属根包）；D 系列登记模型服务能力引入的项目决策（属根包 tai-ji-yang-shell）。Reviewer 不得仅凭「使用了全局 CSS」或「替换了 Slot」重复报警；应检查决策理由和护栏是否仍成立。
 
 | 编号 | 项目决策 | 理由 | 失效信号与护栏 |
 |---|---|---|---|
@@ -77,6 +85,8 @@ DSH 公共 API 仍可能变化。使用 Service、Event、Slot、Theme、Config 
 | P-4 | 整槽替换 `sidebar.workspaces` | 项目分组轴与宿主目录工作区列表不可折中共存 | 使用负优先级；禁用/卸载回落宿主；不重声明宿主子 Slot；真实验证会话动作 |
 | P-5 | 各包 `lib/` 构建产物随 git 交付 | 当前 git 安装通道不保证在安装期执行构建，每包的目标 commit 必须包含该包可装载产物 | 构建确定性检查；源与产物同批提交；安装测试使用已提交产物 |
 | P-6 | Node 半场另持默认色最小 token 集 | 浏览器模块装载前就需要避免宿主品牌色闪现 | 只允许默认色最小差异，不复制六色；与浏览器基值对账；首次绘制验收 |
+| D-2 | 插件分区插进宿主内置分区序列：太极分区 order 25 → 12，模型服务分区 order 11 | 模型服务紧邻宿主「模型」（10 → 11），用户在模型语境里连续操作；太极分区是壳身份入口，置中不置尾 | 两个分区都是唯一 id 追加注册（不占宿主 order、不遮蔽宿主条目）；导航顺序 = 账号(-10) / 通用(0) / 模型(10，宿主) / 模型服务(11，插件) / 太极(12，插件) / 插件(15) / 智能体预设(20)，宿主升级新增内置分区时按此表复核无串位 |
+| D-3 | 设置页「太极」分区配色行就地展开六色色板、点选即生效——换色第三入口（既有两入口：设置页外观行与 composer 配色 chip） | 「太极」分区是壳身份的操作位，配色切换在分区就地可达，不必跳回外观行 | 三入口共用同一 `ThemeSelectionController` 实例与同一持久字段（AppearancePersistence）；无双写、无第二份偏好权威——新换色入口接入时必须复用同一 controller，禁止另建持久通道 |
 
 新增偏离必须在同批改动中登记「通用实践、项目决策、理由、护栏」。没有登记不代表不能实现，但 Reviewer 应把它当作需要解释的设计变化，而不是默认接受。
 

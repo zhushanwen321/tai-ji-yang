@@ -90,6 +90,9 @@ function runBoot(applyPlugin: (ctx: unknown) => void, sequence: BootSequence = '
       const dispose = execute()
       return typeof dispose === 'function' ? dispose : () => {}
     },
+    // 模型路由经回调式 inject 挂 llm 注入面（index.js apply）；本文件断言范围只有注入行
+    // 顺序，llm 注入回调不驱动——宿主语义 = 服务在本树就位时才执行回调
+    inject(_names: string[], _callback: (child: unknown) => void) {},
   }
 
   applyPlugin(ctx)

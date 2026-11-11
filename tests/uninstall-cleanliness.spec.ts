@@ -4,9 +4,10 @@ import { describe, expect, it } from 'vitest'
 import { createTsxLoader } from '../client/testing/load-tsx'
 import { PLUGIN_ENTRY_ID } from '../client/persist'
 import { THEME_LAYER_SOURCE, STRUCTURE_LAYER_SOURCE } from '../client/theme/apply'
+import { deleteProvider, type SettingsOp } from '../client/model-service/settings-client'
 
 /**
- * 卸载清洁度单测（设计 RL4 的机器化通道 + 验收 V5 的可机器判部分）。
+ * 卸载清洁度单测（设计 RL4/RL6 的机器化通道 + 验收 V5 的可机器判部分）。
  *
  * V5 要求三处痕迹在卸载后全部消失，且「不依赖页面重载以外的用户操作」：
  *   ① 覆盖层撤除 —— `theme.overrideTokens` 返回的 disposer 是普通闭包、无 fiber 绑定（AS10），
@@ -16,6 +17,17 @@ import { THEME_LAYER_SOURCE, STRUCTURE_LAYER_SOURCE } from '../client/theme/appl
  *      `dsh plugin remove` 移除该行即带走配置，**不需要本包代码参与**（这正是 D2 放弃
  *      localStorage 的理由：那时卸载后没有任何执行者能删键）。本条因此不断言「有清理代码」，
  *      而断言「持久状态的位置确实是那一行」+「没有第二条持久通道」。
+ *
+ * RL6（模型服务卸载清洁度，M3 扩展）：
+ *   ④ 插件自有贡献撤除 —— Node 半场的 llm 适配器注册与 credentials 调用点随 fiber 卸载撤销：
+ *      adapter 注册经 `ctx.inject(['llm'])` → `child.effect(ensureRouteRegistration)` 托管，
+ *      credentials 预检（describe）只活在 adapter 闭包内——注册撤销即调用点不可达，卸载后
+ *      volatile 重算订阅也撤销（不复活注册）。
+ *   ⑤ 无孤儿 ref —— 构造场景（模拟设置文档 + 凭据文件态 + 插件 Config）的前置 =
+ *      pendingCredentialUnsets 为空（清洁环境）；在该前置下，删除供应商（真实链路
+ *      deleteProvider）后凭据文件态的 TAIJI_* ref 全部被宿主设置文档 providers.apiKeyEnv
+ *      引用。唯一例外 = 卸载前已登记且未重试成功的 ref（unset 失败登记进待清理清单，
+ *      V3 已知代价句覆盖、不判失败）；失败路径残留不进本 spec 的判定。
  *
  * 真实宿主行为（截图对比 / 变量值对比 / `html` 残留检查）归 V5 的 L3 场景；本层只锁机器可判部分。
  */
@@ -103,6 +115,9 @@ describe('V5 卸载清洁度', () => {
           }
         },
       },
+      // 模型服务分区的装配面（apply.ts ⑦′ 读 ctx.remote 三通道透传进分区 deps；本用例
+      // 不渲染分区组件，最小可读面即可——装配期不调方法）
+      remote: { settings: {}, llm: {}, credentials: {} },
       logger: { error() {}, warn() {} },
     }
 
@@ -157,6 +172,8 @@ describe('V5 卸载清洁度', () => {
           }
         },
       },
+      // 模型服务分区的装配面（同 ①：装配期透传，不调方法）
+      remote: { settings: {}, llm: {}, credentials: {} },
       logger: { error() {}, warn() {} },
     }
 
@@ -165,14 +182,16 @@ describe('V5 卸载清洁度', () => {
     module.apply(ctx)
     expect(unregistered).toEqual([])
     for (const dispose of [...effects].reverse()) dispose()
-    // 八个槽位贡献（品牌三槽 + 外观行 + composer 配色 chip + 设置分区 + 项目分组浏览器 +
-    // 会话头状态图标）的 disposer 都要随 fiber 卸载执行——新槽位接入装配时必须同步扩这里
-    // 的期望（卸载清洁度不豁免新贡献）
+    // 九个槽位贡献（品牌三槽 + 外观行 + composer 配色 chip + 设置分区×2（太极分区与模型
+    // 服务分区各注册一条 settings.section，id 不同）+ 项目分组浏览器 + 会话头状态图标）
+    // 的 disposer 都要随 fiber 卸载执行——新槽位接入装配时必须同步扩这里的期望（卸载
+    // 清洁度不豁免新贡献）
     expect(unregistered.sort()).toEqual([
       'conversation.hero.brand.mark',
       'conversation.input.left',
       'conversation.session.header.actions',
       'settings.general.item',
+      'settings.section',
       'settings.section',
       'sidebar.brand.mark',
       'sidebar.brand.name',
@@ -198,12 +217,19 @@ describe('V5 卸载清洁度', () => {
     expect(Config).toBeDefined()
     expect(Reflect.get(Config, Symbol.for('schemastery'))).toBe(true)
     expect(Config.type).toBe('object')
-    expect(Object.keys(Config.dict)).toEqual(['appearance', 'projects', 'assignments', 'expanded'])
+    expect(Object.keys(Config.dict)).toEqual([
+      'appearance', 'projects', 'assignments', 'expanded',
+      'pendingCredentialUnsets', 'routes', 'whitelist',
+    ])
     expect(Config.dict.appearance.meta.volatile).toBe(true)
-    // projects/assignments/expanded 同为 volatile（持久但免重挂载——设置表单通道只收 volatile 字段）
+    // 其余六个字段同为 volatile（持久但免重挂载——设置表单通道只收 volatile 字段）；
+    // pendingCredentialUnsets/routes/whitelist 是模型服务字段（dsh-model-service M1/M2）
     expect(Config.dict.projects.meta.volatile).toBe(true)
     expect(Config.dict.assignments.meta.volatile).toBe(true)
     expect(Config.dict.expanded.meta.volatile).toBe(true)
+    expect(Config.dict.pendingCredentialUnsets.meta.volatile).toBe(true)
+    expect(Config.dict.routes.meta.volatile).toBe(true)
+    expect(Config.dict.whitelist.meta.volatile).toBe(true)
 
     // 行在、用户没点选过 → 段里没有 appearance（默认色是包内默认，不写持久键）。
     // 这里的派生视图复刻宿主 describe 的两步：plainConfig 拆 volatile 包装 + projectForm 丢 undefined 键。
@@ -229,9 +255,9 @@ describe('V5 卸载清洁度', () => {
       return out
     }
     // schemastery 对 array/dict 字段的 undefined 输入回填空集合默认值（用户没建过项目 =
-    // 空集合，不是缺席）；appearance 仍是缺省不落键
-    expect(section({})).toEqual({ projects: [], assignments: {}, expanded: [] })
-    expect(section({ appearance: 'hao' })).toEqual({ appearance: 'hao', projects: [], assignments: {}, expanded: [] })
+    // 空集合，不是缺席；模型服务三字段同理）；appearance 仍是缺省不落键
+    expect(section({})).toEqual({ projects: [], assignments: {}, expanded: [], pendingCredentialUnsets: [], routes: [], whitelist: [] })
+    expect(section({ appearance: 'hao' })).toEqual({ appearance: 'hao', projects: [], assignments: {}, expanded: [], pendingCredentialUnsets: [], routes: [], whitelist: [] })
   })
 
   it('③ 持久状态没有第二条通道：浏览器半场零 Web Storage 调用', () => {
@@ -262,6 +288,202 @@ describe('V5 卸载清洁度', () => {
     // 重新装载（等价于装回来但配置已随行消失）：回落包默认色玄
     const second = createUninstallHarness({ initialStatus: 'unavailable' }).mount()
     expect(second.themeId()).toBe('xuan')
+  })
+
+  it('④ 插件自有贡献撤除（RL6）：llm 适配器注册与 credentials 调用点随 fiber 卸载撤销', async () => {
+    const index = await import(pathToFileURL(INDEX_PATH).href) as {
+      apply: (ctx: unknown, config: unknown) => void
+    }
+
+    // 一条路由 + 白名单勾选（让 ensureRouteRegistration 有注册对象；condition none = 恒命中）
+    const routeEntry = {
+      id: 'r1',
+      name: 'R1',
+      members: [{ provider: 'p1', model: 'm1', order: 0, condition: { type: 'none' } }],
+    }
+    const config = {
+      routes: { get: () => [routeEntry] },
+      whitelist: { get: () => ['r1'] },
+    }
+
+    const credentialCalls: string[] = []
+    const registeredProviderIds: string[][] = []
+    const adapterDisposals: string[][] = []
+    let adapter: { stream: (options: { provider: string; model: string }) => AsyncGenerator<unknown> } | undefined
+    let volatileUnsubscribed = false
+    const volatileListeners: (() => void)[] = []
+    const injectCalls: { names: string[]; callback: (child: unknown) => void }[] = []
+    const childEffects: (() => void)[] = []
+
+    // 宿主 services 的最小假件：credentials 预检（describe）记录调用，llm 供注册与转发。
+    // describe 双形态（宿主 dsh-api-settings-controller 语义）：单 ref 入参返回该 ref 的
+    // 视图对象本身（Node 半场 assertMemberAvailable 直接读 status.configured）；数组入参
+    // 返回按 ref 键控的视图表（浏览器半场 credentials-client 的读法）
+    const fakeCredentials = {
+      describe: async (refs: string | string[]) => {
+        const list = typeof refs === 'string' ? [refs] : refs
+        credentialCalls.push(...list)
+        const view = { configured: true, writable: true }
+        return typeof refs === 'string' ? view : Object.fromEntries(list.map((ref) => [ref, view]))
+      },
+      set: async () => {},
+      unset: async () => {},
+    }
+    const fakeLlm = {
+      listProviders: async () => [{ id: 'p1', name: 'P1' }],
+      listModels: async () => [{ id: 'm1', name: 'M1' }],
+      resolveModelInfo: async () => undefined,
+      stream: async function * (): AsyncGenerator<unknown> {},
+    }
+    // 宿主 settings 视图（apply 内 readProviderProfiles 的数据源：成员 apiKeyEnv 来源）
+    const childSettings = {
+      describe: () => [{ ns: 'llm-pi-ai', value: { providers: { p1: { apiKeyEnv: 'TAIJI_P1_KEY' } } } }],
+    }
+    const child = {
+      effect(callback: () => (() => void) | void) {
+        const result = callback()
+        if (typeof result === 'function') childEffects.push(result)
+      },
+      on(_event: string, listener: () => void) {
+        volatileListeners.push(listener)
+        return () => { volatileUnsubscribed = true }
+      },
+      get(name: string) {
+        if (name === 'settings') return childSettings
+        if (name === 'credentials') return fakeCredentials
+        return undefined
+      },
+      llm: {
+        // 宿主语义（dsh-llm registerAdapter）：返回的 handle 本身是可调用的反注册函数
+        //（调用 = 撤销注册），带 .replace(ids) 方法供热重算换注册集合
+        registerAdapter(providers: string[], registered: NonNullable<typeof adapter>) {
+          registeredProviderIds.push(providers)
+          adapter = registered
+          const handle = (() => { adapterDisposals.push(providers) }) as (() => void) & { replace: (ids: string[]) => void }
+          handle.replace = () => {}
+          return handle
+        },
+        ...fakeLlm,
+      },
+    }
+    const ctx = {
+      effect(callback: () => (() => void) | void) {
+        callback()
+      },
+      on() { return () => {} },
+      get() { return undefined },
+      logger: { error() {}, warn() {} },
+      // 宿主语义：inject 回调在该服务于本树就位时执行；测试显式驱动（llm 在场形态）
+      inject(names: string[], callback: (child: unknown) => void) {
+        injectCalls.push({ names, callback })
+      },
+    }
+
+    index.apply(ctx, config)
+    expect(injectCalls.map((call) => call.names)).toContainEqual(['llm'])
+    for (const call of injectCalls) call.callback(child)
+
+    // 注册发生：provider id 满足 AX5 前缀硬约束
+    expect(registeredProviderIds).toEqual([['taiji-route-r1']])
+
+    // credentials 调用点活在注册体内的 adapter 上：成员预检（describe）只在 stream 转发时触达
+    const chunks: unknown[] = []
+    for await (const chunk of adapter!.stream({ provider: 'taiji-route-r1', model: 'r1' })) chunks.push(chunk)
+    expect(chunks).toEqual([])
+    expect(credentialCalls).toEqual(['TAIJI_P1_KEY'])
+
+    // 卸载（反序 = cordis fiber 语义）：adapter 反注册 + volatile 重算订阅撤销
+    for (const dispose of [...childEffects].reverse()) dispose()
+    expect(adapterDisposals).toEqual([['taiji-route-r1']])
+    expect(volatileUnsubscribed).toBe(true)
+
+    // 调用链死亡：Config 热重算事件再触发也不复活注册（订阅已撤）
+    for (const listener of volatileListeners) listener()
+    expect(registeredProviderIds).toEqual([['taiji-route-r1']])
+  })
+
+  it('⑤ 无孤儿 ref（RL6）：清洁前置下删除供应商后凭据文件 TAIJI_* ref 全部被 providers.apiKeyEnv 引用', async () => {
+    // 孤儿判定（RL6 无孤儿命题）：凭据文件态中的 TAIJI_* ref 减去宿主设置文档
+    // providers.apiKeyEnv 引用的集合，再减去待清理清单登记的例外（卸载前已登记且未重试
+    // 成功的 ref——V3 已知代价句覆盖，不判失败），剩余即孤儿。
+    const orphanRefs = (credentialRefs: string[], apiKeyEnvs: string[], pendingUnsets: string[]): string[] => {
+      const referenced = new Set(apiKeyEnvs)
+      const excepted = new Set(pendingUnsets)
+      return credentialRefs.filter((ref) => ref.startsWith('TAIJI_') && !referenced.has(ref) && !excepted.has(ref))
+    }
+
+    // 构造场景（清洁环境）：宿主设置文档 providers 段 + 凭据文件态 + 插件 Config 待清理清单
+    let providers: Record<string, { apiKeyEnv?: string }> = { foo: { apiKeyEnv: 'TAIJI_FOO_KEY' } }
+    let credentialRefs = ['TAIJI_FOO_KEY', 'HOST_REF'] // HOST_REF = 宿主自有 ref（不在判定范围）
+    const pendingUnsets: string[] = []
+
+    // 前置断言：构造场景的 pendingCredentialUnsets 为空（清洁环境）
+    expect(pendingUnsets).toEqual([])
+
+    const host = {
+      settings: {
+        describe: async () => ({
+          writable: true,
+          namespaces: [{ ns: 'llm-pi-ai', value: { providers, revision: 3 } }],
+        }),
+        mutate: async (_ns: string, ops: SettingsOp[]) => {
+          for (const op of ops) {
+            if (op.op === 'unset' && op.path[0] === 'providers') delete providers[op.path[1] as string]
+          }
+          return { writable: true, namespaces: [{ ns: 'llm-pi-ai', value: { providers, revision: 4 } }] }
+        },
+      },
+      llm: { listProviders: async () => [], listConfigurableProviders: async () => [], discoverModels: async () => [] },
+      credentials: {
+        describe: async () => ({}),
+        set: async () => {},
+        unset: async (ref: string) => {
+          credentialRefs = credentialRefs.filter((entry) => entry !== ref)
+        },
+      },
+      logger: { error() {}, warn() {} },
+    }
+    type DeleteHost = Parameters<typeof deleteProvider>[0]
+    type DeleteParams = Parameters<typeof deleteProvider>[1]
+
+    // 删除供应商（真实链路 deleteProvider）：unset providers.foo + credentials.unset(TAIJI_FOO_KEY)
+    const result = await deleteProvider(host as DeleteHost, {
+      key: 'foo',
+      existing: providers.foo,
+      crossProfileConfirmed: false,
+      registerPendingUnset: async (ref) => { pendingUnsets.push(ref) },
+    } as DeleteParams)
+    expect(result.kind).toBe('deleted')
+    expect(providers.foo).toBeUndefined()
+    expect(credentialRefs).toEqual(['HOST_REF'])
+
+    // 无孤儿：凭据文件态中 TAIJI_* ref 全部被 providers.apiKeyEnv 引用（前置为空清单时）
+    const apiKeyEnvs = Object.values(providers).map((profile) => profile.apiKeyEnv).filter((ref): ref is string => typeof ref === 'string')
+    expect(orphanRefs(credentialRefs, apiKeyEnvs, pendingUnsets)).toEqual([])
+
+    // 例外形态（unset 失败）：ref 留在凭据文件 + deleteProvider 登记待清理清单 → 判定仍无孤儿
+    providers = { bar: { apiKeyEnv: 'TAIJI_BAR_KEY' } }
+    credentialRefs = ['TAIJI_BAR_KEY']
+    const failingUnsets: string[] = []
+    const failedResult = await deleteProvider({
+      ...host,
+      credentials: {
+        ...host.credentials,
+        unset: async () => { throw new Error('credentials service unavailable') },
+      },
+    } as DeleteHost, {
+      key: 'bar',
+      existing: { apiKeyEnv: 'TAIJI_BAR_KEY' },
+      crossProfileConfirmed: false,
+      registerPendingUnset: async (ref) => { failingUnsets.push(ref) },
+    } as DeleteParams)
+    expect(failedResult.kind).toBe('deleted')
+    expect(failingUnsets).toEqual(['TAIJI_BAR_KEY'])
+    expect(orphanRefs(credentialRefs, [], failingUnsets)).toEqual([])
+
+    // 负对照（登记通道缺失）：失败且未登记 → 判定出孤儿——「唯一例外 = 已登记」的判据
+    // 必须配合登记路径成立，判定函数不是恒绿
+    expect(orphanRefs(credentialRefs, [], [])).toEqual(['TAIJI_BAR_KEY'])
   })
 })
 
@@ -321,6 +543,8 @@ function createUninstallHarness(options: { persisted?: Record<string, unknown>; 
         }
       },
     },
+    // 模型服务分区的装配面（同 ①：装配期透传，本 harness 只驱动配色行，不调方法）
+    remote: { settings: {}, llm: {}, credentials: {} },
     logger: { error() {}, warn() {} },
   }
 

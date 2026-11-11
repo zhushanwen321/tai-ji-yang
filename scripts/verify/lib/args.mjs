@@ -36,7 +36,12 @@ const VALUE_FLAGS = new Set([
   'dsh-arg',
 ])
 
-export const KNOWN_SCENARIO_IDS = ['brand', 'head', 'theme', 'projects', 'lifecycle']
+/**
+ * 内置场景 id 清单（数组序 = `--scenarios all` 的执行序）：卸载类（lifecycle）必须最后
+ * （卸载后其余场景失去被测对象）；model-service 会写隔离 home 的设置文档与凭据文件，
+ * 排在只读观测类场景之后、lifecycle 之前。
+ */
+export const KNOWN_SCENARIO_IDS = ['brand', 'head', 'theme', 'projects', 'model-service', 'lifecycle']
 
 /**
  * 解析失败形态：reason 面向调用方，hint 给恢复动作（错误信息必须可操作）。

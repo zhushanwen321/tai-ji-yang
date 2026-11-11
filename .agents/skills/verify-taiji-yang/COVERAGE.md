@@ -66,6 +66,37 @@ P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工
 | 禁用（disable）回落 | fiber 卸载、贡献点撤销、Config 留存 | degraded-channel（DSH CLI 无 disable 子命令；notProvable 登记，恢复动作 = 宿主插件页手工禁用核对） |
 | 卸载后悬空 patch 行（宿主行为，README 排障 8） | 仅登记不判定 | covered（宿主统一行为，非本包缺陷） |
 
+## model-service（模型服务分区与接入，dsh-model-service RL2/RL3/RL4/RL6 的真机面）
+
+场景只对隔离 DSH_HOME 自启形态可达（要读设置文档与凭据文件）；URL 模式整场景显式降级。
+
+| 验收项 | 断言 | 状态 |
+|--------|------|------|
+| 导航并存（D2 追加形态） | 宿主「模型」与插件「模型服务」两条导航条目都在 | covered |
+| 无串页 | 点宿主「模型」后 `.ms-section` 收起且高亮落宿主条目 | covered |
+| 三视图切换条 | `.ms-section .ms-viewbar-button` 数 = 3 | covered |
+| 空态矩阵（V9 步骤 1） | 全新实例供应商视图空态有引导文案 | covered |
+| 零模型保存前置（V1 步骤 4a） | 保存被拒 + models.saveBlockedEmpty 指引文案 | covered |
+| 保存链路两处落盘（V1 步骤 5/6） | 设置文档出现 providers.<key>（apiKeyEnv 为 ref 名）+ 凭据文件出现对应 ref | covered |
+| 热重算不重启（V1 步骤 7/9，RL2） | 宿主「模型」分区可见新供应商 + 页面无 reload（注入标记存活） | covered |
+| 并发冲突重读重试（V1 步骤 11，RL3） | 第二写者保存成功 → 首写者保存自动重试 → 双方改动均保留 | covered（构造偏差登记：第二写者 = 同宿主的第二个 web 连接，宿主「模型」分区写者因面板互斥不可自动构造；机制断言等价，真机 D3 可另复验） |
+| 密钥零泄漏（V4，RL7 真机面） | 设置文档无 sk- 明文（凭据文件持密钥是权威语义） | covered |
+| provider key 撞已注册 route（V4 步骤 9 b 支的 route 侧） | 预检拒绝 + 设置文档零写入 | covered |
+| 凭据 ref 撞名 a/b 两支文案（V4 步骤 9） | 保存被拒并出现按持有者可见性分流的提示 | notProvable（经界面构造撞 ref 需宿主分区写 taiji-* 路由或直改凭据文件，超出场景通道；credentials-client 单测覆盖） |
+| 待清理清单重试（V4 步骤 6，AX9） | unset 失败登记 → 重试成功移除 | notProvable（需让凭据服务在删除动作时不可用，超出场景通道；credentials-client 单测覆盖） |
+| 清单来源态与空态（V9） | 自定义行 ms-source-custom、筛选无结果空态 + 清除动作 | covered |
+| 托管 provider 只读行（V9） | ms-source-managed 行渲染 | covered（隔离实例无托管行时登记 notProvable，不假红） |
+| 删除供应商双清除（V4 步骤 4/5，RL6 真机面） | 设置文档条目与凭据 ref 均清除（无孤儿） | covered |
+| 路由创建与派生 id（V5 步骤 1-2） | 空态引导；同名二次创建不被拒、加序号并存、删第二条恢复 | covered |
+| 路由成员落盘（V5 步骤 3） | 成员引用物理 provider/model 进插件 Config routes | covered |
+| 白名单启停（V6 步骤 1-3，SC8） | 勾选落盘 whitelist / 取消移除 / 重新勾选恢复 | covered |
+| 白名单悬挂与清理（V6 步骤 4-5） | 删路由转悬挂（「路由已删除」标注不自动清理）；批量清理只移除悬挂 | covered |
+| 空白名单 = 全不暴露（V6 步骤 6） | Config whitelist 空断言 | covered（对话流选择器侧归 D3） |
+| 成员行可用性标注（V5 步骤 9-10，G18） | 删成员供应商后路由成员行「供应商已删」 | covered |
+| 对话流真实报错（V7 步骤 1-5） | 成员不可用的流式终结与物理模型对照 | notProvable（发消息需真实可用端点，归 D3 真机；终结机制由 index.test.ts 假上游单测覆盖） |
+| 注册冲突状态条（V7 步骤 6，RL9） | ROUTE_REGISTRATION_FAILED 状态条 | notProvable（需宿主已注册同名 taiji-route-* 适配器，隔离实例不可自然构造；状态条渲染与探测判定由单测与 D3 复验） |
+| 配色对比度采样（V8 采样部分） | ink on soft ≥ 4.5:1（四族 × 六色 × 双模 48 组合） | covered（不在 runner 通道：由 pnpm check 的 client/theme/tokens.spec.ts 机器验算承载；runner 只做 DOM/解析值断言，不做像素采样——真机整体观感与六色跟随归 D3 人眼验收） |
+
 ## 环境与安全（跨场景不变量）
 
 | 验收项 | 断言 | 状态 |

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * 一键自检入口：六个静态断言 + 真实构建 + 全仓单测，串成一条命令。
+ * 一键自检入口：七个静态断言 + 真实构建 + 全仓单测，串成一条命令。
  *
- * 为什么需要这个文件（而不是把六条命令写进 package.json 的 scripts）：本包的
+ * 为什么需要这个文件（而不是把七条命令写进 package.json 的 scripts）：本包的
  * 自检集横跨「构建产物」（lib/client.js）与「仓库存量」（client/*、index.js），
  * 需要固定的执行顺序——先静态断言（快、失败早）、再构建（产出被检对象）、
  * 最后跑单测（含对构建产物的引用）。顺序写在这里可以被测试与文档直接引用，
@@ -13,7 +13,7 @@
  *
  * 用法：
  *   node scripts/check-all.mjs            全跑
- *   node scripts/check-all.mjs --static   只跑六个静态断言（不构建、不跑单测）
+ *   node scripts/check-all.mjs --static   只跑七个静态断言（不构建、不跑单测）
  *   node scripts/check-all.mjs --skip-build 跳过构建（用仓库存量 lib/ 作被检对象）
  *
  * 退出码：0 = 全部通过；1 = 至少一项失败（失败项逐个打到 stderr，末尾给汇总）。
@@ -31,7 +31,7 @@ const args = process.argv.slice(2)
 const staticOnly = args.includes('--static')
 const skipBuild = args.includes('--skip-build')
 
-/** 静态断言六项：按「先 manifest（最基础）→ 运行期约束 → 被检对象」排列。 */
+/** 静态断言七项：按「先 manifest（最基础）→ 运行期约束 → 被检对象」排列。 */
 const STATIC_CHECKS = [
   'check-manifest.mjs',
   'check-no-host-deps.mjs',
@@ -39,6 +39,7 @@ const STATIC_CHECKS = [
   'check-require-baseline.mjs',
   'check-forbidden-tokens.mjs',
   'check-profile-probe.mjs',
+  'check-credentials-hygiene.mjs',
 ]
 
 /** 构造一条子进程调用；shell: false 避免把路径当 shell 语法解释。 */

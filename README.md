@@ -1,8 +1,8 @@
 # tai-ji-yang-shell
 
-太极（TaiJi）的视觉身份与会话组织插件，以 **DSH 组合包**（bundle）形态交付：装进 DeepSeek Harness（下称 DSH）的 web 类型 profile 后，打开即呈现太极的全套外观——六种配色与全量染色、圆角与字重行高、空会话首屏品牌区、composer 快速配色入口、设置页的外观行与「太极」分区——以及太极式的左侧栏会话区：**项目（Project）分组列表**（整槽替换宿主工作区列表；项目是本包的逻辑分组概念，与目录无关，跨设备随 profile 持久）。
+太极（TaiJi）的视觉身份、会话组织与模型服务插件，以 **DSH 组合包**（bundle）形态交付：装进 DeepSeek Harness（下称 DSH）的 web 类型 profile 后，打开即呈现太极的全套外观——六种配色与全量染色、圆角与字重行高、空会话首屏品牌区、composer 快速配色入口、设置页的外观行与「太极」分区——以及太极式的左侧栏会话区：**项目（Project）分组列表**（整槽替换宿主工作区列表；项目是本包的逻辑分组概念，与目录无关，跨设备随 profile 持久）；设置页另有「**模型服务**」分区（见下节「模型服务能力」）。
 
-本包负责「打开就认得出是太极」与「会话按项目组织」这两层。对话流、模型切换、工具调用、右栏面板等日常能力全部走 DSH 原生，本包不接管。
+本包负责「打开就认得出是太极」「会话按项目组织」「自有供应商与模型路由接入」这三层。对话流、工具调用、右栏面板等日常能力全部走 DSH 原生，本包不接管；模型清单在宿主原生能力之上叠加本包的路由虚拟模型（见下节），其余模型面仍归宿主。
 
 开发与审查入口：项目规则见 [AGENTS.md](AGENTS.md)，当前架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，DSH 插件约束与有意偏离登记见 [docs/DSH-PLUGIN-RULES.md](docs/DSH-PLUGIN-RULES.md)。
 
@@ -15,8 +15,18 @@
 
 | 半场 | 产物 | 职责 |
 |------|------|------|
-| Node 半场 | 源 `index.js`；安装后入口 = `lib/index.js`（`package.json` 的 `main`） | 订阅宿主 `webserver/index-inject`，把首次绘制前的样式与版本信息行推入注入表；声明插件 Config；装载期检查 profile 是否具备 web 承载能力并给出可行动诊断 |
-| 浏览器半场 | `client/` → 安装后的 `lib/client.js` | 经宿主 `window.__ModuleLoader__.load({ id, factory })` 契约物化；装配染色三层（静态调色板重定义、token 职能分色、字体复合简写重写）、结构值（圆角）、品牌与设置槽位贡献、外观行、项目分组浏览器（会话区整槽替换 + ProjectStore 持久通道），以及持久状态通道 |
+| Node 半场 | 源 `index.js`；安装后入口 = `lib/index.js`（`package.json` 的 `main`） | 订阅宿主 `webserver/index-inject`，把首次绘制前的样式与版本信息行推入注入表；声明插件 Config；装载期检查 profile 是否具备 web 承载能力并给出可行动诊断；模型路由的 LLM 适配器（`taiji-route-*` 注册、成员级时间窗求值、求值转发与错误码词表） |
+| 浏览器半场 | `client/` → 安装后的 `lib/client.js` | 经宿主 `window.__ModuleLoader__.load({ id, factory })` 契约物化；装配染色三层（静态调色板重定义、token 职能分色、字体复合简写重写）、结构值（圆角）、品牌与设置槽位贡献、外观行、项目分组浏览器（会话区整槽替换 + ProjectStore 持久通道）、模型服务分区（供应商 / 模型清单 / 路由三视图 + 宿主设置文档与凭据通道封装），以及持久状态通道 |
+
+## 模型服务能力
+
+设置页「模型服务」分区（order 11，紧邻宿主「模型」分区；宿主内置分区序列里插件分区的位置决策见 [docs/DSH-PLUGIN-RULES.md](docs/DSH-PLUGIN-RULES.md) D-2）承载三个视图：
+
+- **供应商**：接入自有 OpenAI 兼容供应商——名称、端点、密钥、compat 六项与思考策略三档映射；模型区支持「目录默认」与「自定义清单」两互斥来源态 + 模型发现。写入走宿主设置服务（`llm-pi-ai` 命名空间，revision 栅栏 + 冲突重读重试 + 回读校验）；密钥只经宿主凭据通道（设置文档只出现 ref 名，永不出现明文）；保存顺序锚定「预检 → 查重 → mutate → 凭据写入」，同名供应商与撞名凭据 ref 在写入前被拒绝。删除供应商同步清其凭据 ref，清理失败自动登记待清理并重试。
+- **模型清单**：跨供应商模型汇总（来源态标注、上下文与思考策略字段）+ 筛选与空态引导；宿主托管 provider 显示为只读行。
+- **模型路由**：把多个物理成员组合成一个路由虚拟模型（`taiji-route-<id>`，对话流可直接选）——成员级条件（命名时间窗矩阵 / 48 格精细时段 / 特殊日期）、白名单勾选控制暴露、悬挂条目（路由已删 / 供应商已删）标注与清理；适配器随插件 Config 热重算，注册冲突与成员不可用按错误码词表降级，宿主物理模型不受路由故障影响。
+
+纪律与护栏（密钥零泄漏、写入顺序、卸载无孤儿等）的完整登记见 [docs/DSH-PLUGIN-RULES.md](docs/DSH-PLUGIN-RULES.md) §4 与 §6。
 
 ## 前置条件
 
@@ -312,12 +322,13 @@ pnpm test           # 只跑全仓单测
 单项脚本（各自由产出单元维护，断言逻辑只此一处）：
 
 ```bash
-node scripts/check-manifest.mjs          # package.json 契约（含 exports 路径存在性）+ patch 结构 + 依赖键集边界
-node scripts/check-no-host-deps.mjs      # 不含 @deepseek-ai/dsh-client-* 依赖
-node scripts/check-require-baseline.mjs  # 产物 require 字面量 ⊆ 宿主模块基线
-node scripts/check-injection-escape.mjs  # 注入行不含结束标签
-node scripts/check-forbidden-tokens.mjs  # 字族 / 字号 / 复合简写 / 宿主几何变量 / theme.register
-node scripts/check-profile-probe.mjs     # p1·V8 自检：装错 profile 时 Node 半场报可行动诊断、不误报
+node scripts/check-manifest.mjs            # package.json 契约（含 exports 路径存在性）+ patch 结构 + 依赖键集边界
+node scripts/check-no-host-deps.mjs        # 不含 @deepseek-ai/dsh-client-* 依赖
+node scripts/check-require-baseline.mjs    # 产物 require 字面量 ⊆ 宿主模块基线
+node scripts/check-injection-escape.mjs    # 注入行不含结束标签
+node scripts/check-forbidden-tokens.mjs    # 字族 / 字号 / 复合简写 / 宿主几何变量 / theme.register
+node scripts/check-profile-probe.mjs       # p1·V8 自检：装错 profile 时 Node 半场报可行动诊断、不误报
+node scripts/check-credentials-hygiene.mjs # 插件产物零密钥材料（sk- 长串 / Bearer 硬编码 / 密钥字段字面赋值 / apiKeyEnv 非 ref 名）
 ```
 
 构建入口（`check-all.mjs` 的构建段即调它）：
@@ -331,7 +342,7 @@ pnpm build:self-test  # 12 项自证，含四条失败支证明会红
 
 ## 真实宿主验收
 
-真实 DSH 验收使用 [.agents/skills/verify-taiji-yang](.agents/skills/verify-taiji-yang/SKILL.md) 与 `scripts/verify/run.mjs`：连接显式测试 URL，或在隔离 DSH_HOME 自启实例。覆盖品牌、会话头、主题、项目列表和卸载回落；证据包含 `verdict.json`、`summary.jsonl`、截图与控制台。该入口不读取用户浏览器 profile，不修改用户真实 DSH profile，不发送模型请求。
+真实 DSH 验收使用 [.agents/skills/verify-taiji-yang](.agents/skills/verify-taiji-yang/SKILL.md) 与 `scripts/verify/run.mjs`：连接显式测试 URL，或在隔离 DSH_HOME 自启实例。覆盖品牌、会话头、主题、项目列表、模型服务（供应商接入 / 密钥零泄漏 / 路由与白名单 / 删除清除）和卸载回落；证据包含 `verdict.json`、`summary.jsonl`、截图与控制台。该入口不读取用户浏览器 profile，不修改用户真实 DSH profile，不发送模型请求。
 
 brand/projects/lifecycle 三场景的回归命题是「新插件（opendesign-design-mode）安装进同一 profile 后，preset 注册与 UI 注入不干扰 shell 包」——只在两包共存 profile 上可证明。runner 自启形态只装本仓 shell 包，单装态结果不能登记为共存回归通过。共存前提的手工准备：对同一隔离 profile 先后执行 `dsh plugin --profile web add <本仓根>`（shell）与 `dsh plugin --profile web add packages/opendesign-design-mode`（两包共存），再以 `--dsh-home <该目录>`（lifecycle 须自启形态）或 `--url <实例认证 URL>`（brand/projects）跑 runner；该串接已由 web 版 e2e 场景 S9 自动化（`packages/opendesign-design-mode/tests/e2e/web.spec.mjs`）。
 
@@ -348,7 +359,7 @@ brand/projects/lifecycle 三场景的回归命题是「新插件（opendesign-de
    git push github npm-release-<同一名字>
    ```
 
-4. **流水线**：frozen install → 检查「`.changeset/pre.json` 不存在」（防 prerelease 模式残留把整批发到 dev dist-tag）→ `pnpm check` 门禁（静态六项 + 逐包构建 + 全仓单测；CI 无宿主源码仓，host-font-sheet 护栏显式跳过，由本地承担）→ 产物一致性检查（构建后 `lib/` 与提交逐字一致，防过期产物被打包发布）→ `pnpm changeset publish` → registry 上线探测。
+4. **流水线**：frozen install → 检查「`.changeset/pre.json` 不存在」（防 prerelease 模式残留把整批发到 dev dist-tag）→ `pnpm check` 门禁（静态七项 + 逐包构建 + 全仓单测；CI 无宿主源码仓，host-font-sheet 护栏显式跳过，由本地承担）→ 产物一致性检查（构建后 `lib/` 与提交逐字一致，防过期产物被打包发布）→ `pnpm changeset publish` → registry 上线探测。
 5. **验证**：探测自动查 npm 版本端点；首发新包有分钟级 CDN 传播延迟（探测只警告不判败），几分钟后人工复核 `npm view <包名> version`。
 
 要点：
