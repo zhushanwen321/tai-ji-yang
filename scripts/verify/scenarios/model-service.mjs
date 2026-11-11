@@ -604,7 +604,18 @@ export async function run(ctx) {
   if (!(await clickNav(page, '模型服务'))) return
   const m2Item = page.locator('.ms-provider-item', { hasText: m2ProviderName }).first()
   await m2Item.locator('.ms-button', { hasText: '删除供应商' }).first().click()
-  await page.waitForTimeout(300)
+  // 删除前警告断言（D3 接线：requestDelete 经 routeReferencesOf 计算 → 确认区列出受影响路由；
+  // 该删除是场景内唯一被路由引用供应商的删除点，verify-route 成员在上方编辑器已引用 m2 供应商）。
+  const routeWarnVisible = await waitFor(async () => {
+    const warn = m2Item.locator('.ms-note-warn', { hasText: '被路由引用' }).first()
+    const visible = await warn.isVisible().catch(() => false)
+    const text = visible ? await warn.textContent().catch(() => '') : ''
+    return visible && (text ?? '').includes('verify-route')
+  }, 6000)
+  ev.assert('V5 步骤 9/删除前路由引用警告（确认区列出 verify-route）', routeWarnVisible, {
+    expected: '确认区 ms-note-warn「被路由引用（verify-route）」',
+    actual: String(routeWarnVisible),
+  })
   await m2Item.locator('.ms-button', { hasText: '再点确认删除' }).first().click()
   await waitFor(() => !readFileSync(patchFile, 'utf8').includes(`  ${m2ProviderKey}:`), 8000)
   await page.locator('.ms-section .ms-viewbar-button', { hasText: '模型路由' }).first().click()
