@@ -769,12 +769,14 @@ try {
     await page.waitForSelector('.odp-comments-panel', { timeout: 10000 })
     await page.locator('.odp-comments-panel textarea.odp-comment-input').fill(v10CommentText)
     await page.locator('.odp-comments-composer button.odp-button').click()
-    await page.waitForFunction(
-      () => Array.from(document.querySelectorAll('.odp-thread .odp-badge')).some((el) => el.textContent?.trim() === 'Sent'),
-      undefined,
-      { timeout: 20000 },
-    )
-    const threads = commentsThreads() // 新线程 append 末尾（store.ts createCommentThread [...threads, thread]）
+    // 等待第 3 线程真正落盘（既有 V8 两线程本就显示 Sent 徽标，以徽标为条件会被即时满足，
+    // 读到追加前的旧文件——实测假红）。新线程 append 末尾（store.ts createCommentThread [...threads, thread]）。
+    let threads = commentsThreads()
+    const deadline = Date.now() + 20000
+    while (threads.length < 3 && Date.now() < deadline) {
+      await sleep(500)
+      threads = commentsThreads()
+    }
     const latest = threads.at(-1)
     assert(threads.length === 3, `V10 评论应落盘为第 3 线程（V8 两探针 + V10）：${threads.length}`)
     assert(
