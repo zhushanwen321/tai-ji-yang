@@ -20,7 +20,7 @@
  *
  * 时间戳口径：ISO 8601 字符串（contract.ts）；写函数带可选 at 参数（调用方传投递/操作
  * 时刻，缺省当前时刻）——U3 投递结果回写用真实时刻，单测传固定值断言确定性。
- * 编号口径：本文件裸编号（D/AX/RL/UC 等）属 opendesign-comment-loop 设计包。
+ * 编号口径：本文件裸编号（D/AX/RL/UC/V 等）属 opendesign-comment-loop 设计包。
  */
 
 import { randomBytes, randomUUID } from 'node:crypto'

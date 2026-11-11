@@ -797,7 +797,7 @@ describe('第⑫节 评论环（文件/线程/delivery 分布/parse 健康度/�
       `- 评论文件：不存在（${commentsFilePath(sessionCwd)}）——尚未有评论落盘，首次评论经写通道 POST .create 时创建，属正常态。`,
     )
     expect(report).toContain('- 线程计数：0；各 delivery 状态分布：pending 0 / delivered 0 / no-agent 0 / inject-error 0（评论文件未创建）。')
-    // 写通道路由族（D7 四要素之四）：契约词表 COMMENTS_API_PATHS 唯一权威 + 注册状态如实标注声明形态。
+    // 写通道路由族（comment-loop·D7 四要素之四）：契约词表 COMMENTS_API_PATHS 唯一权威 + 注册状态如实标注声明形态。
     expect(report).toContain(
       `- 写通道路由：注册器 = 宿主 connection.fetch（/api 域共享鉴权层覆盖，comment-loop 设计包 D2/AX5）；路由族契约共 ${COMMENTS_API_PATHS.length} 条：${COMMENTS_API_PATHS.join('、')}。`,
     )
