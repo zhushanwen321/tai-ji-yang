@@ -84,7 +84,7 @@ node scripts/verify/doctor.mjs --url "<测试URL>" --json     # 机读
 |------|--------|------|
 | brand | 侧栏品牌栈（产品名 太极/TaiJi）、版本行 `v{本包}[ · dsh v{宿主}]` 不裁切、壳信息 global、hero 首屏品牌区、无 Slot 崩溃 | 无 |
 | head | 空态：header 单行 ≤45px、无横向溢出、右侧栏开关贴最右；会话态：按钮视觉序单调、目标子序（对话→轨迹→打开方式→chevron→右侧栏）、两两无重叠、打开方式在场、More actions 隐藏、分段控件（高 30px / 底色 = bg-layer-1 / 激活 600 / ::after 隐藏）、header 高 41±2 | 会话态段需要测试 profile 已有会话 |
-| theme | composer 快速配色 chip（不可达时设置页外观行）切非默认色 → brand-primary 解析值变化 → reload 后持久（插件 Config 通道）→ 恢复默认玄 | chip 或外观行可达 |
+| theme | 主流程：composer 快速配色 chip（不可达时设置页外观行）六色齐备，切族内非当前色 → brand-primary 解析值变化 → reload 后持久（插件 Config 通道）→ 恢复进入前配色（不覆盖复用实例原选色）；另有第三入口支：设置页太极分区配色行点选立即生效 → 分区当前色名跟随 + chip 选中态同步（三入口共用同一 controller，D-3 护栏）→ 恢复原色 | 主流程需 chip 或外观行可达；第三入口支需设置页太极分区可达，不可达时显式降级 |
 | projects | 整槽替换占位（`.taiji-pb-list` 在场）、数据就绪、默认项目组头、当前会话行 current 标记、「当前」chip 文字居中 | current 标记与 chip 需要已有会话 |
 | model-service | 设置导航「模型」与「模型服务」并存、点各自条目各渲染己页（无串页）；供应商接入全流程（零模型保存被拒给指引 → 手动加模型保存 → 设置文档 providers 条目 + 凭据文件 ref 落盘 → 宿主「模型」分区热可见且页面未重载）；并发冲突自动重读重试双方保留；密钥零泄漏（设置文档无 sk- 明文）；同名供应商预检拒绝且零写入；模型清单来源态标注、筛选空态、托管只读行；路由创建与同名派生 id、成员落盘、白名单勾选/取消/悬挂清理（插件 Config 落盘断言）；删除供应商后设置文档条目与凭据 ref 双清除（无孤儿） | **仅形态 ②**（要读隔离 DSH_HOME 的设置文档与凭据文件）；URL 模式显式降级 |
 | lifecycle | `dsh plugin remove` → reload → 品牌栈消失、`taiji-` 前缀元素清零、页面不白屏、无 Slot 崩溃、`--dump-config` 不含本包层 | **仅形态 ②**；禁用（disable）无 CLI 通道，显式登记 notProvable |

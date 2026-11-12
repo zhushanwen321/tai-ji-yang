@@ -104,7 +104,7 @@ pnpm workflows:test          # workflow 构建与双平台结构测试
 
 - `.githooks/` 随仓交付：`pre-commit` + `install-hooks.sh`（幂等安装器：把钩子拷进当前 worktree 的 git hooks 目录并设 `core.hooksPath`）。
 - 本 workspace 内，worktree 就位时 `.bare/hooks/post-checkout` 自动执行安装器；其他环境克隆后手动跑一次 `bash .githooks/install-hooks.sh`。
-- pre-commit 内容：跑 `node scripts/check-all.mjs --static`；暂存了 `.agents/workflows/` 下文件时，还要求 `.agents/workflows/scripts/build-workflows.mjs` 存在，并跑其 `--check` 与 workflow 测试（workflow 单源构建门禁）。
+- pre-commit 内容：跑 `node scripts/check-all.mjs --static`；跑 `node scripts/check-lib-fresh.mjs`（lib 产物新鲜度：改 client/ 或 index.js 未重 build 即拦截，FF16 防复发；红时先 `pnpm build` 再提交）；暂存了 `.agents/workflows/` 下文件时，还要求 `.agents/workflows/scripts/build-workflows.mjs` 存在，并跑其 `--check` 与 workflow 测试（workflow 单源构建门禁）。
 - pre-commit 检出的问题必须全部当场修复，禁止 `--no-verify` 绕过。
 
 ## 项目级流程路由

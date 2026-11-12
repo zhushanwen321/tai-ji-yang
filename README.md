@@ -329,6 +329,7 @@ node scripts/check-injection-escape.mjs    # 注入行不含结束标签
 node scripts/check-forbidden-tokens.mjs    # 字族 / 字号 / 复合简写 / 宿主几何变量 / theme.register
 node scripts/check-profile-probe.mjs       # p1·V8 自检：装错 profile 时 Node 半场报可行动诊断、不误报
 node scripts/check-credentials-hygiene.mjs # 插件产物零密钥材料（sk- 长串 / Bearer 硬编码 / 密钥字段字面赋值 / apiKeyEnv 非 ref 名）
+node scripts/check-lib-fresh.mjs           # lib 产物新鲜度：lib/index.js 与 index.js 逐字一致 + client/ 源码不晚于 lib/client.js（mtime 初筛）；判定与 doctor lib-fresh 同源（scripts/verify/lib/freshness.mjs）
 ```
 
 构建入口（`check-all.mjs` 的构建段即调它）：
