@@ -3,7 +3,8 @@ import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { deliverComment } from "../comments/feedback.js";
 import {
   COMMENTS_API_ACTION_PATHS,
-  COMMENTS_API_BASE_PATH
+  COMMENTS_API_BASE_PATH,
+  isCommentAnchor
 } from "../comments/contract.js";
 import {
   appendCommentReply,
@@ -84,6 +85,18 @@ function requireTextField(body) {
   }
   return value;
 }
+function optionalAnchorField(body) {
+  const value = body.anchor;
+  if (value === void 0) return void 0;
+  if (!isCommentAnchor(value)) {
+    throw new CommentsHttpError(
+      400,
+      "invalid-payload",
+      "载荷字段 anchor 形态非法（须为对象且 level ∈ id|data|path、sel 非空且 ≤ 500 字符）；不需要锚点时省略该字段重发"
+    );
+  }
+  return value;
+}
 function requireSessionCwd(ctx, sessionId) {
   const cwd = resolveSessionCwdById(ctx, sessionId);
   if (cwd === null) {
@@ -136,11 +149,12 @@ async function handleCreate(ctx, body) {
   const sessionId = requireStringField(body, "sessionId");
   const artifactPath = requireStringField(body, "artifactPath");
   const text = requireTextField(body);
+  const anchor = optionalAnchorField(body);
   const cwd = requireSessionCwd(ctx, sessionId);
   const rootReal = await requireSessionRoot(cwd);
   await requireArtifactPathInside(rootReal, artifactPath);
   validateCommentText(text);
-  const thread = await createCommentThread(cwd, { artifactPath, text });
+  const thread = await createCommentThread(cwd, { artifactPath, text, anchor });
   return await deliverAndRespond(ctx, sessionId, cwd, thread);
 }
 async function handleReply(ctx, body) {

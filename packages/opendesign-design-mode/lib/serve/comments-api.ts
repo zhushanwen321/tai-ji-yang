@@ -39,7 +39,9 @@ import { deliverComment } from '../comments/feedback.js'
 import {
   COMMENTS_API_ACTION_PATHS,
   COMMENTS_API_BASE_PATH,
+  type CommentAnchor,
   type CommentThread,
+  isCommentAnchor,
 } from '../comments/contract.js'
 import {
   appendCommentReply,
@@ -170,6 +172,26 @@ function requireTextField(body: Record<string, unknown>): string {
   return value
 }
 
+/**
+ * anchor 可选字段（opendesign-comment-anchor 设计 D1 / UD2）：缺省照常（向后兼容，旧客户端
+ * 无 anchor 请求合法）；携带时经 contract 的 isCommentAnchor 校验——level 词表外 / sel 空 /
+ * sel 超 500 / 非对象四形态一律 400，且校验先于任何 store 写动作（拒绝路径零落盘副作用）。
+ * 显式 null 同按非法拒绝（JSON 里 null 不是「缺省」，fail-closed 不静默吞成无锚线程）。
+ */
+function optionalAnchorField(body: Record<string, unknown>): CommentAnchor | undefined {
+  const value = body.anchor
+  if (value === undefined) return undefined
+  if (!isCommentAnchor(value)) {
+    throw new CommentsHttpError(
+      400,
+      'invalid-payload',
+      '载荷字段 anchor 形态非法（须为对象且 level ∈ id|data|path、sel 非空且 ≤ 500 字符）；' +
+        '不需要锚点时省略该字段重发',
+    )
+  }
+  return value
+}
+
 /** 会话解析（404 fail-closed：不存在的会话不落任何盘，与伺服路由同一通道同一拒绝词）。 */
 function requireSessionCwd(ctx: unknown, sessionId: string): string {
   const cwd = resolveSessionCwdById(ctx, sessionId)
@@ -247,11 +269,12 @@ async function handleCreate(ctx: unknown, body: Record<string, unknown>): Promis
   const sessionId = requireStringField(body, 'sessionId')
   const artifactPath = requireStringField(body, 'artifactPath')
   const text = requireTextField(body)
+  const anchor = optionalAnchorField(body) // 载荷形状校验在先：anchor 非法 400 时零落盘副作用
   const cwd = requireSessionCwd(ctx, sessionId)
   const rootReal = await requireSessionRoot(cwd)
   await requireArtifactPathInside(rootReal, artifactPath)
   validateCommentText(text)
-  const thread = await createCommentThread(cwd, { artifactPath, text })
+  const thread = await createCommentThread(cwd, { artifactPath, text, anchor })
   return await deliverAndRespond(ctx, sessionId, cwd, thread)
 }
 

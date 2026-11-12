@@ -36,9 +36,11 @@ import {
   COMMENTS_DIR_NAME,
   COMMENTS_FILE_NAME,
   COMMENTS_FILE_VERSION,
+  type CommentAnchor,
   type CommentDelivery,
   type CommentThread,
   type CommentsFile,
+  isCommentAnchor,
 } from './contract.js'
 import { applyThreadTransition, createInitialThreadFields, type DeliverOutcome } from './thread.js'
 
@@ -337,11 +339,17 @@ export interface CreateCommentThreadInput {
   artifactPath: string
   /** 首条评论文本（1..COMMENT_TEXT_MAX_LENGTH 字符）。 */
   text: string
+  /**
+   * 元素锚点（可选；opendesign-comment-anchor 设计 D1——首评拾取定案，一经写入不可变）。
+   * 传入时经 contract 的 isCommentAnchor 校验，非法抛 CommentStoreValidationError；
+   * 缺省照常创建（向后兼容，读侧宽容 parse 旧文件）。
+   */
+  anchor?: CommentAnchor
 }
 
 /**
  * 新建评论线程并落盘（D5 ①：初始态 open × pending；id = c_ 前缀随机标识）。
- * 首次调用自动建 .od-comments/ 目录与文件；text 校验拒绝不落盘。
+ * 首次调用自动建 .od-comments/ 目录与文件；text / anchor 校验拒绝不落盘。
  */
 export async function createCommentThread(
   cwd: string,
@@ -352,11 +360,17 @@ export async function createCommentThread(
   if (input.artifactPath.length === 0) {
     throw new CommentStoreValidationError('artifactPath 为空')
   }
+  if (input.anchor !== undefined && !isCommentAnchor(input.anchor)) {
+    throw new CommentStoreValidationError(
+      'anchor 形态非法（须为对象且 level ∈ id|data|path、sel 非空且 ≤ 500 字符）',
+    )
+  }
   const moment = at ?? new Date().toISOString()
   const thread: CommentThread = {
     id: `${COMMENT_THREAD_ID_PREFIX}${randomUUID()}`,
     artifactPath: input.artifactPath,
     text: input.text,
+    ...(input.anchor === undefined ? {} : { anchor: input.anchor }),
     replies: [],
     ...createInitialThreadFields(moment),
   }

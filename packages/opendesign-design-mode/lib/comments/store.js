@@ -9,7 +9,8 @@ import {
   COMMENT_THREAD_STATUSES,
   COMMENTS_DIR_NAME,
   COMMENTS_FILE_NAME,
-  COMMENTS_FILE_VERSION
+  COMMENTS_FILE_VERSION,
+  isCommentAnchor
 } from "./contract.js";
 import { applyThreadTransition, createInitialThreadFields } from "./thread.js";
 const COMMENTS_LOCK_NAME = "comments.json.lock";
@@ -218,11 +219,17 @@ async function createCommentThread(cwd, input, at) {
   if (input.artifactPath.length === 0) {
     throw new CommentStoreValidationError("artifactPath 为空");
   }
+  if (input.anchor !== void 0 && !isCommentAnchor(input.anchor)) {
+    throw new CommentStoreValidationError(
+      "anchor 形态非法（须为对象且 level ∈ id|data|path、sel 非空且 ≤ 500 字符）"
+    );
+  }
   const moment = at ?? (/* @__PURE__ */ new Date()).toISOString();
   const thread = {
     id: `${COMMENT_THREAD_ID_PREFIX}${randomUUID()}`,
     artifactPath: input.artifactPath,
     text: input.text,
+    ...input.anchor === void 0 ? {} : { anchor: input.anchor },
     replies: [],
     ...createInitialThreadFields(moment)
   };

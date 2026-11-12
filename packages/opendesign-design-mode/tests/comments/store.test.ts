@@ -5,10 +5,12 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
+  ANCHOR_SEL_MAX_LENGTH,
   COMMENTS_DIR_NAME,
   COMMENTS_FILE_VERSION,
   COMMENT_TEXT_MAX_LENGTH,
   COMMENT_THREAD_ID_PREFIX,
+  type CommentAnchor,
   type CommentThread,
 } from '../../lib/comments/contract.js'
 import {
@@ -33,14 +35,19 @@ import { CommentTransitionError } from '../../lib/comments/thread.js'
 /**
  * 评论数据域 store 单测（U1，RL4 / RL7）：
  * - 增改查落盘形态（create / appendReply / resolve / setDelivery / retry 走真实写路径）；
- * - RL4：并发写（多请求经进程内互斥队列交错）后文件 parse 恒成功、线程无丢失；并发
- *   期间持续读侧轮询零失败（rename 原子替换——任何瞬间盘上要么完整旧文件要么完整新
- *   文件，无半写可见态）；
+ * - RL4（comment-loop）：并发写（多请求经进程内互斥队列交错）后文件 parse 恒成功、线程无丢失；
+ *   并发期间持续读侧轮询零失败（rename 原子替换——任何瞬间盘上要么完整旧文件要么完整
+ *   新文件，无半写可见态）；
  * - RL7：损坏文件读侧抛 CommentStoreCorruptError 不自动重建、写侧拒写且损坏字节原样
  *   保留（防数据丢失）；
  * - lock 文件协议：新鲜锁等待超时抛 CommentStoreLockError、陈旧锁（超 COMMENT_LOCK_STALE_MS）
- *   夺锁自愈、事务结束锁不残留。
- * 编号口径：本文件裸编号（D/UC/RL 等）属 opendesign-comment-loop 设计包。
+ *   夺锁自愈、事务结束锁不残留；
+ * - 元素锚点（opendesign-comment-anchor 设计）：RL4 旧形态兼容（无 anchor 旧文件读侧
+ *   parse/列表/追加全链正常）、create 写入侧校验边界四形态、anchor 一经写入不可变
+ *   （appendReply/resolve 等转移不触碰 anchor）。
+ * 编号口径：元素锚点段落（RL4 兼容用例等）裸编号属 opendesign-comment-anchor 设计包；
+ * 其余段落裸编号（D/UC/RL 等）属 opendesign-comment-loop 设计包（同形编号按段落归属
+ * 区分，跨包引用带域前缀）。
  */
 
 const AT_T0 = '2026-01-01T00:00:00.000Z'
@@ -372,5 +379,155 @@ describe('读侧与查询辅助', () => {
     const file = await readCommentsFile(cwd)
     expect(findCommentThread(file.threads, thread.id).id).toBe(thread.id)
     expect(() => findCommentThread(file.threads, 'c_missing')).toThrow(CommentThreadNotFoundError)
+  })
+})
+
+// ── 元素锚点（opendesign-comment-anchor 设计；编号口径见文件头）──────────────
+
+/** 合法锚点夹具（id 级；D1 三级降级序的生成侧在拾取脚本 U3，本文件只测存储与校验）。 */
+const ANCHOR: CommentAnchor = { level: 'id', sel: '#hero' }
+
+/**
+ * 非法锚点夹具的显式类型断言（校验函数面向运行时字节，输入类型放不进词表外形态；
+ * unknown → CommentAnchor 单段断言，无 any）。
+ */
+const badAnchor = (value: unknown): CommentAnchor => value as CommentAnchor
+
+describe('create 写入侧 anchor 校验（opendesign-comment-anchor D1）', () => {
+  it('带合法 anchor 创建：线程携带 anchor 且落盘字节一致', async () => {
+    const thread = await createCommentThread(
+      cwd,
+      { artifactPath: 'a.html', text: '首条', anchor: ANCHOR },
+      AT_T0,
+    )
+    expect(thread.anchor).toEqual(ANCHOR)
+    expect(readRawThreads()[0]?.anchor).toEqual(ANCHOR)
+  })
+
+  it('缺 anchor 照常创建：线程无 anchor 键（向后兼容，与旧形态同构）', async () => {
+    const thread = await createCommentThread(cwd, { artifactPath: 'a.html', text: '首条' }, AT_T0)
+    expect('anchor' in thread).toBe(false)
+    expect(readRawThreads()[0]).not.toHaveProperty('anchor')
+  })
+
+  it('非法 anchor 四形态拒绝（CommentStoreValidationError），零落盘', async () => {
+    await expectStoreError(
+      createCommentThread(cwd, { artifactPath: 'a.html', text: '一', anchor: badAnchor({ level: 'css', sel: '.x' }) }, AT_T0), // level 词表外
+      CommentStoreValidationError,
+    )
+    await expectStoreError(
+      createCommentThread(cwd, { artifactPath: 'a.html', text: '二', anchor: badAnchor({ level: 'id', sel: '' }) }, AT_T0), // sel 空
+      CommentStoreValidationError,
+    )
+    await expectStoreError(
+      createCommentThread(cwd, { artifactPath: 'a.html', text: '三', anchor: badAnchor({ level: 'path', sel: 'x'.repeat(ANCHOR_SEL_MAX_LENGTH + 1) }) }, AT_T0), // sel 超 500
+      CommentStoreValidationError,
+    )
+    await expectStoreError(
+      createCommentThread(cwd, { artifactPath: 'a.html', text: '四', anchor: badAnchor('not-an-object') }, AT_T0), // 非对象
+      CommentStoreValidationError,
+    )
+    // 拒绝路径零副作用：目录与文件都未创建（校验先于写事务，与 text 校验同权级）
+    expect(() => statSync(commentsFilePath(cwd))).toThrow()
+    expect(() => statSync(path.join(cwd, COMMENTS_DIR_NAME))).toThrow()
+  })
+})
+
+describe('RL4：anchor 可选字段向后兼容（opendesign-comment-anchor RL4）', () => {
+  /** 预置旧版 comments.json（线程无 anchor 字段——升级前落盘的历史字节）。 */
+  function seedLegacyFile(): CommentThread {
+    const legacy: CommentThread = {
+      id: 'c_legacy',
+      artifactPath: 'old.html',
+      text: '升级前的旧线程',
+      replies: [],
+      status: 'open',
+      createdAt: AT_T0,
+      updatedAt: AT_T0,
+      delivery: 'pending',
+    }
+    ensureCommentsDir()
+    writeFileSync(
+      commentsFilePath(cwd),
+      `${JSON.stringify({ version: COMMENTS_FILE_VERSION, threads: [legacy] })}\n`,
+      'utf8',
+    )
+    return legacy
+  }
+
+  it('旧形态文件 parse 正常：线程照常载入与列表返回，读侧不补写 anchor（RL4 红灯项）', async () => {
+    const legacy = seedLegacyFile()
+    const before = readFileSync(commentsFilePath(cwd), 'utf8')
+    // parse 直驱（读侧强制要求 anchor 即红）
+    const parsed = parseCommentsFileText(before, commentsFilePath(cwd))
+    expect(parsed.threads).toHaveLength(1)
+    expect(parsed.threads[0]).toEqual(legacy)
+    expect(parsed.threads[0]).not.toHaveProperty('anchor')
+    // 列表读取：照常返回，且读后盘上字节原样（不补写）
+    const file = await readCommentsFile(cwd)
+    expect(file.threads).toHaveLength(1)
+    expect(file.threads[0]).toEqual(legacy)
+    expect(readFileSync(commentsFilePath(cwd), 'utf8')).toBe(before)
+  })
+
+  it('旧线程追加全链正常：appendReply 成功且新旧线程都不补写 anchor 字段', async () => {
+    const legacy = seedLegacyFile()
+    const updated = await appendCommentReply(cwd, legacy.id, '旧线程上的追加', AT_T1)
+    expect(updated.replies).toEqual([{ text: '旧线程上的追加', at: AT_T1 }])
+    expect('anchor' in updated).toBe(false)
+    const onDisk = readRawThreads()[0]
+    expect(onDisk?.replies).toHaveLength(1)
+    expect(onDisk).not.toHaveProperty('anchor')
+  })
+
+  it('旧形态文件之上新建带锚线程：新旧两线程共存互不干扰', async () => {
+    const legacy = seedLegacyFile()
+    const created = await createCommentThread(
+      cwd,
+      { artifactPath: 'new.html', text: '升级后首条', anchor: ANCHOR },
+      AT_T1,
+    )
+    const threads = readRawThreads()
+    expect(threads).toHaveLength(2)
+    expect(threads.find((t) => t.id === legacy.id)).not.toHaveProperty('anchor')
+    expect(threads.find((t) => t.id === created.id)?.anchor).toEqual(ANCHOR)
+  })
+})
+
+describe('anchor 一经写入不可变（opendesign-comment-anchor D1 不变量）', () => {
+  it('setDelivery / resolve / appendReply 全链后 anchor 与首评一致（返回值与盘上字节）', async () => {
+    const created = await createCommentThread(
+      cwd,
+      { artifactPath: 'a.html', text: '首条', anchor: ANCHOR },
+      AT_T0,
+    )
+    const delivered = await setCommentDelivery(cwd, created.id, 'delivered', AT_T1)
+    expect(delivered.anchor).toEqual(ANCHOR)
+    const resolved = await resolveCommentThread(cwd, created.id, AT_T2)
+    expect(resolved.anchor).toEqual(ANCHOR)
+    const appended = await appendCommentReply(cwd, created.id, '追加不改锚', AT_T3)
+    expect(appended.anchor).toEqual(ANCHOR) // 追加后 anchor 与首评一致
+    expect(appended.replies).toHaveLength(1)
+    const onDisk = readRawThreads()[0]
+    expect(onDisk?.anchor).toEqual(ANCHOR)
+    expect(onDisk?.status).toBe('open') // reopen 生效的旁证：转移确实发生过
+  })
+
+  it('多次转移后首评不可变字段子集逐字一致（id/anchor/text/createdAt 与盘上字节）', async () => {
+    const created = await createCommentThread(
+      cwd,
+      { artifactPath: 'a.html', text: '首条', anchor: ANCHOR },
+      AT_T0,
+    )
+    await appendCommentReply(cwd, created.id, '追加一', AT_T1)
+    await appendCommentReply(cwd, created.id, '追加二', AT_T2)
+    const onDisk = readRawThreads()[0]
+    // 写事务每次从盘上 JSON.parse 重读线程（单文件权威），跨调用无引用连续性——
+    // 不可变不变量按值断言：首评字段经两次转移后逐字一致
+    expect(onDisk?.id).toBe(created.id)
+    expect(onDisk?.anchor).toEqual(ANCHOR)
+    expect(onDisk?.text).toBe(created.text)
+    expect(onDisk?.createdAt).toBe(created.createdAt)
+    expect(onDisk?.replies).toHaveLength(2)
   })
 })
