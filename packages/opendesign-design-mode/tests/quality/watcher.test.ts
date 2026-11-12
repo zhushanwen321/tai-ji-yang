@@ -28,7 +28,10 @@
  * （锚补写·RL4 / D1）= 注入的 lintArtifact 捕获入参断言 lint 恒见补写后内容；写回前并发
  * 复核（锚补写·RL8 / D6 ③）= backfillAnchors 注入桩在 D6 窗口内同步改写文件（mtime/size
  * 变化）断言写回放弃；resume 资格（锚补写·V8 / D2）= 有身份记录的快照内文件改稿后补写
- * 执行。补写桩真实落盘形态：桩内 writeFileSync 保证模型窗口内写盘先于主链 stat 复核
+ * 执行；防线放弃集成（锚补写·V5 / A5 watcher 集成段，纯函数防线组之外的接线层）= 非 UTF-8
+ * 与引号不平衡畸形标签产物走真实检查链：文件字节逐字节不变、inserted=0 行落盘（utf8 形态
+ * 带 gaveUp:'utf8'、畸形形态记 skipped 计数）+ lint 照常跑原文出 missing-section-anchor。
+ * 补写桩真实落盘形态：桩内 writeFileSync 保证模型窗口内写盘先于主链 stat 复核
  * （async writeFile 与复核 stat 竞态会让防线假触发/假放行）。
  * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀；opendesign-comment-loop 设计包编号带「comment-loop·」前缀（环间隔离组的 comment-loop·RL2 / comment-loop·V7 与 assets-quality 域同号 RL2/V7 语义不同：前者 = .od-comments 写入不触发质量环与两环隔离场景，后者 = 真实写盘触发与非设计会话零侵入）；opendesign-anchor-backfill 设计包编号带「锚补写·」前缀。
  */
@@ -876,5 +879,56 @@ describe('锚补写异常降级（锚补写·D6 显式新形态裁决：未预�
     await delay(SETTLE_MS)
     expect(backfillLines(cwd)).toEqual([]) // 不写 report 行（异常不是防线判定结果）
     expect(await readFile(join(cwd, 'boom.html'), 'utf8')).toBe(UNANCHORED_SECTIONS_HTML) // 字节不变
+  })
+})
+
+describe('锚补写防线放弃集成（锚补写·V5 / A5 watcher 集成段：防线触发保原字节 + 行落盘 + lint 照常）', () => {
+  it('非 UTF-8 产物（中段坏字节 + 文末合法 </html>）：文件字节逐字节不变、补写行 inserted=0 gaveUp=utf8、lint 照常出 missing-section-anchor', async () => {
+    const cwd = await makeCwd()
+    const goodSource = '<!doctype html><html><body><section class="hero"><p>copy </p></section></body></html>'
+    const bytes = Array.from(Buffer.from(goodSource, 'utf8'))
+    bytes.splice(goodSource.indexOf('</p>'), 0, 0xff, 0xfe) // 文本节点中段坏字节（纯 ASCII fixture：字符位 = 字节位）
+    const bad = Buffer.from(bytes)
+    const h = await startHarness(cwd)
+    await writeFile(join(cwd, 'broken-utf8.html'), bad)
+    const input = await h.waitEvent((candidate) => candidate.relativePath === 'broken-utf8.html')
+    expect(input.kind).toBe('session-artifact') // 补写步骤有资格执行（防线放弃发生在步骤内，非资格跳过）
+    // 原文本直通（V5：检查链不中断，lint 与回注消费解码原文——防线放弃返回值恒为读盘文本）
+    expect(input.content).toBe(bad.toString('utf8'))
+    // lint 照常跑原文（V5：missing-section-anchor 转补写失败的后备观测信号，防线放弃的文件它仍会报）
+    expect(input.findings.some((finding) => finding.id === 'missing-section-anchor')).toBe(true)
+    await until(() => backfillLines(cwd).length > 0)
+    await delay(SETTLE_MS) // 若有后续轮次补写行（重复事件重查）在此窗口落定后一并检视
+    const lines = backfillLines(cwd)
+    expect(lines.length).toBeGreaterThanOrEqual(1)
+    expect(lines[0]?.path).toBe('broken-utf8.html')
+    expect(lines[0]?.inserted).toBe(0) // 防线放弃不写盘：D6 ① 的行侧契约
+    expect(lines[0]?.skipped).toBe(0)
+    expect(lines[0]?.gaveUp).toBe('utf8') // gaveUp 词表唯一值如实落行（D7）
+    // 逐字节不变（V5 ③：写盘后文件与写入 Buffer 全字节比对——解码替换被防线拦在写盘之前）
+    expect((await readFile(join(cwd, 'broken-utf8.html'))).equals(bad)).toBe(true)
+    expect(h.warns).toEqual([]) // 防线放弃是设计内判定结果（fail-open 不报错不告警，区别于异常降级）
+  })
+
+  it('引号不平衡畸形标签产物：文件字节逐字节不变、补写行 inserted=0 + skipped 计数、lint 照常出 missing-section-anchor', async () => {
+    const cwd = await makeCwd()
+    // 属性值内含 > 且引号全文未配对（findTagEnd 扫到文末无上下文外 >）→ 畸形计入 skipped
+    const malformed = '<!doctype html><html><body><section data-note="unclosed><p>x</p></section></body></html>'
+    const h = await startHarness(cwd)
+    await writeFile(join(cwd, 'malformed.html'), malformed, 'utf8')
+    const input = await h.waitEvent((candidate) => candidate.relativePath === 'malformed.html')
+    expect(input.kind).toBe('session-artifact')
+    expect(input.content).toBe(malformed) // 原文直通（零插入形态，检查链行为与现状一致）
+    expect(input.findings.some((finding) => finding.id === 'missing-section-anchor')).toBe(true)
+    await until(() => backfillLines(cwd).length > 0)
+    await delay(SETTLE_MS)
+    const lines = backfillLines(cwd)
+    expect(lines.length).toBeGreaterThanOrEqual(1)
+    expect(lines[0]?.path).toBe('malformed.html')
+    expect(lines[0]?.inserted).toBe(0)
+    expect(lines[0]?.skipped).toBe(1) // 畸形标签计入跳过（V5：inserted=0 + skipped 计数）
+    expect(lines[0]?.gaveUp).toBeUndefined() // 非 UTF-8 防线形态之外不落 gaveUp（词表封闭：undefined 不落键）
+    expect(await readFile(join(cwd, 'malformed.html'), 'utf8')).toBe(malformed) // 逐字节一致
+    expect(h.warns).toEqual([])
   })
 })
