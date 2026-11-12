@@ -29,8 +29,10 @@
  */
 
 import { readFile, realpath, stat } from 'node:fs/promises'
-import { isAbsolute, join, resolve, sep } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
+import { PICK_SCRIPT_SOURCE } from '../comments/pick-script.js'
+import { OD_FRAMES_DIR } from '../materialize/copy.js'
 import { registerCommentsApiRoutes, type CommentsApiScope } from './comments-api.js'
 import { resolveSessionCwdById } from './session-cwd.js'
 
@@ -95,6 +97,54 @@ export function contentTypeFor(fileName: string): string {
   const dot = fileName.lastIndexOf('.')
   if (dot <= -1) return 'application/octet-stream'
   return CONTENT_TYPES[fileName.slice(dot).toLowerCase()] ?? 'application/octet-stream'
+}
+
+// ── 伺服注入与内容版本（opendesign-comment-anchor D4 / D8(c)）────────────────
+
+/** 注入标签开口（data 属性供测试与调试在响应里识别注入段；桥报文契约的伺服侧承载点）。 */
+const PICK_SCRIPT_TAG_OPEN = '<script data-od-pick="1">'
+
+/**
+ * 注入谓词（D4：拾取脚本只该到达被评审的产物文档；独立导出供单测直驱）。
+ *
+ * 三条件逐条对应 RL3 的机器断言边界：GET 请求（HEAD 只探版本不执行脚本）×
+ * content-type 为 text/html（非 HTML 资源不注）× 产物相对路径不以 .od-frames/ 段开头
+ * （设备壳支撑文件是产物运行时依赖而非评审对象，壳内无拾取脚本——GL1 已接受边界；
+ * 路径形参传磁盘真实落点相对伺服根的余段，realpath 归一化后的落点才是权威事实）。
+ *
+ * @param method - 请求方法（GET 之外的任何值含 undefined 都不注）。
+ * @param contentType - 响应 content-type（含 charset 的完整值）。
+ * @param relativePath - 落点相对伺服根的路径（node:path.relative 形态，POSIX 或 '\\' 分隔）。
+ */
+export function shouldInjectPickScript(method: string | undefined, contentType: string, relativePath: string): boolean {
+  if (method !== 'GET') return false
+  if (!contentType.startsWith('text/html')) return false
+  const firstSegment = relativePath.split(sep)[0] ?? ''
+  return firstSegment !== OD_FRAMES_DIR
+}
+
+/**
+ * HTML 尾部注入拾取脚本（D4：最后一个 </body> 前插一个内联 <script> 标签，文档无
+ * </body> 时尾接；独立导出供单测直驱）。注入只发生在内存响应体上——磁盘产物字节不变
+ * 是 RL3 的机器断言项；注入幂等（每次响应独立拼接，无状态，重复请求结果一致）。
+ *
+ * @param html - 磁盘读出的产物 HTML 文本（UTF-8 无损解码形态）。
+ */
+export function injectPickScript(html: string): string {
+  const tag = `${PICK_SCRIPT_TAG_OPEN}${PICK_SCRIPT_SOURCE}</script>`
+  const at = html.toLowerCase().lastIndexOf('</body>')
+  if (at <= -1) return `${html}${tag}`
+  return `${html.slice(0, at)}${tag}${html.slice(at)}`
+}
+
+/**
+ * 产物 HTML 的内容版本标头值（D8(c)/AS9 改稿可见性的版本凭据：文件 mtime+size 摘要，
+ * 弱校验器 W/ 形态——mtime 对任何写盘动作前进（含同内容重写），假阳性 = 无谓重挂一次
+ * 且重挂幂等自动恢复，信号-蕴涵语义见设计 SI3）。本地伺服毫秒级 stat 读取，不读内容
+ * 算 hash（SI3 裁决：假阳性代价小不值当）。
+ */
+export function etagFor(mtimeMs: number, size: number): string {
+  return `W/"${mtimeMs.toString(16)}-${size.toString(16)}"`
 }
 
 /** 一条产物请求地址的解析终态（parseArtifactRoute 的返回词表）。 */
@@ -280,10 +330,29 @@ async function serveArtifactRequest(ctx: unknown, req: ServeRequest, res: ServeR
     sendJson(res, 404, { code: 'not-found', message: 'artifact disappeared between resolution and read' })
     return
   }
+  // 内容版本凭据（D8(c)）：读盘后补 stat 取 mtime+size；读盘与 stat 之间被移除（本地
+  // 竞态）时 ETag 缺席——探针按无版本处理至多重挂一次（幂等），不影响正文伺服。
+  const fileStat = await stat(resolution.path).catch(() => undefined)
   res.statusCode = 200
-  res.setHeader('content-type', contentTypeFor(resolution.path))
+  const contentType = contentTypeFor(resolution.path)
+  res.setHeader('content-type', contentType)
   res.setHeader('cache-control', 'no-store')
+  // HTML 响应附内容版本标头（GET 与 HEAD 同头——面板版本探针走 HEAD 比对，D8(c)）。
+  if (contentType.startsWith('text/html') && fileStat !== undefined) {
+    res.setHeader('etag', etagFor(fileStat.mtimeMs, fileStat.size))
+  }
+  // 注入谓词（D4）：GET × text/html × 非设备壳路径，只在内存响应体上追加注入段。
+  // 注入前验证 UTF-8 无损（decode→encode 逐字还原才注入）：非 UTF-8 编码的产物 HTML
+  // 解码会替换坏字节，宁可放弃注入也不改磁盘字节对应的响应内容（RL3 精神）。
+  if (shouldInjectPickScript(req.method, contentType, relative(rootReal, resolution.path))) {
+    const html = body.toString('utf8')
+    if (Buffer.byteLength(html, 'utf8') === body.length) {
+      res.end(Buffer.from(injectPickScript(html), 'utf8'))
+      return
+    }
+  }
   // HTML 不消毒直接返回（V1 设计包 D7 裁决）：产物可信性由 U7 预览 iframe 的 sandbox 隔离承载。
+  // D4 细化：不消毒但可附加注入脚本——产物内容本身（磁盘字节）一字不动。
   if (req.method === 'GET') res.end(body)
   else res.end()
 }

@@ -28,7 +28,9 @@
  * 8. 载荷校验拒绝零落盘（comment-loop·V4 三类：会话 404 / 穿越 403 / 文本 400；含 `..` 段与绝对路径）；
  * 9. 五路由行为：GET 列表与损坏文件错误态标记（comment-loop·V9）、.create/.reply/.retry 的投递回写
  *    对账（comment-loop·RL6 消费侧，agents 双打控分流结果）、.resolve 零投递、状态机表外映射 409。
- * 编号口径：本文件编号默认属 V1 设计包（opendesign-design-mode impl-plan）；其他设计包域编号带包名前缀（opendesign-assets-quality / p1-shell-identity / opendesign-comment-loop）。
+ * 10. 拾取脚本伺服注入（opendesign-comment-anchor D4 / RL3 四用例 + 注入幂等并入磁盘对比）与
+ *     内容版本 ETag（D8(c)：同文件多请求一致、写盘后必变），谓词/注入函数直驱锁定三条件边界。
+ * 编号口径：本文件编号默认属 V1 设计包（opendesign-design-mode impl-plan）；其他设计包域编号带包名前缀（opendesign-assets-quality / p1-shell-identity / opendesign-comment-loop / opendesign-comment-anchor）。
  */
 
 import { copyFile, mkdtemp, mkdir, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
@@ -36,6 +38,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { PICK_SCRIPT_SOURCE } from '../lib/comments/pick-script.js'
 import {
   COMMENTS_API_ACTION_PATHS,
   COMMENTS_API_BASE_PATH,
@@ -45,9 +48,12 @@ import {
 import {
   apply,
   contentTypeFor,
+  etagFor,
+  injectPickScript,
   OPENDESIGN_ARTIFACTS_PREFIX_PATH,
   parseArtifactRoute,
   resolveArtifactPath,
+  shouldInjectPickScript,
 } from '../lib/serve/artifacts-route.js'
 import { type CommentsApiScope, type CommentsFetchRoute } from '../lib/serve/comments-api.js'
 import { resolveSessionCwdById } from '../lib/serve/session-cwd.js'
@@ -301,13 +307,14 @@ describe('会话维度伺服根（URL session 段 → 会话 cwd，与材质化�
 // ── 合法产物（RL2：产物 200 + 相对资源可达 + V1 设计包 D7 已接受暴露面）────────────────
 
 describe('合法产物伺服（伺服根 = cwd）', () => {
-  it('产物 200：content-type text/html，正文为 fixture 产物原文（不消毒直接返回）', async () => {
+  it('产物 200：content-type text/html，正文含 fixture 产物原文与拾取脚本注入段（不消毒 + D4 注入）', async () => {
     const res = await request(mounted.route, artifactUrl('index.html'))
     expect(res.statusCode).toBe(200)
     expect(res.header('content-type')).toBe('text/html; charset=utf-8')
     expect(res.header('cache-control')).toBe('no-store')
     expect(res.body?.toString('utf8')).toContain('fixture artifact')
     expect(res.body?.toString('utf8')).toContain('./.od-frames/layout.css')
+    expect(res.body?.toString('utf8')).toContain('<script data-od-pick="1">')
   })
 
   it('相对资源可达：.od-frames/ 设备壳经路由 200（原型相对引用不因伺服断裂）', async () => {
@@ -451,6 +458,116 @@ describe('响应边界与解析核心', () => {
     expect(resolveSessionCwdById({ sessions: { get: () => undefined } }, SESSION_ID)).toBeNull()
     expect(resolveSessionCwdById({ sessions: { get: () => ({ header: { cwd: '' } }) } }, SESSION_ID)).toBeNull()
     expect(resolveSessionCwdById({}, SESSION_ID)).toBeNull()
+  })
+})
+
+// ── 拾取脚本伺服注入与内容版本（opendesign-comment-anchor D4/D8c：RL3 四用例 + ETag 两用例）──
+
+describe('拾取脚本伺服注入（RL3：磁盘字节不变 + 注入幂等 + 谓词边界）', () => {
+  let diskBytes: Buffer
+
+  beforeAll(async () => {
+    diskBytes = await readFile(join(root, 'index.html'))
+  })
+
+  it('注入响应 = 磁盘字节 + 注入标签，重复请求一致，伺服后磁盘文件字节不变（RL3 红灯判据 + 注入幂等并入本用例）', async () => {
+    const first = await request(mounted.route, artifactUrl('index.html'))
+    expect(first.statusCode).toBe(200)
+    const bodyText = first.body?.toString('utf8') ?? ''
+    // 注入段在场：G1 桥的脚本源串随响应到达（前缀逐字 = 守护登记）。
+    expect(bodyText).toContain('<script data-od-pick="1">')
+    expect(bodyText).toContain(PICK_SCRIPT_SOURCE)
+    // 响应体 = 磁盘字节 + 注入标签（剥掉注入段后与磁盘逐字一致——实现误改原字节即红）。
+    const injectedTag = `<script data-od-pick="1">${PICK_SCRIPT_SOURCE}</script>`
+    const at = bodyText.indexOf(injectedTag)
+    expect(at).toBeGreaterThan(-1)
+    expect(bodyText.slice(0, at) + bodyText.slice(at + injectedTag.length)).toBe(diskBytes.toString('utf8'))
+    // 注入幂等：重复请求响应一致（每次响应独立拼接、无状态）。
+    const second = await request(mounted.route, artifactUrl('index.html'))
+    expect(second.body?.equals(first.body as Buffer)).toBe(true)
+    // RL3 核心判据：伺服后磁盘产物字节不变（实现误写盘即红）。
+    expect(await readFile(join(root, 'index.html'))).toEqual(diskBytes)
+  })
+
+  it('HEAD 请求不注入（无 body，版本探针路径；ETag 照常在场供 D8c 探针比对）', async () => {
+    const res = await request(mounted.route, artifactUrl('index.html'), 'HEAD')
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toBeUndefined()
+    expect(res.header('etag')).toBeDefined()
+  })
+
+  it('非 HTML 资源不注入：响应与磁盘逐字节一致，且不附 ETag（版本凭据只属 HTML）', async () => {
+    const noteBytes = await readFile(join(root, 'secret-note.txt'))
+    const res = await request(mounted.route, artifactUrl('secret-note.txt'))
+    expect(res.statusCode).toBe(200)
+    expect(res.body?.equals(noteBytes)).toBe(true)
+    expect(res.header('etag')).toBeUndefined()
+  })
+
+  it('.od-frames/ 设备壳路径不注入（对照：产物 index.html 有注入）——壳内不可拾取边界的机器断言（D4 谓词）', async () => {
+    const frameBytes = await readFile(join(root, '.od-frames/neutral.html'))
+    const frame = await request(mounted.route, artifactUrl('.od-frames/neutral.html'))
+    expect(frame.statusCode).toBe(200)
+    expect(frame.header('content-type')).toBe('text/html; charset=utf-8')
+    expect(frame.body?.equals(frameBytes)).toBe(true)
+    expect(frame.body?.toString('utf8')).not.toContain('<script data-od-pick="1">')
+    const artifact = await request(mounted.route, artifactUrl('index.html'))
+    expect(artifact.body?.toString('utf8')).toContain('<script data-od-pick="1">')
+  })
+})
+
+describe('内容版本 ETag（D8c：mtime+size 摘要）', () => {
+  it('同文件多次请求 ETag 稳定一致（面板探针比对的前提）', async () => {
+    const probe = join(root, 'etag-probe.html')
+    await writeFile(probe, '<!doctype html><html><body><p>etag probe</p></body></html>', 'utf8')
+    const first = await request(mounted.route, artifactUrl('etag-probe.html'))
+    const second = await request(mounted.route, artifactUrl('etag-probe.html'))
+    expect(first.header('etag')).toMatch(/^W\//)
+    expect(first.header('etag')).toBe(second.header('etag'))
+  })
+
+  it('文件写盘后 ETag 必变（mtime+size 前进；SI3 假阴性的单测兜底）', async () => {
+    const probe = join(root, 'etag-mutation.html')
+    await writeFile(probe, '<html><body><p>v1</p></body></html>', 'utf8')
+    const before = await request(mounted.route, artifactUrl('etag-mutation.html'))
+    // 写盘间隔越过 mtime 刻度（内容与尺寸同时变化，双保险防同刻度假阴性干扰断言）。
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    await writeFile(probe, '<html><body><p>v2 with more content</p></body></html>', 'utf8')
+    const after = await request(mounted.route, artifactUrl('etag-mutation.html'))
+    expect(after.header('etag')).toBeDefined()
+    expect(after.header('etag')).not.toBe(before.header('etag'))
+  })
+})
+
+describe('注入谓词与注入函数直驱（D4 谓词三条件 + 尾部拼接形态）', () => {
+  it('shouldInjectPickScript：GET × text/html × 非 .od-frames/ 首段才注', () => {
+    expect(shouldInjectPickScript('GET', 'text/html; charset=utf-8', 'index.html')).toBe(true)
+    expect(shouldInjectPickScript('HEAD', 'text/html; charset=utf-8', 'index.html')).toBe(false)
+    expect(shouldInjectPickScript('POST', 'text/html; charset=utf-8', 'index.html')).toBe(false)
+    expect(shouldInjectPickScript(undefined, 'text/html; charset=utf-8', 'index.html')).toBe(false)
+    expect(shouldInjectPickScript('GET', 'text/css; charset=utf-8', 'style.css')).toBe(false)
+    expect(shouldInjectPickScript('GET', 'application/octet-stream', 'unknown.bin')).toBe(false)
+    expect(shouldInjectPickScript('GET', 'text/html; charset=utf-8', '.od-frames/neutral.html')).toBe(false)
+    // 首段判定：嵌套子目录里的同名目录不是材质化设备壳根，照注（材质化只写根级 .od-frames/）。
+    expect(shouldInjectPickScript('GET', 'text/html; charset=utf-8', 'sub/.od-frames/nested.html')).toBe(true)
+  })
+
+  it('injectPickScript：最后一个 </body> 前注入；无 </body> 文档尾接；注入幂等', () => {
+    const tag = `<script data-od-pick="1">${PICK_SCRIPT_SOURCE}</script>`
+    expect(injectPickScript('<html><body><p>x</p></body></html>')).toBe(`<html><body><p>x</p>${tag}</body></html>`)
+    expect(injectPickScript('<p>no body close</p>')).toBe(`<p>no body close</p>${tag}`)
+    // 大小写不敏感（HTML 语义）：大写 </BODY> 同样命中注入点。
+    const upper = injectPickScript('<html><BODY><p>y</p></BODY></html>')
+    expect(upper.startsWith(`<html><BODY><p>y</p>${tag}`)).toBe(true)
+    expect(upper.endsWith('</BODY></html>')).toBe(true)
+    expect(injectPickScript('<p>a</p>')).toBe(injectPickScript('<p>a</p>'))
+  })
+
+  it('etagFor：mtime 或 size 任一变化即变（摘要构成锁定）', () => {
+    expect(etagFor(1e12, 100)).toBe(etagFor(1e12, 100))
+    expect(etagFor(1e12, 100)).not.toBe(etagFor(1e12 + 1, 100))
+    expect(etagFor(1e12, 100)).not.toBe(etagFor(1e12, 101))
+    expect(etagFor(1e12, 100)).toMatch(/^W\//)
   })
 })
 

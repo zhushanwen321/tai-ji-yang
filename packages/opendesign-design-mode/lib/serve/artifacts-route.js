@@ -1,5 +1,7 @@
 import { readFile, realpath, stat } from "node:fs/promises";
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { PICK_SCRIPT_SOURCE } from "../comments/pick-script.js";
+import { OD_FRAMES_DIR } from "../materialize/copy.js";
 import { registerCommentsApiRoutes } from "./comments-api.js";
 import { resolveSessionCwdById } from "./session-cwd.js";
 const name = "od-serve";
@@ -32,6 +34,22 @@ function contentTypeFor(fileName) {
   if (dot <= -1) return "application/octet-stream";
   return CONTENT_TYPES[fileName.slice(dot).toLowerCase()] ?? "application/octet-stream";
 }
+const PICK_SCRIPT_TAG_OPEN = '<script data-od-pick="1">';
+function shouldInjectPickScript(method, contentType, relativePath) {
+  if (method !== "GET") return false;
+  if (!contentType.startsWith("text/html")) return false;
+  const firstSegment = relativePath.split(sep)[0] ?? "";
+  return firstSegment !== OD_FRAMES_DIR;
+}
+function injectPickScript(html) {
+  const tag = `${PICK_SCRIPT_TAG_OPEN}${PICK_SCRIPT_SOURCE}<\/script>`;
+  const at = html.toLowerCase().lastIndexOf("</body>");
+  if (at <= -1) return `${html}${tag}`;
+  return `${html.slice(0, at)}${tag}${html.slice(at)}`;
+}
+function etagFor(mtimeMs, size) {
+  return `W/"${mtimeMs.toString(16)}-${size.toString(16)}"`;
+}
 function parseArtifactRoute(pathname) {
   const stripped = pathname.slice(OPENDESIGN_ARTIFACTS_PREFIX_PATH.length).replace(/^\/+/, "");
   if (stripped === "") return { status: "empty" };
@@ -48,14 +66,14 @@ function parseArtifactRoute(pathname) {
 }
 async function resolveArtifactPath(rootReal, artifactRoute) {
   if (artifactRoute === "") return { status: "missing" };
-  let relative;
+  let relative2;
   try {
-    relative = decodeURIComponent(artifactRoute);
+    relative2 = decodeURIComponent(artifactRoute);
   } catch {
     return { status: "malformed" };
   }
-  if (relative.includes("\0") || isAbsolute(relative)) return { status: "forbidden" };
-  const candidate = join(rootReal, relative);
+  if (relative2.includes("\0") || isAbsolute(relative2)) return { status: "forbidden" };
+  const candidate = join(rootReal, relative2);
   const lexical = resolve(candidate);
   if (lexical !== rootReal && !lexical.startsWith(rootReal + sep)) return { status: "forbidden" };
   let real;
@@ -148,9 +166,21 @@ async function serveArtifactRequest(ctx, req, res) {
     sendJson(res, 404, { code: "not-found", message: "artifact disappeared between resolution and read" });
     return;
   }
+  const fileStat = await stat(resolution.path).catch(() => void 0);
   res.statusCode = 200;
-  res.setHeader("content-type", contentTypeFor(resolution.path));
+  const contentType = contentTypeFor(resolution.path);
+  res.setHeader("content-type", contentType);
   res.setHeader("cache-control", "no-store");
+  if (contentType.startsWith("text/html") && fileStat !== void 0) {
+    res.setHeader("etag", etagFor(fileStat.mtimeMs, fileStat.size));
+  }
+  if (shouldInjectPickScript(req.method, contentType, relative(rootReal, resolution.path))) {
+    const html = body.toString("utf8");
+    if (Buffer.byteLength(html, "utf8") === body.length) {
+      res.end(Buffer.from(injectPickScript(html), "utf8"));
+      return;
+    }
+  }
   if (req.method === "GET") res.end(body);
   else res.end();
 }
@@ -170,8 +200,11 @@ export {
   OPENDESIGN_ARTIFACTS_PREFIX_ROUTE,
   apply,
   contentTypeFor,
+  etagFor,
   inject,
+  injectPickScript,
   name,
   parseArtifactRoute,
-  resolveArtifactPath
+  resolveArtifactPath,
+  shouldInjectPickScript
 };
