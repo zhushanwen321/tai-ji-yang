@@ -39,7 +39,7 @@ P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工
 | 持久（插件 Config volatile） | reload 后仍所选色 | covered |
 | 恢复默认（场景收尾不污染实例） | brand-primary 回基线 | covered |
 | 六色齐备 | swatch 数量 = 6 | covered（经外观行/chip 渲染核验） |
-| 三入口同步（V8 步骤 6-8，D-3 护栏） | 太极分区配色行 swatch 点选 → brand-primary 变化 → 外观行/chip 选中态同步（同一 controller，无双写） | covered（theme 场景第三入口支；点选立即生效与互相同步逐断言） |
+| 三入口同步（V8 步骤 6-8，D-3 护栏） | 太极分区配色行 swatch 点选 → brand-primary 变化 → chip 选中态同步（chip 可见时；不可见时显式降级为分区自身选中态断言） | covered（theme 场景第三入口支：点选立即生效逐断言；外观行选中态同步无断言承载，补断言属可选增强） |
 | 明暗模式跟随宿主（本包不写偏好） | 切换配色不改宿主明暗 | uncovered（需宿主偏好驱动；属宿主域，登记不属本包验收范围） |
 | 字体复合简写（字重/行高落地） | 正文 computed font-weight/line-height | uncovered（head 的激活字重 600 已覆盖一处消费点；全量对账归 pnpm check 的静态断言） |
 
