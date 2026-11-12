@@ -329,7 +329,9 @@ export class RoutesListModel {
     await this.commit(WHITELIST_FIELD, whitelist)
   }
 
-  /** 整字段提交（ConfigFormLike.set；失败重读 = 以 Config 真值为准 + notice/error 上报）。 */
+  /** 整字段提交（ConfigFormLike.set；失败重读 = 以 Config 真值为准 + notice/error 上报）。
+   * 上报在重读完成**之后**置位：load() 以 emptySnapshot 展开重建 state，先置后读会把
+   * notice/error 在同一同步续体内吞掉（两次 notify 之间无渲染落点，SC9 显式上报不可见）。 */
   private async commit(field: string, value: unknown): Promise<void> {
     try {
       const accepted = await this.deps.configForm.set(field, value)
@@ -340,16 +342,16 @@ export class RoutesListModel {
         // 挡掉；不前移则滞后镜像 revision 与已采纳值相等，倒退恰好漏过（AF-1-1 弹回主径）。
         this.appliedRevision = (this.appliedRevision ?? 0) + 1
       } else {
+        await this.load()
         this.state = { ...this.state, notice: this.t('route.writeRefused') }
         this.notify()
-        await this.load()
         return
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
+      await this.load()
       this.state = { ...this.state, error: this.t('route.writeFailed', { detail }) }
       this.notify()
-      await this.load()
       return
     }
     await this.load()

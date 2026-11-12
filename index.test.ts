@@ -575,7 +575,7 @@ describe('求值纯函数对拍（Node 复刻 ↔ client 权威源，禁双实�
     expect(nodeSanitizeWhitelist(rawWhitelist)).toEqual(sanitizeWhitelist(rawWhitelist))
   })
 
-  it('特殊日期三形态求值双侧一致 + quota 条件折叠进 sanitize 差分（终态同步 F1-39：差分集补全）', () => {
+  it('特殊日期三形态求值双侧一致 + quota/combo 成员词表保留双侧同规差分（终态同步 F1-39/F1-10：差分集补全）', () => {
     // 三种此前不在差分集的求值分支：include+mask / include 无掩码（全天）/ exclude 无掩码
     // （isSlotCoveredAt 的 special 分支两侧逐行同构，漂移必须红灯）。
     const specials: RouteWindowMask = {
@@ -611,8 +611,8 @@ describe('求值纯函数对拍（Node 复刻 ↔ client 权威源，禁双实�
       )
       expect(nodeEvaluateRouteAt(route, item.at)?.provider).toBe(evaluateRouteAt(route, item.at)?.provider)
     }
-    // quota 型条件成员的 sanitize 差分：一期不求值按「永不命中」fail-closed——成员在
-    // sanitize 入口被折叠丢弃（两侧一致，且都真丢——防双侧同时漂移成保留）。
+    // quota/combo 型条件成员的 sanitize 差分：词表保留（D5「额度类条件一期只做不可用
+    // 标注」）——两侧同规保留成员（求值仍 fail-closed 永不命中），都丢弃才是漂移。
     const rawQuota = [
       {
         id: 'q',
@@ -624,7 +624,16 @@ describe('求值纯函数对拍（Node 复刻 ↔ client 权威源，禁双实�
       },
     ]
     expect(JSON.stringify(nodeSanitizeRoutes(rawQuota))).toBe(JSON.stringify(sanitizeRoutes(rawQuota)))
-    expect(sanitizeRoutes(rawQuota)).toEqual([{ id: 'q', name: 'Q', members: [] }])
+    expect(sanitizeRoutes(rawQuota)).toEqual([
+      {
+        id: 'q',
+        name: 'Q',
+        members: [
+          { provider: 'p', model: 'm', order: 1, condition: { type: 'quota' } },
+          { provider: 'p2', model: 'm2', order: 2, condition: { type: 'combo' } },
+        ],
+      },
+    ])
   })
 
   it('ROUTE_PROVIDER_PREFIX 双侧同值', async () => {

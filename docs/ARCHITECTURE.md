@@ -81,7 +81,7 @@ Node 半场只承载默认色玄这一套的「宿主默认 palette 之上的最
 6. **品牌三槽** → **外观行** → **composer 快速配色 chip** → **设置「太极」分区** → **设置「模型服务」分区** → **项目分组浏览器** → **会话头状态图标**（详见第 7 节总表）。
 7. **反注册持久通道镜像订阅**——form 本体归宿主 ConfigForms 服务所有（跨插件共享），本包只撤自己的监听。
 
-`client/apply.ts` 导出 `inject = ['slots', 'locale', 'theme', 'configForms', 'remote', 'sessions', 'uiWorkspace']`——这是**服务名**声明：宿主 fiber context 是带拦截器的 Proxy，未声明就读 `ctx.<service>` 会直接抛错，浏览器半场整体装载失败（页面白屏而首次绘制前样式照常注入的半死态）。它与 manifest 的 `dsh.client.inject`（包名，加载排序）不可互相替代，两者都要。该声明由机检看守：`scripts/check-manifest.mjs` 断言这条导出形态存在，并强制其中前五项（slots / locale / theme / configForms / remote）必须都在声明内；`sessions` 与 `uiWorkspace` 是项目分组浏览器消费的服务（见第 8 节），按装配入口实际消费的宿主服务如实声明，不在机检强制清单内。
+`client/apply.ts` 导出 `inject = ['slots', 'locale', 'theme', 'configForms', 'remote', 'remote.settings', 'remote.llm', 'remote.credentials', 'remote.session', 'sessions', 'uiWorkspace']`（11 项）——这是**服务名**声明：宿主 fiber context 是带拦截器的 Proxy，未声明就读 `ctx.<service>` 会直接抛错，浏览器半场整体装载失败（页面白屏而首次绘制前样式照常注入的半死态）。它与 manifest 的 `dsh.client.inject`（包名，加载排序）不可互相替代，两者都要。该声明由机检看守：`scripts/check-manifest.mjs` 断言这条导出形态存在，并强制其中九项（slots / locale / theme / configForms / remote 及 remote 的四个子路径 settings / llm / credentials / session 逐个声明）必须都在声明内——嵌套路径按整串服务名解析，只声明父级 `remote` 时读 `ctx.remote.settings` 照样抛 without inject（2026-11-12 真机验收 assembly + console-clean 双 FAIL 的根因，机检单源记录于 check-manifest.mjs 注释）；`sessions` 与 `uiWorkspace` 是项目分组浏览器消费的服务（见第 8 节），按装配入口实际消费的宿主服务如实声明，不在机检强制清单内。
 
 ### 3.2 CSS 交付形态
 

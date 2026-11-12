@@ -76,7 +76,8 @@ P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工
 | 导航并存（D2 追加形态） | 宿主「模型」与插件「模型服务」两条导航条目都在 | covered |
 | 无串页 | 点宿主「模型」后 `.ms-section` 收起且高亮落宿主条目 | covered |
 | 三视图切换条 | `.ms-section .ms-viewbar-button` 数 = 3 | covered |
-| 空态矩阵（V9 步骤 1） | 全新实例供应商视图空态有引导文案 | covered |
+| 空态矩阵（V9 步骤 1） | 全新实例供应商视图渲染内置目录列表（rowCount>0，空态分支宿主 web profile 不可达） | covered |
+| 供应商视图空态引导文案（V9 步骤 1） | 「尚无可编辑供应商」引导文案渲染 | notProvable（目录非空不可达，归 D3 真机或单测承接） |
 | 零模型保存前置（V1 步骤 4a） | 保存被拒 + models.saveBlockedEmpty 指引文案 | covered |
 | 保存链路两处落盘（V1 步骤 5/6） | 设置文档出现 providers.<key>（apiKeyEnv 为 ref 名）+ 凭据文件出现对应 ref | covered |
 | 热重算不重启（V1 步骤 7/9，RL2） | 宿主「模型」分区可见新供应商 + 页面无 reload（注入标记存活） | covered |
@@ -88,6 +89,7 @@ P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工
 | 凭据 ref 撞名 a 支文案（V4 步骤 9） | 宿主分区派生 TAIJI_ 前缀 ref 的占用提示 | notProvable（需宿主「模型」分区写 taiji-* 路由供应商的表单自动化，超出场景通道；credentials-client 单测覆盖） |
 | 待清理清单重试（V4 步骤 6，AX9） | unset 失败登记 → 重试成功移除 | notProvable（需让凭据服务在删除动作时不可用，超出场景通道；credentials-client 单测覆盖） |
 | 清单来源态与空态（V9） | 自定义行 ms-source-custom、筛选无结果空态 + 清除动作 | covered |
+| 模型来源态切换与思考策略映射（V2） | 来源态标注展示已随上行 V9 断言；自动发现（discoverModels）、恢复目录默认、思考策略→推理档位映射无场景断言 | notProvable（自动发现需真实端点、恢复目录默认与映射需宿主分区表单自动化，超出场景通道，归 D3 真机；映射归档规则由 provider-edit-body 单测承载） |
 | 清单目录默认态来源标注（V9 步骤 3） | 目录默认 provider 的清单行 ms-source-directory + 来源徽标文案 | notProvable（场景自然路径下供应商均带自定义清单，目录默认行不可达；归 D3 真机核验） |
 | 托管 provider 只读行（V9） | ms-source-managed 行渲染 | covered（隔离实例无托管行时登记 notProvable，不假红） |
 | 删除供应商双清除（V4 步骤 4/5，RL6 真机面） | 设置文档条目与凭据 ref 均清除（无孤儿） | covered |
@@ -97,14 +99,16 @@ P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工
 | 白名单启停（V6 步骤 1-3，SC8） | 勾选落盘 whitelist / 取消移除 / 重新勾选恢复 | covered |
 | 白名单悬挂与清理（V6 步骤 4-5） | 删路由转悬挂（「路由已删除」标注不自动清理）；批量清理只移除悬挂 | covered |
 | 空白名单 = 全不暴露（V6 步骤 6） | Config whitelist 空断言 | covered（对话流选择器侧归 D3） |
-| 成员行可用性标注（V5 步骤 9-10，G18） | 删成员供应商后路由成员行「供应商已删」 | covered |
+| 成员行可用性标注（V5 步骤 9，G18） | 删成员供应商后路由成员行「供应商已删」 | covered |
+| 宿主「模型」分区删除成员的感知标注（V5 步骤 10，G18） | 宿主侧删除后插件经重读呈现「供应商已删」标注 | notProvable（需宿主「模型」分区删除表单自动化，超出场景通道，归 D3 真机；感知通道 = 分区打开重读 + 写后回读拉取式） |
 | 路由命中与回退（V5 步骤 4-8，RL5 真机面） | 对话流选中虚拟模型发消息：命中成员响应、条件不命中回退下一成员、双不命中可行动错误（ROUTE_NO_ACTIVE_MEMBER）、凭据缺失不静默切换（ROUTE_MEMBER_UNAVAILABLE） | notProvable（发消息需真实可用端点，归 D3 真机；命中/回退/终结机制由 index.test.ts 假上游单测与 route-evaluate.test.ts 覆盖） |
 | 对话流真实报错（V7 步骤 1-5） | 成员不可用的流式终结与物理模型对照 | notProvable（发消息需真实可用端点，归 D3 真机；终结机制由 index.test.ts 假上游单测覆盖） |
 | 路由全删注册注销（V6 步骤 4，RL9） | 宿主 llm 注册表不再持有 taiji-route- 前缀条目 | notProvable（场景通道断 UI 悬挂标注与 Config whitelist/routes 落盘；注册表侧由 index.test.ts 空路由集断言覆盖，对话流虚拟模型消失承载可见面） |
-| 清单视图「尚未接入供应商」空态（V9 步骤 1） | 三视图空态之清单视图变体 | notProvable（隔离实例供应商视图恒列 pi-ai 内置目录行，清单非空是宿主真实形态；供应商与路由视图空态已断言） |
+| 清单视图「尚未接入供应商」空态（V9 步骤 1） | 三视图空态之清单视图变体 | notProvable（隔离实例供应商视图恒列 pi-ai 内置目录行，清单非空是宿主真实形态；路由视图空态已断言、供应商视图空态不可达见「空态矩阵」行） |
 | 清单跳转定位（V9 步骤 4） | 「在供应商中编辑」落在对应展开体并定位模型 | notProvable（跳转态为分区组件内状态，断言需跨视图状态巡检；跳转入口渲染已随清单行 covered） |
 | 注册冲突状态条（V7 步骤 6，回溯 GL3/GL6） | ROUTE_REGISTRATION_FAILED 状态条 | notProvable（需宿主已注册同名 taiji-route-* 适配器，隔离实例不可自然构造；状态条渲染与探测判定由单测与 D3 复验） |
-| 配色对比度采样（V8 采样部分） | ink on soft ≥ 4.5:1（四族 × 六色 × 双模 48 组合） | covered（不在 runner 通道：由 pnpm check 的 client/theme/tokens.spec.ts 机器验算承载；runner 只做 DOM/解析值断言，不做像素采样——真机整体观感与六色跟随归 D3 人眼验收） |
+| 卸载后「模型服务」条目与 taiji-route-* 选择器撤除（G15(c) 卸载半边，RL1 补建项/impl-plan A3） | 导航「模型服务」条目消失、宿主「模型」条目与页面完好、对话流无 taiji-route-* 虚拟模型 | notProvable（条目为宿主渲染、无 taiji- 类名，不被 lifecycle 现有痕迹扫描覆盖；且 all 链中 model-service 场景收尾已删路由与供应商，该断言在本 runner 结构下近空转——归 D3 真机复验；卸载通用痕迹与 settings.section 槽位撤销由 tests/uninstall-cleanliness.spec.ts 与 lifecycle.mjs 承载） |
+| 配色对比度机器验算（V8 验算部分） | 亮模式 ink on soft ≥ 4.5:1 逐组合断言（4 ink × 六色 × 3 铺底 = 72 组合）+ 暗模式对照信息输出（不达标组合在 spec 注释留档） | covered（不在 runner 通道：由 pnpm check 的 client/theme/tokens.spec.ts 静态机器验算承载；runner 不做像素采样——真机整体观感与六色跟随归 D3 人眼验收） |
 
 ## 环境与安全（跨场景不变量）
 

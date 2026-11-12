@@ -163,5 +163,8 @@ describe('RoutesListModel revision 倒退栅栏（AF-1-1）', () => {
     // 采纳，state 回落 Config 真值（whitelist 空）。
     expect(model.getSnapshot().whitelist).toEqual([])
     expect(form.sets).toHaveLength(1)
+    // 回落完成后显式上报必须在场（SC9/文件头自声明；终态同步 F1-11：notice 不随重读
+    // 重建被吞——load 以 emptySnapshot 展开重建 state，先置后读会清掉上报）。
+    expect(model.getSnapshot().notice).toBe('写入被宿主拒绝，已恢复为当前保存值')
   })
 })

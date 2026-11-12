@@ -10,7 +10,7 @@
  *     白名单；白名单有有效勾选但勾选路由的成员全部不可用 → 指向成员检查；
  *   · 路由列表（成员顺序与成员级条件 + 当前命中预览）+ 白名单勾选 + 悬挂条目标注（「路由
  *     已删除」）+ 单条移除与批量清理（只移除悬挂条目）；
- *   · 展开体路由编辑器（RouteEditorModel）：名称（改名不改 id——D5 id 创建后固定）+ 成员
+ *   · 展开体路由编辑器（RouteEditorBody）：名称（改名不改 id——D5 id 创建后固定）+ 成员
  *     列表（provider/model 选择、条件 none|window、order 上下移）+ 三层时间窗
  *     （route-time-grid）。
  *
@@ -26,7 +26,7 @@ import { RoutesListModel, deriveRouteId, type MemberAvailability, type RoutesSna
 import { memberAvailabilityLocaleKeys } from '../../model-service/route-errors'
 import { type RouteCondition, type RouteEntry, type RouteMember, type RouteWindowMask } from '../../model-service/route-evaluate'
 import type { Translate } from './route-time-grid'
-import { RouteTimeGrid } from './route-time-grid'
+import { emptyRouteWindowMask, RouteTimeGrid } from './route-time-grid'
 
 /** 路由视图 props。 */
 export interface RoutesViewProps {
@@ -508,7 +508,9 @@ function MemberEditor({ t, member, selectableProviders, expanded, onToggleExpand
           const value = event.target.value
           if (value === 'none') setCondition({ type: 'none' })
           else if (value === 'window') {
-            setCondition({ type: 'window', window: member.condition.window ?? { days: [], specialDates: [] } })
+            // 空掩码必须走 emptyRouteWindowMask（7×48 归一）：内联 days:[] 会让时间窗格子
+            // 的 draft.days[day] 索引到 undefined 抛 TypeError（终态同步 F1-9，D5 编辑面）。
+            setCondition({ type: 'window', window: member.condition.window ?? emptyRouteWindowMask() })
           }
         }}
       >

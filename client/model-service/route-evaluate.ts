@@ -46,9 +46,10 @@ export interface RouteWindowMask {
   specialDates: RouteSpecialDate[]
 }
 
-/** 成员级条件（D5：一期求值 none/window；quota/combo 词表保留但一期不参与求值）。 */
+/** 成员级条件（D5：一期求值 none/window；quota/combo 词表保留、一期不参与求值——
+ * 成员保留在路由里并按「额度条件（本版本不可用）」标注，求值 fail-closed 永不命中）。 */
 export interface RouteCondition {
-  type: 'none' | 'window'
+  type: 'none' | 'window' | 'quota' | 'combo'
   window?: RouteWindowMask
 }
 
@@ -123,7 +124,8 @@ function sanitizeMember(raw: unknown): RouteMember | undefined {
   return { provider, model, order, condition }
 }
 
-/** 宽松值 → 规范条件（type ∈ {none, window}；window 型须带形态合法的掩码，否则按 none 容忍）。 */
+/** 宽松值 → 规范条件（type ∈ {none, window, quota, combo}；window 型须带形态合法的掩码，
+ * 否则按 none 容忍）。 */
 function sanitizeCondition(raw: unknown): RouteCondition | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined
   const record = raw as Record<string, unknown>
@@ -132,8 +134,11 @@ function sanitizeCondition(raw: unknown): RouteCondition | undefined {
     const window = sanitizeWindow(record.window)
     return window !== undefined ? { type: 'window', window } : { type: 'none' }
   }
-  // quota / combo：词表保留（D5），一期不参与求值——按「永不命中」成员处理（不是 none，
-  // 也不是 window）：返回 undefined 让上层跳过该成员（V5 步骤 7 的「都改不命中」可构造）。
+  // quota / combo：词表保留（D5 采用段「额度类条件一期只做不可用标注」），成员不丢弃——
+  // 丢弃会让手工配置的成员读回即消失、下次保存被永久清除；保留后求值走 evaluateConditionAt
+  // 的 fail-closed 出口（永不命中），UI 行内按 conditionUnavailable 标注。
+  if (record.type === 'quota') return { type: 'quota' }
+  if (record.type === 'combo') return { type: 'combo' }
   return undefined
 }
 
@@ -238,8 +243,8 @@ export function firstMatchingSpecialDate(specials: RouteSpecialDate[], at: Date)
 
 /**
  * 成员条件判定（一期求值语义）：none → 恒命中；window → 掩码判定；quota/combo → 永不命中
- * （一期无额度数据源，s.1.3 范围外；condition sanitize 已把该形态折叠为 undefined，
- * 这里对显式传入的未知 type 同样按永不命中，fail-closed）。
+ * （一期无额度数据源，§1.3 范围外；sanitize 保留该形态成员供 UI 标注「不可用」，求值走
+ * 末尾 fail-closed 出口——未知 type 一律永不命中）。
  */
 export function evaluateConditionAt(condition: RouteCondition | undefined, at: Date): boolean {
   if (condition === undefined) return false

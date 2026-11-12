@@ -135,7 +135,8 @@ describe('evaluateConditionAt（一期求值语义）', () => {
     expect(evaluateConditionAt({ type: 'window', window: maskWith(0, 20) }, MON_0930)).toBe(false)
     expect(evaluateConditionAt(undefined, MON_0930)).toBe(false)
     // quota/combo 一期不求值：fail-closed 永不命中。
-    expect(evaluateConditionAt({ type: 'quota' as 'none' }, MON_0930)).toBe(false)
+    expect(evaluateConditionAt({ type: 'quota' }, MON_0930)).toBe(false)
+    expect(evaluateConditionAt({ type: 'combo' }, MON_0930)).toBe(false)
   })
 })
 
@@ -162,7 +163,7 @@ describe('evaluateRouteAt（成员顺序即优先级）', () => {
   it('无成员命中 → undefined；quota/combo 成员永不命中', () => {
     const hitless: RouteEntry = { id: 'r', name: 'R', members: [member(1, 'window', 0, 20), member(2, 'window', 1, 20)] }
     expect(evaluateRouteAt(hitless, MON_0930)).toBeUndefined()
-    const quota: RouteEntry = { id: 'r', name: 'R', members: [{ provider: 'q', model: 'm', order: 1, condition: { type: 'quota' as 'none' } }] }
+    const quota: RouteEntry = { id: 'r', name: 'R', members: [{ provider: 'q', model: 'm', order: 1, condition: { type: 'quota' } }] }
     expect(evaluateRouteAt(quota, MON_0930)).toBeUndefined()
   })
 })
@@ -190,13 +191,18 @@ describe('sanitize（脏数据容忍）', () => {
     expect(routes[0]?.id).toBe('ok')
   })
 
-  it('window 型缺掩码按 none 容忍；quota/combo 成员被丢弃（fail-closed），路由本体保留', () => {
+  it('window 型缺掩码按 none 容忍；quota/combo 成员保留词表（D5 只标注不可用，不丢弃）', () => {
     const routes = sanitizeRoutes([
       { id: 'a', name: 'A', members: [{ provider: 'p', model: 'm', order: 1, condition: { type: 'window' } }] },
       { id: 'b', name: 'B', members: [{ provider: 'p', model: 'm', order: 1, condition: { type: 'quota' } }] },
+      { id: 'c', name: 'C', members: [{ provider: 'p2', model: 'm2', order: 2, condition: { type: 'combo' } }] },
     ])
     expect(routes[0]?.members[0]?.condition.type).toBe('none')
-    expect(routes[1]?.members).toEqual([]) // quota 成员丢弃 → 空成员路由 = 求值恒无候选（V5 步骤 7 可构造）
+    expect(routes[1]?.members).toEqual([{ provider: 'p', model: 'm', order: 1, condition: { type: 'quota' } }])
+    expect(routes[2]?.members[0]?.condition.type).toBe('combo')
+    // 保留不等于命中：quota/combo 成员求值仍 fail-closed 永不命中（evaluateConditionAt 末口）。
+    expect(evaluateRoutesAt(routes, MON_0930).get('b')).toBeUndefined()
+    expect(evaluateRoutesAt(routes, MON_0930).get('c')).toBeUndefined()
   })
 
   it('白名单：string 去重保序；脏条目丢弃', () => {

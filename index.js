@@ -11,6 +11,10 @@
  * （`client/persist.ts` 经 `ctx.configForms.get(<profile 行 id>)` 读写 `appearance` 字段）
  * 只在 Host 侧声明了 Config 时才存在。命名空间 = 本包 profile 行的 id，见 {@link Config}。
  *
+ * 职责三（M2）：模型路由 LLM 适配器（dsh-model-service D4/AX5/AX6）——以
+ * `taiji-route-<routeId>` 为 provider id 向宿主注册虚拟模型并转发对话流请求，成员级
+ * 时间窗求值在宿主进程内完成。机制与同源纪律见 `ROUTE_PROVIDER_PREFIX` 起的路由段注释。
+ *
  * 取值口径（D6 收敛纪律）：
  *   - **不建六色副本**：六色双模表的唯一权威是浏览器半场（`client/theme/tokens.ts`，U2）。
  *     本文件只承载默认配色（玄）这一套，且只承载「宿主默认 palette 之上的最小差异」——
@@ -556,7 +560,8 @@ function sanitizeRouteMember(raw) {
   return { provider, model, order, condition }
 }
 
-/** 宽松值 → 规范条件（window 型掩码形态不合法按 none 容忍；未知 type fail-closed = undefined）。 */
+/** 宽松值 → 规范条件（window 型掩码形态不合法按 none 容忍；quota/combo 词表保留、成员不
+ * 丢弃——求值 fail-closed 永不命中；其余未知 type fail-closed = undefined）。 */
 function sanitizeRouteCondition(raw) {
   if (typeof raw !== 'object' || raw === null) return undefined
   const record = raw
@@ -565,7 +570,11 @@ function sanitizeRouteCondition(raw) {
     const window = sanitizeRouteWindow(record.window)
     return window !== undefined ? { type: 'window', window } : { type: 'none' }
   }
-  return undefined // quota / combo 一期不求值：按「永不命中」处理（非 none 也不是 window）
+  // quota / combo：词表保留（D5「额度类条件一期只做不可用标注」），成员不丢弃——
+  // route-evaluate.ts 权威语义同规（对拍锁定），求值走 evaluateConditionAt 末尾 fail-closed。
+  if (record.type === 'quota') return { type: 'quota' }
+  if (record.type === 'combo') return { type: 'combo' }
+  return undefined
 }
 
 /** 宽松值 → 规范掩码（7×48 归一：短行补 false、长行截断）。 */
@@ -657,7 +666,7 @@ export function isSlotCoveredAt(mask, at) {
   return mask.days[day]?.[slot] === true
 }
 
-/** 成员条件判定：none → 恒命中；window → 掩码判定；未知 type（quota/combo）→ 永不命中。 */
+/** 成员条件判定：none → 恒命中；window → 掩码判定；quota/combo 及未知 type → 永不命中。 */
 export function evaluateConditionAt(condition, at) {
   if (condition === undefined) return false
   if (condition.type === 'none') return true
