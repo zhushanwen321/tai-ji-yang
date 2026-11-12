@@ -34,10 +34,11 @@
  *
  * 评论回路场景（opendesign-comment-loop 设计 §4.1；编号带 comment-loop· 域前缀，与本文件
  * 既有 opendesign-assets-quality 域 V 编号区分）：
- *   S10 comment-loop·V1 —— 评论回路首评：设计面板预览产物 → 侧栏发送评论 → 聊天流回注
- *      消息 kind 可辨（AX2 独立 kind + 文本与 buildCommentMessage 构造逐字对账）→ 线程
- *      落盘 delivered（徽标 Sent）→ doctor 第⑫节评论环缺席/在场两形态（计数/分布/parse
- *      健康度/路由族声明）→ 回合结束后回注消息仍在事件流（通用在轨断言）。
+ *   S10 comment-loop·V1 + comment-anchor·V1 —— 拾取桥全路径首评：设计面板进评论模式 →
+ *      frameLocator 悬停高亮/点击选中（锚点行 id 级）→ 输入发送 → 线程落盘带 anchor
+ *      （D1 三级降级的 id 级）→ 聊天流回注消息 kind 可辨 + 围栏 JSON 含同一 anchor
+ *      （D7）→ 产物内编号徽章在位 → doctor 第⑫节评论环缺席/在场两形态 → 回合结束后
+ *      回注消息仍在事件流（通用在轨断言）。
  *   S11 comment-loop·V3 —— 无活 Agent 边界（D3 实测形态）：重启未重开会话 → 写通道
  *      404 session-unknown fail-closed 且零落盘；重开会话 → 200 + 投递态如实 + 不重复线程。
  *      no-agent 徽标/重试通道在本宿主实现不可经 e2e 造出，由 L1（U2/U3/U4）覆盖。
@@ -45,35 +46,79 @@
  *      路由层不判型（写通道往返照常）；地址模式弹回由 L1 present-card-link 断言覆盖。
  *      评论侧栏折叠条/展开面板全页零出现；路由层不判型——普通会话写通道往返照常（仅受
  *      鉴权与落点约束）。preset 清单零变化归根包 check-manifest 既有断言，不在本套件。
- *   S13 comment-loop·V6 —— resolve → reply 重开循环：标记已解决（delivery 保留）→ 追加
- *      评论自动回 open 且新投递周期 delivered（围栏载荷 text = 末条追加，旧内容不重投）→
- *      产物同路径重写旧评论不消失不错挂（D8 文件级关联）→ 产物删除边界：线程保留列出、
- *      伺服路由 404（预览行为与面板现状一致）。
- *   S14 comment-loop·V10 —— steer 前置评论投递（AS9 探针载体）：长任务消息先置运行态 →
- *      运行中经侧栏发评论 → delivery=delivered + 徽标 Sent + 消息 kind/载荷断言。通道判据
- *      = 评论投递是否开启新轮 system 节点（followup 开新轮 / steer 不开）：steer 形态全量
- *      断言（无新轮 + 回合结束后消息仍在事件流）；followup 形态按设计 §4.1 V10 协议登记
- *      探针不适用（防弱化为对 followup 恒真的永绿断言），凭据环境长任务重造后补跑。
+ *   S13 comment-loop·V6 —— resolve → reply 重开循环（首评经拾取入口置态）：标记已解决
+ *      （delivery 保留）→ 追加评论自动回 open 且新投递周期 delivered（围栏载荷 text = 末条
+ *      追加且带线程首评 anchor——D7 追加评论回注载荷带首评锚点）→ 产物同路径重写旧评论
+ *      不消失不错挂（D8 关联）→ 产物删除边界：线程保留列出、伺服路由 404。
+ *   S14 comment-loop·V10 —— steer 前置评论投递（AS9 探针载体；首评经拾取入口）：长任务
+ *      消息先置运行态 → 运行中拾取发评论 → delivery=delivered + 消息 kind/载荷断言。通道
+ *      判据 = 评论投递是否开启新轮 system 节点（followup 开新轮 / steer 不开）：steer 形态
+ *      全量断言（无新轮 + 回合结束后消息仍在事件流）；followup 形态按设计 §4.1 V10 协议
+ *      登记探针不适用（防弱化为对 followup 恒真的永绿断言），凭据环境长任务重造后补跑。
  *   S15 comment-loop·V4 —— 写通道安全（原始 HTTP 形态，不经面板）：无凭据 POST 401 /
  *      不可信 Host/Origin/cross-site 403（宿主 Host/Origin 围栏）/ 越界载荷 404·403·400
- *      且零落盘；正向对照 = 带凭据 GET 基路径 200。
+ *      且零落盘；anchor 载荷负路径（level 词表外 / sel 超限 / 显式 null 400——D1 写入侧
+ *      校验的 HTTP 半场）；正向对照 = 带凭据 GET 基路径 200。
+ *
+ * 元素锚点场景（opendesign-comment-anchor 设计 §4.1；编号带 comment-anchor 域标注的 P 组，
+ * 判据 id 为该设计包 V/RL 编号）：
+ *   P2 V2 —— 三级降级：同一产物上对带 id 元素 / 带锚属性祖先 section 内部元素 / 无 id
+ *      无锚属性裸链接各拾取一评——落盘 anchor 逐级锁定（id / data-od-id / path 链逐字）
+ *      + 徽章三枚按 anchors 下发集重建。deck 形态（data-screen-label）降级不设独立场景：
+ *      U3 单测锁值（设计 §4.1 V2 判据登记）。
+ *   P3 V3 —— 联动定位与失效：侧栏定位钮 → 产物内滚动定位 + 高亮闪框（D8(b)）→ 重写
+ *      产物删除目标 id → ETag 变化重挂 → anchors-status 回报 → 侧栏条目「锚点失效」态
+ *      （定位钮禁用不发起 locate），其余条目不受影响。
+ *   P4 V3③+V8①③+RL7 —— 改稿可见性：模拟改稿（改目标元素内容、保留锚属性、插入同型
+ *      兄弟使 path 级序数漂移）→ ETag 变化 → ≤6 秒内 iframe 重挂 ready 二次握手 → 徽章
+ *      重建且 id/data 级命中；path 级失效如实标注不判失败（D1 已接受代价口径）。
+ *   P5 V4+V5+V11 —— 布局联动：打开预览自动收起左侧边栏、关闭还原恰一次（RL6）；V5 硬
+ *      边界矩阵行（手动收过侧栏再打开预览被误展开——面板按钮一键再收，手动接管后关闭
+ *      面板不再触碰侧栏）；V11②③ 列表↔iframe 往返与切走切回（keepMounted 保活）不重放
+ *      布局动作；V11④ 多实例分屏（宿主 Split 动作——u-probe 探针已定 e2e 承载）各实例
+ *      独立记账全程无报错。侧栏开合机器判据 = 宿主「Collapse sidebar」按钮在场 ⇔ 展开
+ *      （隔离实例实测：收起态该按钮缺席，无 Expand 词形）。
+ *   P6 V7+RL2/RL3 —— 注入完整性：sandbox 属性逐字 allow-scripts 不含 allow-same-origin；
+ *      GET 响应 = 磁盘字节 + 注入标签（与 injectPickScript 生产构造逐字对账）；HEAD 无
+ *      body 且 HTML 附 ETag；非 HTML 资源与设备壳（.od-frames/）响应无注入；顶层直开
+ *      （无面板父窗口）零拾取 UI 零改动。
+ *   P7 RL5 —— 桥契约负路径：v ≠ 1 与前缀不符两类可构造形态双向静默（脚本→面板 picked
+ *      零落盘；面板→脚本 pick-mode 不渲染 overlay）+ 合法报文对照通道连通；来源伪造不可
+ *      构造由单测 mock 承载（RL5 分工登记）。
+ *   P8 V6+D3 —— 入口唯一化：面板无首评直发输入组件；追加/resolve 可用；拾取提交失败
+ *      回执可见（submit-result ok:false → 输入框保留文本 + 行内提示 + 发送钮恢复，恢复
+ *      通道后可重发）；产物不可拾取（列表渲染后删产物 → 点击行 → 伺服 404 失败行 +
+ *      评论模式开关禁用 + 既有线程追加照常）→ 恢复产物 Reload 后拾取可用可发首评。
  *
  * 真实模型自纠行为（V2 的模型修复段）不在本套件（验收计划 A11：L4 归交付后行为观察）；
  * comment-loop·V1 的「agent 实际读产物改稿写盘（文件工具触达路径）」段同口径归 D3 真机
- * 验收（comment-loop U6 待验证检查点：A11 模式成本已知，交付后补验）。
+ * 验收（comment-loop U6 待验证检查点：A11 模式成本已知，交付后补验）；comment-anchor·V8④
+ * 「真模型按回注消息改稿保留锚属性」同口径归 L4（设计 §4.1 V8 ④ degraded 后补登记）。
  * 无 API key 的隔离实例上发消息：system 提示词在 provider 调用前已提交会话日志
  * （dsh-agent-loop step() 先 commit 后 request，亲读核实）——注入断言走该通道；质量环
  * 回注经宿主 agents 服务的 followup 开新轮，UserMessage 同样在 provider 调用前 commit
  * （agent-loop agent.ts:471 session.append('user/message', message)，data = 消息本体）。
  *
  * 真机驱动纪律：进程生命周期（安装/启动/URL 解析/探活/按 PID 清理）复用项目 verification
- * skill 的 runner 库（scripts/verify/lib/*，此前会话交付的未跟踪在途资产——只 import 不改写）；
- * 会话日志断言通道 = `--patch` overlay 把 dsh-session-persistence-jsonl 切到 compression:none
- * （宿主公开配置机制，非宿主源码改动）。收尾按记录的 PID 杀进程组，禁 pkill。
+ * skill 的 runner 库（scripts/verify/lib/*——只 import 不改写）；会话日志断言通道 =
+ * `--patch` overlay 把 dsh-session-persistence-jsonl 切到 compression:none（宿主公开配置
+ * 机制，非宿主源码改动）。收尾按记录的 PID 杀进程组，禁 pkill。
+ *
+ * 页面语言约定：本套件断言基线 = 宿主 chrome 与面板 en 字典文案（'Sent'/'Mark resolved'
+ * 等既有断言口径）。runner 库 openVerifyPage 固定 locale zh-CN（shell 包验收所用），该
+ * 形态下宿主 UI 与面板字典全中文、与本套件既有选择器/文案断言冲突——页面打开由本文件
+ * 自管（en-US context），runner 库只复用进程与 boot 工具。宿主 0.1.7 中文 boot 形态
+ * （zh-CN 下 aria=选择工作区 等）由探针段 runlog 登记，不再作为本套件驱动形态。
  *
  * 运行：node packages/opendesign-design-mode/tests/e2e/web.spec.mjs（仓根执行；退出码 0 = 全绿）。
  * 环境变量：DSH_BIN（缺省 PATH 上的 dsh，须为 0.1.7-rc.2）、KEEP_E2E_STATE=1（保留隔离 home 供排障）、
- * E2E_ONLY=S10,S13（只跑标题首段 id 命中的场景，排障用；缺省全跑）。
+ * E2E_ONLY=S10,P4,u-probe（只跑标题首段 id 命中的场景，排障用；缺省全跑）。
+ *
+ * 探针段（opendesign-comment-anchor 设计包 wave 0；编号裸用该包 AS/V 编号）：
+ *   u-probe —— AS7(b) frameLocator 驱动伺服产物 iframe + V11 步④ dockkit tab 动作驱动性。
+ *   结论已由 u-probe 单元落盘 .tmp/dev-flow/opendesign-comment-anchor/probe/（AS7 成立、
+ *   分屏可驱动）；场景保留作驱动形态回归（boot 链已并入本套件共享 en 驱动），探针本体
+ *   步骤维持登记性质不承担常规回归断言。
  */
 import { spawn, spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
@@ -96,7 +141,7 @@ const { probeUrl, killProcessTree, installPlugin } = await import(
 const { dshSpawnCommand, parseDshUrlLine } = await import(
   path.join(REPO_ROOT, 'scripts', 'verify', 'lib', 'args.mjs')
 )
-const { openVerifyPage, bootInto } = await import(
+const { bootInto } = await import(
   path.join(REPO_ROOT, 'scripts', 'verify', 'lib', 'browser.mjs')
 )
 
@@ -110,6 +155,28 @@ const WORKSPACE_ROOT = path.join(RUN_ROOT, 'workspaces')
 fs.mkdirSync(WORKSPACE_ROOT, { recursive: true })
 /** 全部自启进程的 PID（收尾按 PID 杀进程组；禁 pkill）。 */
 const livePids = []
+
+/**
+ * 打开验证页面（本套件自管形态）：全新 chromium 上下文 + **locale 'en-US'**——宿主
+ * dsh-client-locale 按 navigator 语言匹配已注册语言包，en-US 使宿主 chrome 与面板 en
+ * 字典生效，与本套件既有英文选择器/文案断言基线一致（runner 库 openVerifyPage 固定
+ * zh-CN，为 shell 包中文文案验收所用，两套断言基线不同源——见文件头「页面语言约定」）。
+ */
+async function openVerifyPageEn(playwrightModule, { url, viewport = { width: 1440, height: 900 } }) {
+  const browser = await playwrightModule.chromium.launch({ headless: true })
+  const context = await browser.newContext({ viewport, locale: 'en-US' })
+  const page = await context.newPage()
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await page.waitForTimeout(1500)
+  return {
+    url,
+    page,
+    async close() {
+      await context.close().catch(() => {})
+      await browser.close().catch(() => {})
+    },
+  }
+}
 
 // ── 断言 harness ─────────────────────────────────────────────────────────────
 
@@ -220,7 +287,9 @@ const {
 } = await import(path.join(PKG_ROOT, 'lib', 'comments', 'contract.js'))
 const { buildCommentMessage } = await import(path.join(PKG_ROOT, 'lib', 'comments', 'feedback.js'))
 const { DOCTOR_SECTIONS, DOCTOR_SECTION_COUNT } = await import(path.join(PKG_ROOT, 'lib', 'commands', 'doctor.js'))
-const { OPENDESIGN_ARTIFACTS_PREFIX_PATH } = await import(path.join(PKG_ROOT, 'lib', 'serve', 'artifacts-route.js'))
+const { injectPickScript, OPENDESIGN_ARTIFACTS_PREFIX_PATH, shouldInjectPickScript } = await import(
+  path.join(PKG_ROOT, 'lib', 'serve', 'artifacts-route.js')
+)
 assert(
   COMMENT_SOURCE_KIND !== LINT_SOURCE_KIND,
   `评论回注 kind 应与质量环 lint kind 并列不同值（comment-loop contract.ts）：${COMMENT_SOURCE_KIND}`,
@@ -361,7 +430,7 @@ async function startInstance({ label, home, fixtureRoot, patchFile, cwd }) {
     throw new Error(`dsh web 探活失败（label=${label}）：${probe.reason}`)
   }
 
-  const session = await openVerifyPage(playwright, { url })
+  const session = await openVerifyPageEn(playwright, { url })
   await bootInto(session.page)
   await clearModalGates(session.page)
 
@@ -686,6 +755,52 @@ function expectDoctorSections(body) {
   })
 }
 
+// ── 元素锚点（comment-anchor）共享载体 ────────────────────────────────────────
+
+/**
+ * 拾取场景专用产物（运行时写盘，S12 legacy.html / u-probe pick-probe.html 同款先例）：
+ * 三级降级各留一个载体元素（D1）——#main-title（id 级）、section 内部无 id 段落（data 级，
+ * 最近祖先带 data-od-id）、footer 裸链接（path 级，无 id 无锚属性）。path 级 sel 固定为
+ * 'html > body:nth-of-type(1) > footer:nth-of-type(1) > a:nth-of-type(1)'（pick-script
+ * pathSelectorFor 的 tag:nth-of-type 链；footer/a 均为该型唯一子元素）。
+ */
+const PICK_ARTIFACT_NAME = 'pick-me.html'
+const PICK_ARTIFACT_PATH_SEL = 'html > body:nth-of-type(1) > footer:nth-of-type(1) > a:nth-of-type(1)'
+function pickArtifactHtml({ title = 'Main Title' } = {}) {
+  return [
+    '<!doctype html>',
+    '<html lang="en">',
+    '<head><meta charset="utf-8" /><title>pick target</title></head>',
+    '<body>',
+    `  <section id="hero" data-od-id="hero-sec">`,
+    `    <h1 id="main-title">${title}</h1>`,
+    '    <p>intro copy for data anchor</p>',
+    '  </section>',
+    '  <footer>',
+    '    <a href="#top">bare footer link</a>',
+    '  </footer>',
+    '</body>',
+    '</html>',
+  ].join('\n')
+}
+
+/** 侧栏开合机器判据（隔离实例实测）：宿主左侧栏展开 ⇔ 「Collapse sidebar」按钮在场；收起态该按钮缺席（无 Expand 词形）。 */
+async function leftSidebarExpanded(page) {
+  return page.evaluate(() => document.querySelector('button[aria-label="Collapse sidebar"]') !== null)
+}
+
+/** 等「Collapse sidebar」按钮达到期望在场态（侧栏动作经宿主 store 异步投影，轮询不盲等）。 */
+async function waitForSidebarState(page, expanded, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs
+  let current = null
+  while (Date.now() < deadline) {
+    current = await leftSidebarExpanded(page)
+    if (current === expanded) return
+    await sleep(300)
+  }
+  throw new AssertionError(`左侧栏未达到期望态（期望 ${expanded ? '展开' : '收起'}，实得 ${current ? '展开' : '收起'}）`)
+}
+
 // ── 场景工作目录 ─────────────────────────────────────────────────────────────
 
 /** 建场景工作目录（可选 git 化；返回 realpath）。 */
@@ -779,21 +894,62 @@ async function openCommentsSidebar(page) {
   await page.waitForSelector('.odp-comments-panel', { timeout: 10000 })
 }
 
-/** 经侧栏发送一条评论并等到线程徽标出现「Sent」（面板成功后自动 GET 重拉重建）。 */
-async function sendCommentViaPanel(page, text) {
-  await page.locator('.odp-comments-panel textarea.odp-comment-input').fill(text)
-  await page.locator('.odp-comments-composer button.odp-button').click()
+/**
+ * 保证评论侧栏处于展开态：展开面板（.odp-comments-panel）在 DOM 才有头部开关与线程条目；
+ * 折叠态（或重挂/切产物后 expanded 复位）先点折叠条展开。openCommentsSidebar 的幂等形态。
+ */
+async function ensureCommentsSidebarExpanded(page) {
+  if (await page.locator('.odp-comments-panel').count() === 0) {
+    await openCommentsSidebar(page)
+  }
+}
+
+/**
+ * 经拾取入口发送一条评论并等到线程徽标出现「Sent」（D3 入口唯一化后的唯一首评路径：
+ * 评论模式开关 → 产物内点击选中 → 输入面板 → 发送 → 面板 create 成功重拉侧栏）。
+ * 前置：iframe 内拾取脚本已 ready（评论模式开关禁用态解除）。
+ */
+async function sendCommentViaPick(page, selector, text) {
+  // 侧栏已展开（.odp-comments-panel 在场）则不再点折叠条——折叠条仅折叠态在 DOM
+  // （panel.tsx expanded 二态渲染），重复点击会 waitFor 超时（P2 冒烟实测）。
+  await ensureCommentsSidebarExpanded(page)
+  const toggle = page.locator('.odp-comments-panel button[aria-label="Comment mode"]')
+  await toggle.waitFor({ state: 'visible', timeout: 15000 })
+  // ready 前（拾取脚本未握手）开关禁用——就绪轮询而非盲等（D8(a) 就绪态管理的用户可见面）
+  await page.waitForFunction(
+    () => {
+      const button = document.querySelector('.odp-comments-panel button[aria-label="Comment mode"]')
+      return button !== null && !button.disabled
+    },
+    undefined,
+    { timeout: 20000 },
+  )
+  // 评论模式是持续开关（aria-pressed）而非触发器：拾取成功后模式仍开启，重复点击会把它
+  // 翻转关闭、随后的 hover 高亮与点击拾取全部失效（P2/P3/P4 冒烟实测）——仅在未开启时点击。
+  if ((await toggle.getAttribute('aria-pressed')) !== 'true') {
+    await toggle.click()
+  }
+  const frame = page.frameLocator('iframe.odp-frame')
+  await frame.locator(selector).hover()
+  await frame.locator('.od-pick-box').waitFor({ state: 'visible', timeout: 5000 })
+  await frame.locator(selector).click()
+  const panel = frame.locator('.od-pick-panel')
+  await panel.waitFor({ state: 'visible', timeout: 5000 })
+  await panel.locator('textarea').fill(text)
+  await panel.locator('button.od-pick-primary').click()
   await page.waitForFunction(
     () => Array.from(document.querySelectorAll('.odp-thread .odp-badge')).some((el) => el.textContent?.trim() === 'Sent'),
     undefined,
     { timeout: 20000 },
   )
+  // 收拾拾取面板：成功回执已关闭输入框（cancelSelection），断言其消失防残留污染后续拾取
+  await frame.locator('.od-pick-panel').waitFor({ state: 'detached', timeout: 5000 }).catch(() => {})
 }
 
 /**
- * 断言回注消息形态与生产构造逐字一致（AX2 独立 kind + D3 source 五字段 + D6 三段文本：
- * 自报身份句 / 围栏 JSON（threadId/artifactPath/text/createdAt）/ 改稿指引）——期望值直接调
- * buildCommentMessage 生成，生产实现漂移即红。
+ * 断言回注消息形态与生产构造逐字一致（AX2 独立 kind + D3 source 五字段 + D6 三段文本 +
+ * D7 锚点扩展：围栏 JSON 含线程首评 anchor 与保留锚点指令句）——期望值直接调
+ * buildCommentMessage 生成（anchor 随线程透传），生产实现漂移即红。
  */
 function assertCommentMessageText(message, thread, payloadText) {
   assert(
@@ -805,6 +961,7 @@ function assertCommentMessageText(message, thread, payloadText) {
     artifactPath: thread.artifactPath,
     text: payloadText,
     createdAt: thread.createdAt,
+    ...(thread.anchor !== undefined ? { anchor: thread.anchor } : {}),
   })
   const expectedText = expected.content?.[0]?.text ?? ''
   assert(
@@ -834,12 +991,15 @@ function totalTurnStartCount(home) {
 }
 
 /**
- * 设计会话 + 产物预览就位的共享搭建（comment-loop 场景与既有场景同形态：makeWorkspaceDir
- * + withInstance + pick/pick/send 链 + 材质化标记在盘等待）。返回实例句柄与会话 id；
- * 评论侧栏展开留给各场景按需执行。
+ * 设计会话 + 产物预览就位的共享搭建（comment-loop / comment-anchor 场景同形态：
+ * makeWorkspaceDir + withInstance + pick/pick/send 链 + 材质化标记在盘等待）。
+ * seed 除探针产物外固定写拾取载体 pick-me.html（三级降级三元素，comment-anchor 场景共用）；
+ * {@link artifact} 决定进入 iframe 的产物行（缺省 index.html——探针断言场景沿用）。
+ * 返回实例句柄与会话 id；评论侧栏展开留给各场景按需执行。
  */
-async function bootDesignSessionWithArtifact({ label, workspace }) {
+async function bootDesignSessionWithArtifact({ label, workspace, artifact = 'index.html' }) {
   seedProbeArtifact(workspace)
+  fs.writeFileSync(path.join(workspace, PICK_ARTIFACT_NAME), pickArtifactHtml())
   const instance = await withInstance({ label, fixtureRoot: MINI_OD_ROOT, workspaceDir: workspace })
   const { page, home } = instance
   await pickWorkspace(page, workspace)
@@ -853,11 +1013,11 @@ async function bootDesignSessionWithArtifact({ label, workspace }) {
   assert(fs.existsSync(framesReady), `材质化标记缺席（评论侧栏挂载前提）：${framesReady}`)
   await openDesignPanel(page)
   await page.waitForFunction(
-    () => Array.from(document.querySelectorAll('.odp-row')).some((el) => el.textContent?.trim() === 'index.html'),
-    undefined,
+    (name) => Array.from(document.querySelectorAll('.odp-row')).some((el) => el.textContent?.trim() === name),
+    artifact,
     { timeout: 15000 },
   )
-  await page.locator('.odp-row').first().click()
+  await page.locator('.odp-row', { hasText: artifact }).first().click()
   await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
   return { instance, page, home, workspace, sessionId }
 }
@@ -1624,22 +1784,24 @@ async function scenarioProjectWrites() {
 // ── 评论回路场景（opendesign-comment-loop 设计 §4.1；无凭据环境可验判据子集）──
 
 /**
- * 场景 S10（comment-loop·V1）：评论回路首评真机全链。
+ * 场景 S10（comment-loop·V1 + comment-anchor·V1 拾取桥全路径，RL1）：评论回路首评真机全链。
  *
- * 判据（设计 §4.1 V1 criteria 的无凭据可验子集）：聊天流出现 source.kind =
- * opendesign-design-mode/comment 的回注消息（AX2 独立 kind；文本与 buildCommentMessage
- * 构造逐字一致 = 自报身份句 + 围栏 JSON（正确 artifactPath 与评论文本）+ 改稿指引）；
- * 线程落盘 open × delivered（面板徽标 Sent =「已发送」en 形态，deliveredAt 在场）；
- * doctor 第⑫节评论环缺席/在场两形态（不存在=正常态 / 计数分布 / parse 健康度 / 路由族
- * 声明形态）；回合结束后回注消息仍在事件流（通用在轨断言，非 steer 专属探针）。
- * 「agent 实际读该产物源码改写并写盘（会话日志可见文件工具触达路径）」段需凭据环境
- * 真模型，归 D3 真机验收承接（套件头 L4 口径）。设计步骤①「设计会话产出产物」在本套件
- * 以 seed 产物 + 设计会话判定与材质化标记在盘承载（与 S1/S2 材质化同通道）。
+ * 判据（两设计 §4.1 V1 criteria 的无凭据可验子集）：面板进评论模式 → frameLocator 悬停
+ * 出高亮框与元素标签（GL1 交互形态）→ 点击选中弹出输入框且锚点行呈 id 级（D6）→ 发送
+ * 后线程落盘 open × delivered 带 anchor:{level:'id', sel:'#main-title'}（D1 id 级载体）；
+ * 聊天流出现 source.kind = opendesign-design-mode/comment 的回注消息，围栏 JSON 含同一
+ * anchor 与保留锚点指令句（D7，文本与 buildCommentMessage 构造逐字一致）；产物内编号
+ * 徽章在位（anchors 下发集渲染，D8(a)）；侧栏条目锚点行（级别名 + sel 原样）；doctor
+ * 第⑫节评论环缺席/在场两形态；回合结束后回注消息仍在事件流。整条链路无面板直发输入
+ * 组件参与（D3 入口唯一化）。「agent 实际读产物源码改写写盘」段需凭据环境真模型，归
+ * D3 真机验收承接（套件头 L4 口径）。设计步骤①「设计会话产出产物」以 seed 产物 +
+ * 设计会话判定与材质化标记在盘承载。
  */
 async function scenarioCommentLoopV1() {
   const results = []
   const workspace = makeWorkspaceDir('cl-v1')
-  const { instance, page, home, workspace: ws } = await bootDesignSessionWithArtifact({ label: 'cl-v1', workspace })
+  const { instance, page, home, workspace: ws } = await bootDesignSessionWithArtifact({ label: 'cl-v1', workspace, artifact: PICK_ARTIFACT_NAME })
+  const frame = page.frameLocator('iframe.odp-frame')
   try {
     await stepAsync(results, 'comment-loop·V1：doctor 第⑫节缺席常态——评论文件不存在/计数 0/路由族 5 条声明形态（首次评论前正常态）', async () => {
       const body = await runDoctor(page)
@@ -1651,18 +1813,62 @@ async function scenarioCommentLoopV1() {
       assert(body.includes('注册状态：声明形态'), '⑫ 注册状态应如实标注声明形态（不冒充运行时核验）')
     })
 
-    await stepAsync(results, 'comment-loop·V1 步骤②：展开评论侧栏发送首条评论——面板线程徽标随投递结果显示 Sent（已发送）', async () => {
+    await stepAsync(results, 'comment-anchor·V1 步骤①②：评论模式开启 + 悬停高亮——overlay 层高亮框与元素标签在位（GL1 交互形态）', async () => {
       await openCommentsSidebar(page)
-      await sendCommentViaPanel(page, '主视觉配色太艳，压暗一档')
+      const toggle = page.locator('.odp-comments-panel button[aria-label="Comment mode"]')
+      await toggle.waitFor({ state: 'visible', timeout: 15000 })
+      await page.waitForFunction(
+        () => {
+          const button = document.querySelector('.odp-comments-panel button[aria-label="Comment mode"]')
+          return button !== null && !button.disabled
+        },
+        undefined,
+        { timeout: 20000 },
+      )
+      await toggle.click()
+      await frame.locator('#main-title').hover()
+      await frame.locator('.od-pick-box').waitFor({ state: 'visible', timeout: 5000 })
+      const label = await frame.locator('.od-pick-label').textContent()
+      assert(label !== null && label.includes('h1#main-title'), `悬停元素标签应为 tag#id 形态：${JSON.stringify(label)}`)
     })
 
-    await stepAsync(results, 'comment-loop·V1：线程落盘 open × delivered——c_ 前缀 id / artifactPath 文件级挂靠 / deliveredAt 在场', async () => {
+    await stepAsync(results, 'comment-anchor·V1 步骤③：点击选中——评论输入框弹出且锚点行呈 id 级（D6 锚点预览）', async () => {
+      await frame.locator('#main-title').click()
+      const panel = frame.locator('.od-pick-panel')
+      await panel.waitFor({ state: 'visible', timeout: 5000 })
+      const preview = await panel.locator('.od-pick-anchor').textContent()
+      assert(preview?.trim() === 'id · #main-title', `输入框锚点行应为「level · sel」id 级：${JSON.stringify(preview)}`)
+    })
+
+    await stepAsync(results, 'comment-anchor·V1 步骤④：输入发送——面板线程徽标随投递结果显示 Sent（整链无直发输入组件参与）', async () => {
+      const panel = frame.locator('.od-pick-panel')
+      await panel.locator('textarea').fill('主视觉配色太艳，压暗一档')
+      await panel.locator('button.od-pick-primary').click()
+      await page.waitForFunction(
+        () => Array.from(document.querySelectorAll('.odp-thread .odp-badge')).some((el) => el.textContent?.trim() === 'Sent'),
+        undefined,
+        { timeout: 20000 },
+      )
+      // 成功回执（D6）：输入框随 submit-result ok 关闭
+      await panel.waitFor({ state: 'detached', timeout: 5000 })
+      const directComposer = await page.evaluate(() => ({
+        textarea: document.querySelectorAll('.odp-comments-panel textarea.odp-comment-input').length,
+        composer: document.querySelectorAll('.odp-comments-composer').length,
+      }))
+      assert(directComposer.textarea === 0 && directComposer.composer === 0, `面板不应存在直发输入组件（D3 入口唯一化）：${JSON.stringify(directComposer)}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V1：线程落盘 open × delivered 带 id 级 anchor——c_ 前缀 id / artifactPath 挂靠 / deliveredAt 在场（D1）', async () => {
       const threads = await waitForCommentThreads(ws, (list) => list.length >= 1)
       assert(threads.length === 1, `首评应恰 1 线程：${JSON.stringify(threads.map((t) => t.id))}`)
       const thread = threads[0]
       assert(thread.id.startsWith(COMMENT_THREAD_ID_PREFIX), `线程 id 应带 ${COMMENT_THREAD_ID_PREFIX} 前缀：${thread.id}`)
-      assert(thread.artifactPath === 'index.html', `评论应挂靠当前预览产物（D8 文件级）：${thread.artifactPath}`)
+      assert(thread.artifactPath === PICK_ARTIFACT_NAME, `评论应挂靠当前预览产物：${thread.artifactPath}`)
       assert(thread.text === '主视觉配色太艳，压暗一档', `落盘评论文本不对：${JSON.stringify(thread.text)}`)
+      assert(
+        thread.anchor !== undefined && thread.anchor.level === 'id' && thread.anchor.sel === '#main-title',
+        `首评应带 id 级锚点（拾取载体 #main-title）：${JSON.stringify(thread.anchor)}`,
+      )
       assert(
         thread.status === 'open' && thread.delivery === 'delivered',
         `落盘状态机组合态应为 open × delivered：${JSON.stringify({ status: thread.status, delivery: thread.delivery })}`,
@@ -1671,11 +1877,27 @@ async function scenarioCommentLoopV1() {
       assert(Array.isArray(thread.replies) && thread.replies.length === 0, '首评线程 replies 应为空数组')
     })
 
-    await stepAsync(results, 'comment-loop·V1 步骤③：聊天流回注消息 kind 可辨——独立 kind + 文本与 buildCommentMessage 逐字一致（AX2/D6）', async () => {
+    await stepAsync(results, 'comment-anchor·V1 步骤⑤a：产物内编号徽章在位 + 侧栏条目锚点行（D8(a) anchors 下发渲染 / D1 呈现）', async () => {
+      const badge = frame.locator('.od-pick-badge')
+      await badge.waitFor({ state: 'visible', timeout: 10000 })
+      assert((await badge.textContent())?.trim() === '1', `首线程徽章序号应为 1：${JSON.stringify(await badge.textContent())}`)
+      const anchorLine = page.locator('.odp-thread .odp-thread-anchor')
+      await anchorLine.waitFor({ state: 'visible', timeout: 10000 })
+      const levelText = await anchorLine.locator('.odp-thread-anchor-level').textContent()
+      const selText = await anchorLine.locator('.odp-thread-anchor-sel').textContent()
+      assert(levelText?.trim() === 'Element id', `锚点行级别名应为 en 字典 'Element id'：${JSON.stringify(levelText)}`)
+      assert(selText?.trim() === '#main-title', `锚点行 sel 应原样直呈：${JSON.stringify(selText)}`)
+    })
+
+    await stepAsync(results, 'comment-loop·V1 步骤③：聊天流回注消息 kind 可辨——独立 kind + 文本与 buildCommentMessage 逐字一致 + 围栏 JSON 含同一 anchor（AX2/D6/D7）', async () => {
       await waitForCommentFeedbackCount(home, 1)
       const messages = collectCommentFeedbackMessages(home)
       assert(messages.length === 1, `评论回注消息应恰 1 条：${messages.length}`)
-      assertCommentMessageText(messages[0], readCommentThreads(ws)[0], readCommentThreads(ws)[0].text)
+      const thread = readCommentThreads(ws)[0]
+      // assertCommentMessageText 以带 anchor 的 buildCommentMessage 构造逐字对账——围栏 JSON
+      // 含同一 anchor（D7）由该逐字等价保证；此处再锚定保留锚点指令句在文（可读性标记）。
+      assertCommentMessageText(messages[0], thread, thread.text)
+      assert(messages[0].text.includes('保留既有元素的 id 与 data-od-id / data-screen-label 锚属性值'), '回注文本缺保留锚点指令句（D7）')
     })
 
     await stepAsync(results, 'comment-loop·V1 末条（通用在轨断言）：回合结束后回注消息仍在会话事件流（未被 discard）', async () => {
@@ -1876,23 +2098,23 @@ async function scenarioStandardSessionNoComments() {
 }
 
 /**
- * 场景 S13（comment-loop·V6）：resolve → reply 重开循环 + 产物重写/删除边界。
+ * 场景 S13（comment-loop·V6）：resolve → reply 重开循环 + 产物重写/删除边界（首评经拾取入口）。
  *
  * 判据（设计 §4.1 V6 criteria）：首线程经 resolved → open 重开、追加评论在 replies 数组、
- * 旧内容未重投（回注消息恰 2 条且第二条载荷 text = 末条追加）；旧评论不因产物重写消失
- * 或错挂（artifactPath 文件级关联，重写同路径不失效——「agent 改写产物」以同路径文件
- * 重写站在文件级关联不变量的断言位，模型改稿段归 D3 真机）；产物被删除的边界：线程保留
- * 列出（历史不删），预览行为与面板现状一致（伺服路由 404）。
+ * 旧内容未重投（回注消息恰 2 条且第二条载荷 text = 末条追加且带线程首评 anchor——D7 追加
+ * 回注载荷恒带首评锚点）；旧评论不因产物重写消失或错挂（artifactPath 关联，重写同路径
+ * 不失效——「agent 改写产物」以同路径文件重写站在关联不变量的断言位，模型改稿段归 D3
+ * 真机）；产物被删除的边界：线程保留列出（历史不删），预览行为与面板现状一致（伺服路由
+ * 404）。
  */
 async function scenarioCommentResolveReply() {
   const results = []
   const workspace = makeWorkspaceDir('cl-v6')
-  const { instance, page, home, workspace: ws, sessionId } = await bootDesignSessionWithArtifact({ label: 'cl-v6', workspace })
+  const { instance, page, home, workspace: ws, sessionId } = await bootDesignSessionWithArtifact({ label: 'cl-v6', workspace, artifact: PICK_ARTIFACT_NAME })
   const workspaceReal = fs.realpathSync(ws)
   try {
-    // 前置：首评 delivered（与 S10 同形态；判据已在 S10 全量断言，此处只置态）
-    await openCommentsSidebar(page)
-    await sendCommentViaPanel(page, '首条评论：主视觉配色压暗一档')
+    // 前置：拾取入口首评 delivered（与 S10 同形态；判据已在 S10 全量断言，此处只置态）
+    await sendCommentViaPick(page, '#main-title', '首条评论：主视觉配色压暗一档')
     const seeded = await waitForCommentThreads(ws, (list) => list.length >= 1 && list[0].delivery === 'delivered')
     const threadId = seeded[0].id
 
@@ -1904,7 +2126,7 @@ async function scenarioCommentResolveReply() {
       assert(current.delivery === 'delivered', `resolve 不触发投递、delivery 原样保留（D5 转移③）：${current.delivery}`)
     })
 
-    await stepAsync(results, 'comment-loop·V6 步骤②：对已解决线程追加评论——自动回 open 且新投递周期 delivered（replies 追加、旧内容不重投、载荷 text = 末条追加）', async () => {
+    await stepAsync(results, 'comment-loop·V6 步骤②：对已解决线程追加评论——自动回 open 且新投递周期 delivered（replies 追加、旧内容不重投、载荷 text = 末条追加 + 首评 anchor）', async () => {
       await page.locator('.odp-reply-composer input.odp-reply-input').fill('标题字号太大')
       await page.locator('.odp-reply-composer button.odp-button').click()
       // 等待追加评论回显（.odp-reply 列表元素）——resolved 线程 resolve 后保留 delivered 徽标
@@ -1926,23 +2148,23 @@ async function scenarioCommentResolveReply() {
     })
 
     await stepAsync(results, 'comment-loop·V6 步骤③：产物同路径重写——旧评论不消失不错挂（artifactPath 文件级关联，D8）', async () => {
-      // 「agent 改写该产物写盘」的文件级站立：同路径重写（模型改稿行为段归 D3 真机）
-      fs.writeFileSync(path.join(workspaceReal, 'index.html'), '<!doctype html><html lang="en"><body><h1>rewritten artifact stand-in</h1></body></html>')
+      // 「agent 改写该产物写盘」的文件级站立：同路径重写当前预览产物（模型改稿行为段归 D3 真机）
+      fs.writeFileSync(path.join(workspaceReal, PICK_ARTIFACT_NAME), '<!doctype html><html lang="en"><body><h1>rewritten artifact stand-in</h1></body></html>')
       const list = await pageFetch(page, `${COMMENTS_API_BASE_PATH}?sessionId=${encodeURIComponent(sessionId)}`)
       assert(list.status === 200 && list.body?.threads?.length === 1, `产物重写后线程应保留：${JSON.stringify(list.body)}`)
       assert(
-        list.body.threads[0].artifactPath === 'index.html' && list.body.threads[0].replies.length === 1,
+        list.body.threads[0].artifactPath === PICK_ARTIFACT_NAME && list.body.threads[0].replies.length === 1,
         '重写同路径不失效、不错挂（文件级关联）',
       )
-      const artifact = await pageFetch(page, `${OPENDESIGN_ARTIFACTS_PREFIX_PATH}/${sessionId}/index.html`)
+      const artifact = await pageFetch(page, `${OPENDESIGN_ARTIFACTS_PREFIX_PATH}/${sessionId}/${PICK_ARTIFACT_NAME}`)
       assert(artifact.status === 200 && artifact.text.includes('rewritten artifact stand-in'), `重写后产物应按新内容伺服（200）：${artifact.status}`)
     })
 
     await stepAsync(results, 'comment-loop·V6 步骤④（删除边界）：产物删除后线程保留列出（历史不删），伺服路由 404（预览行为与面板现状一致）', async () => {
-      fs.rmSync(path.join(workspaceReal, 'index.html'))
+      fs.rmSync(path.join(workspaceReal, PICK_ARTIFACT_NAME))
       const list = await pageFetch(page, `${COMMENTS_API_BASE_PATH}?sessionId=${encodeURIComponent(sessionId)}`)
       assert(list.status === 200 && list.body?.threads?.length === 1, `产物删除后线程应保留列出（D1 无删除路由，历史不删）：${JSON.stringify(list.body)}`)
-      const gone = await pageFetch(page, `${OPENDESIGN_ARTIFACTS_PREFIX_PATH}/${sessionId}/index.html`)
+      const gone = await pageFetch(page, `${OPENDESIGN_ARTIFACTS_PREFIX_PATH}/${sessionId}/${PICK_ARTIFACT_NAME}`)
       assert(gone.status === 404, `产物删除后伺服路由应 404（预览行为与面板现状一致）：${gone.status}`)
     })
   } finally {
@@ -1965,7 +2187,7 @@ async function scenarioCommentResolveReply() {
 async function scenarioCommentSteer() {
   const results = []
   const workspace = makeWorkspaceDir('cl-v10')
-  const { instance, page, home, workspace: ws } = await bootDesignSessionWithArtifact({ label: 'cl-v10', workspace })
+  const { instance, page, home, workspace: ws } = await bootDesignSessionWithArtifact({ label: 'cl-v10', workspace, artifact: PICK_ARTIFACT_NAME })
   try {
     // 步骤①：长任务消息 Send 即发（不等回合失败——给 steer 留运行窗口），等该轮 turn/start 提交
     const composer = page.locator('[contenteditable="true"]').first()
@@ -1978,11 +2200,10 @@ async function scenarioCommentSteer() {
     assert(totalTurnStartCount(home) >= 2, `长任务轮应已开启（turn/start 计数 ≥ 2）：${totalTurnStartCount(home)}`)
     const baselineTurnStarts = totalTurnStartCount(home)
 
-    await stepAsync(results, 'comment-loop·V10 步骤②③：agent 运行中经侧栏发评论——thread.delivery 回写 delivered + 徽标「已发送」', async () => {
-      await openCommentsSidebar(page)
-      await sendCommentViaPanel(page, '主视觉配色太艳，压暗一档')
+    await stepAsync(results, 'comment-loop·V10 步骤②③：agent 运行中经拾取入口发评论——thread.delivery 回写 delivered + 徽标「Sent」', async () => {
+      await sendCommentViaPick(page, '#main-title', '主视觉配色太艳，压暗一档')
       const threads = await waitForCommentThreads(ws, (list) => list.length >= 1 && list[0].delivery === 'delivered')
-      assert(threads[0].artifactPath === 'index.html', `评论挂靠不对：${threads[0].artifactPath}`)
+      assert(threads[0].artifactPath === PICK_ARTIFACT_NAME, `评论挂靠不对：${threads[0].artifactPath}`)
     })
 
     await stepAsync(results, 'comment-loop·V10 步骤⑤：回注消息 kind 可辨 + 载荷正确（AX2 独立 kind / D6 围栏 JSON）', async () => {
@@ -2227,6 +2448,19 @@ async function scenarioCommentSecurity() {
       assert(status === 400, `超长文本应 400：${status}`)
     })
 
+    await stepAsync(results, 'comment-anchor·D1 ③anchor 负路径三形态被拒（400）——level 词表外 / sel 超限 / 显式 null（写入侧校验的 HTTP 半场）', async () => {
+      for (const [label, anchor] of [
+        ['level 词表外', { level: 'css', sel: '#main-title' }],
+        ['sel 超限', { level: 'id', sel: 'x'.repeat(501) }],
+        ['显式 null', null],
+      ]) {
+        const status = rawCurlStatus({
+          origin, pathname: createPath, headers: [['Cookie', cookie]], body: { ...validBody, anchor },
+        })
+        assert(status === 400, `anchor ${label}应 400：${status}`)
+      }
+    })
+
     await stepAsync(results, 'comment-loop·V4 ③全部拒绝零落盘副作用（.od-comments 目录未因拒绝路径出现）', async () => {
       assert(!fs.existsSync(commentsDir), `拒绝路径不应创建评论目录：${commentsDir}`)
     })
@@ -2236,10 +2470,904 @@ async function scenarioCommentSecurity() {
   return results
 }
 
+// ── 元素锚点场景（opendesign-comment-anchor 设计 §4.1；P 组 = pick-bridge 组）──────
+
+/**
+ * 场景 P2（comment-anchor·V2）：三级降级三载体各拾取一评。
+ *
+ * 判据（设计 §4.1 V2）：同一产物上 ① 点击带 id 元素 → anchor {level:'id', sel:'#main-title'}；
+ * ② 点击带锚属性祖先 section 的内部无 id 段落 → data 级 {level:'data', sel:'[data-od-id="hero-sec"]'}
+ * （最近祖先命中）；③ 点击页脚无 id 无锚属性裸链接 → path 级（tag:nth-of-type 链从产物根
+ * 可达）。三线程载荷校验通过（落盘成功）且徽章三枚钉在命中元素上。deck 形态
+ * （data-screen-label、值带空格）的降级生成不设独立场景：U3 锚点生成单测锁值（V2 判据登记）。
+ */
+async function scenarioAnchorLevels() {
+  const results = []
+  const workspace = makeWorkspaceDir('p2-levels')
+  const { instance, page, home, workspace: ws } = await bootDesignSessionWithArtifact({ label: 'p2-levels', workspace, artifact: PICK_ARTIFACT_NAME })
+  const frame = page.frameLocator('iframe.odp-frame')
+  try {
+    await stepAsync(results, 'comment-anchor·V2①：拾取带 id 元素——落盘 anchor {id, #main-title}', async () => {
+      await sendCommentViaPick(page, '#main-title', 'id 级探针评论')
+      const threads = await waitForCommentThreads(ws, (list) => list.length >= 1)
+      assert(
+        threads[0].anchor?.level === 'id' && threads[0].anchor?.sel === '#main-title',
+        `id 级锚点不对：${JSON.stringify(threads[0].anchor)}`,
+      )
+    })
+
+    await stepAsync(results, 'comment-anchor·V2②：拾取锚属性祖先 section 内部元素——落盘 anchor {data, [data-od-id="hero-sec"]}（最近祖先命中）', async () => {
+      await sendCommentViaPick(page, '#hero p', 'data 级探针评论')
+      const threads = await waitForCommentThreads(ws, (list) => list.length >= 2)
+      assert(
+        threads[1].anchor?.level === 'data' && threads[1].anchor?.sel === '[data-od-id="hero-sec"]',
+        `data 级锚点应为最近祖先的 data-od-id 属性选择器：${JSON.stringify(threads[1].anchor)}`,
+      )
+    })
+
+    await stepAsync(results, 'comment-anchor·V2③：拾取无 id 无锚属性裸链接——落盘 path 级 tag:nth-of-type 链（从产物根可达）', async () => {
+      await sendCommentViaPick(page, 'footer a', 'path 级探针评论')
+      const threads = await waitForCommentThreads(ws, (list) => list.length >= 3)
+      assert(
+        threads[2].anchor?.level === 'path' && threads[2].anchor?.sel === PICK_ARTIFACT_PATH_SEL,
+        `path 级锚点应为 nth-of-type 链：${JSON.stringify(threads[2].anchor)}（期望 ${PICK_ARTIFACT_PATH_SEL}）`,
+      )
+    })
+
+    await stepAsync(results, 'comment-anchor·V2④：徽章三枚按 anchors 下发集重建（序号 = 侧栏条目序 1/2/3）+ 侧栏三级别名各在其位', async () => {
+      const badgeTexts = await frame.locator('.od-pick-badge').allTextContents()
+      assert(
+        JSON.stringify(badgeTexts.map((t) => t?.trim())) === JSON.stringify(['1', '2', '3']),
+        `徽章序号应为 1/2/3：${JSON.stringify(badgeTexts)}`,
+      )
+      const levels = await page.evaluate(() => Array.from(document.querySelectorAll('.odp-thread .odp-thread-anchor-level')).map((el) => el.textContent?.trim()))
+      assert(
+        JSON.stringify(levels) === JSON.stringify(['Element id', 'Anchor attribute', 'Structural path']),
+        `侧栏三级别名不对（en 字典）：${JSON.stringify(levels)}`,
+      )
+      const selTexts = await page.evaluate(() => Array.from(document.querySelectorAll('.odp-thread .odp-thread-anchor-sel')).map((el) => el.textContent?.trim()))
+      assert(
+        JSON.stringify(selTexts) === JSON.stringify(['#main-title', '[data-od-id="hero-sec"]', PICK_ARTIFACT_PATH_SEL]),
+        `侧栏三 sel 直呈不对：${JSON.stringify(selTexts)}`,
+      )
+      assert(await waitForCommentFeedbackCountSafe(home, 3), '三线程应各有一条回注消息')
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
+/** 评论回注消息计数达标轮询的布尔包装（场景内断言用；不满足返回 false 不抛）。 */
+async function waitForCommentFeedbackCountSafe(home, expected, timeoutMs = 30000) {
+  try {
+    await waitForCommentFeedbackCount(home, expected, timeoutMs)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 场景 P3（comment-anchor·V3）：联动定位与锚点失效标注。
+ *
+ * 判据（设计 §4.1 V3 步①②⑤⑥）：点侧栏条目「Locate」→ 产物内滚动定位 + 高亮闪框约
+ * 1.4 秒（D8(b) locate 指令）；重写产物删除目标 id 后重载 → 对应侧栏条目显示「锚点失效」
+ * 态且定位按钮禁用、不发起 locate（D1 失效条目恢复路径条款）；其余条目不受影响。
+ */
+async function scenarioAnchorLocateAndMiss() {
+  const results = []
+  const workspace = makeWorkspaceDir('p3-locate')
+  const { instance, page, home, workspace: ws } = await bootDesignSessionWithArtifact({ label: 'p3-locate', workspace, artifact: PICK_ARTIFACT_NAME })
+  const frame = page.frameLocator('iframe.odp-frame')
+  const workspaceReal = fs.realpathSync(ws)
+  try {
+    // 置态：id 级 + path 级两线程（path 级载体在删 id 改写后仍命中——对照条目）
+    await sendCommentViaPick(page, '#main-title', '定位探针：id 级线程')
+    await sendCommentViaPick(page, 'footer a', '定位探针：path 级线程')
+    await waitForCommentThreads(ws, (list) => list.length >= 2)
+
+    await stepAsync(results, 'comment-anchor·V3①②：点侧栏定位钮——产物内高亮闪框出现（locate 指令经桥下达，D8(b)）', async () => {
+      const locateButtons = page.locator('.odp-thread button.odp-button', { hasText: 'Locate' })
+      // 侧栏 GET 重拉与渲染晚于落盘轮询（sendCommentViaPick 的 Sent 条件会被既有徽标即时
+      // 满足）——定位钮数量轮询到位再断言，不吃即时 count 的时序竞争
+      const locateDeadline = Date.now() + 10000
+      let locateCount = 0
+      while (Date.now() < locateDeadline && (locateCount = await locateButtons.count()) < 2) await sleep(300)
+      assert(locateCount === 2, `两线程应各有一个定位钮：${locateCount}`)
+      await locateButtons.first().click()
+      await frame.locator('.od-pick-flash').waitFor({ state: 'visible', timeout: 3000 })
+    })
+
+    await stepAsync(results, 'comment-anchor·V3⑤：重写产物删除目标 id（其余结构原样）——伺服内容版本变化', async () => {
+      fs.writeFileSync(path.join(workspaceReal, PICK_ARTIFACT_NAME), pickArtifactHtml({ title: 'Rewritten Without Id' })
+        .replace('<h1 id="main-title">Rewritten Without Id</h1>', '<h1>Rewritten Without Id</h1>'))
+      // 版本探针（HEAD ETag）就绪需要文件 stat 变化；等待重挂与 anchors 重探（脚本侧
+      // querySelector('#main-title') 未中 → anchors-status 回报 → 侧栏失效态）
+      await waitForCommentThreads(ws, (list) => list.length >= 2)
+    })
+
+    await stepAsync(results, 'comment-anchor·V3⑥：失效条目呈现「Anchor missing」态且定位钮禁用；path 级对照条目不受影响（D8(b) 失效态自动呈现）', async () => {
+      await page.waitForFunction(
+        () => document.querySelectorAll('.odp-thread--missed').length === 1,
+        undefined,
+        { timeout: 30000 },
+      )
+      const missedFlag = await page.evaluate(() => document.querySelector('.odp-thread--missed .odp-anchor-missed')?.textContent?.trim())
+      assert(missedFlag === 'Anchor missing', `失效标注文案应为 en 字典 'Anchor missing'：${JSON.stringify(missedFlag)}`)
+      const missedLocate = await page.evaluate(() => {
+        const missed = document.querySelector('.odp-thread--missed')
+        const button = missed?.querySelector('.odp-thread-actions button')
+        return { disabled: button?.disabled ?? null, text: button?.textContent?.trim() ?? null }
+      })
+      assert(missedLocate.disabled === true && missedLocate.text === 'Locate', `失效条目定位钮应禁用：${JSON.stringify(missedLocate)}`)
+      const healthy = await page.evaluate(() => {
+        const thread = document.querySelectorAll('.odp-thread')[1]
+        const button = thread?.querySelector('.odp-thread-actions button')
+        return { missed: thread?.classList.contains('odp-thread--missed') ?? null, disabled: button?.disabled ?? null }
+      })
+      assert(healthy.missed === false && healthy.disabled === false, `path 级对照条目应不受影响：${JSON.stringify(healthy)}`)
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
+/**
+ * 场景 P4（comment-anchor·V3③ + V8①③ + RL7）：改稿可见性——ETag 变化驱动重挂与徽章重建。
+ *
+ * 判据：模拟模型改稿（改目标元素内容、保留 id 与 data-od-id 锚属性、在 footer 内插入同型
+ * 兄弟使 path 级序数漂移）→ 伺服 ETag 变化 → 面板版本探针在 ≤6 秒内感知并重挂 iframe，
+ * 新文档拾取脚本 ready 二次握手（RL7）→ anchors 重发 → 徽章重建且 id/data 级命中；path 级
+ * 失效如实标注、不判失败（D1 已接受代价；放行以 AS10 观测未触发 D1 重审线为界——AS10
+ * 观测结论见 probe/anchor-distribution.md，重审呈报随交付登记）。
+ */
+async function scenarioAnchorRewriteVisibility() {
+  const results = []
+  const workspace = makeWorkspaceDir('p4-rewrite')
+  const { instance, page, home, workspace: ws } = await bootDesignSessionWithArtifact({ label: 'p4-rewrite', workspace, artifact: PICK_ARTIFACT_NAME })
+  const frame = page.frameLocator('iframe.odp-frame')
+  const workspaceReal = fs.realpathSync(ws)
+  try {
+    // ready 观察哨：进产物后立即注册（首载 ready 在拾取脚本随文档加载即发——观察哨必须
+    // 先于它就位，晚注册会漏掉首载握手只看到二次握手，基线恒 0）。父页 window 收集桥上行
+    // ready 报文（ready 二次握手 = RL7 判据）。
+    await page.evaluate(() => {
+      window.__p4Inbound = []
+      window.addEventListener('message', (event) => {
+        if (event.data?.type === 'odp-pick:ready') window.__p4Inbound.push({ type: event.data.type, at: Date.now() })
+      })
+    })
+    // 置态：三级各一线程
+    await sendCommentViaPick(page, '#main-title', '改稿可见性：id 级')
+    await sendCommentViaPick(page, '#hero p', '改稿可见性：data 级')
+    await sendCommentViaPick(page, 'footer a', '改稿可见性：path 级')
+    await waitForCommentThreads(ws, (list) => list.length >= 3)
+    const baselineReady = await page.evaluate(() => window.__p4Inbound.length)
+    // 基线语义：观察哨晚于首载 ready 时基线可为 0（历史报文不重放）——RL7 判据只看
+    // 「改稿后新增 ready ≥ 1」（二次握手），与首载是否漏记无关。
+
+    await stepAsync(results, 'comment-anchor·V8②：脚本模拟改稿——改 #main-title 内容、保留 id 与 data-od-id、footer 前插入无链接新 footer 使 path 级序数漂移失效', async () => {
+      // path 级 sel = 'html > body:nth-of-type(1) > footer:nth-of-type(1) > a:nth-of-type(1)'：
+      // 新 footer 无 a → sel 的 footer:nth-of-type(1) 落在新 footer 上、a:nth-of-type(1) 不命中
+      // ——「插入无关同型块致序数漂移」的正宗失效形态（nth-of-type 按类型序数，非全兄弟序数）。
+      const rewritten = [
+        '<!doctype html>',
+        '<html lang="en">',
+        '<head><meta charset="utf-8" /><title>pick target</title></head>',
+        '<body>',
+        '  <section id="hero" data-od-id="hero-sec">',
+        '    <h1 id="main-title">Rewritten Title Keeps Anchors</h1>',
+        '    <p>intro copy for data anchor</p>',
+        '  </section>',
+        '  <footer>',
+        '    <p>new footer block inserted by rewrite</p>',
+        '  </footer>',
+        '  <footer>',
+        '    <a href="#top">bare footer link</a>',
+        '  </footer>',
+        '</body>',
+        '</html>',
+      ].join('\n')
+      fs.writeFileSync(path.join(workspaceReal, PICK_ARTIFACT_NAME), rewritten)
+    })
+
+    await stepAsync(results, 'comment-anchor·V3③+RL7：≤6 秒内 iframe 重挂——拾取脚本 ready 二次握手到达（版本探针 5s 定时窗口）', async () => {
+      const rewriteAt = Date.now()
+      const deadline = rewriteAt + 6000
+      let secondReadyAt = null
+      while (Date.now() < deadline) {
+        const count = await page.evaluate(() => window.__p4Inbound.length)
+        if (count >= baselineReady + 1) { secondReadyAt = await page.evaluate(() => window.__p4Inbound.at(-1).at); break }
+        await sleep(300)
+      }
+      assert(secondReadyAt !== null, `改稿后 ≤6s 内应出现 ready 二次握手（基线 ${baselineReady}）——探针缺失或间隔失控即红`)
+      assert(secondReadyAt - rewriteAt <= 6000, `ready 二次握手距改稿 ${secondReadyAt - rewriteAt}ms，应 ≤6000ms`)
+    })
+
+    await stepAsync(results, 'comment-anchor·V8③：徽章重建且 id/data 级命中（2 枚）+ path 级失效如实标注不判失败', async () => {
+      await page.waitForFunction(
+        () => document.querySelectorAll('.odp-thread--missed').length === 1,
+        undefined,
+        { timeout: 15000 },
+      )
+      const badges = await frame.locator('.od-pick-badge').allTextContents()
+      assert(
+        JSON.stringify(badges.map((t) => t?.trim())) === JSON.stringify(['1', '2']),
+        `重建后徽章应恰 id/data 两枚（序号 1/2）：${JSON.stringify(badges)}`,
+      )
+      const missed = await page.evaluate(() => ({
+        count: document.querySelectorAll('.odp-thread--missed').length,
+        flag: document.querySelector('.odp-thread--missed .odp-anchor-missed')?.textContent?.trim(),
+        badge: document.querySelectorAll('.odp-thread .odp-badge')[2]?.textContent?.trim(),
+      }))
+      assert(missed.count === 1 && missed.flag === 'Anchor missing', `path 级条目应如实标注失效：${JSON.stringify(missed)}`)
+      assert(missed.badge === 'Sent', `失效条目投递徽标不受影响（Sent 在位）：${JSON.stringify(missed.badge)}`)
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
+/**
+ * 关闭当前 design tab（dockkit chrome 关闭钮，en-US aria=Close；tab 头 hover 后可见——
+ * playwright click 自带 hover）。u-probe 探针实测该钮作用于焦点 tab，单 tab 态即关本 tab。
+ */
+async function closeDesignTab(page) {
+  const closeBtn = page.locator('button[aria-label="Close"]').last()
+  await closeBtn.waitFor({ state: 'visible', timeout: 8000 })
+  await closeBtn.click()
+  await page.waitForTimeout(900)
+}
+
+/**
+ * 场景 P5（comment-anchor·V4 + V5 + V11①②③④ + RL6）：布局联动生命周期。
+ *
+ * 判据：V4 宽屏默认展开态打开预览 → 进 iframe 自动收起（ctx.layout.toggleSidebar 语义）
+ * 且预览正常呈现 → 关 tab 还原恰一次（RL6：还原缺失或双重执行任一发生即红）；V11② 同一
+ * 挂载生命周期内列表↔iframe 往返不重放（重复 toggle 会把已收起的侧栏反向展开——D2 触发
+ * 点定义）；V11③ 切走 tab 再切回不重放（keepMounted 保活语义）、关闭 tab 才还原；V5 硬
+ * 边界矩阵行（手动收过侧栏再打开预览被误展开——宿主 face 无侧栏状态读取的已接受边界；
+ * 面板「Sidebar」按钮一键再收；手动接管后关闭面板不再触碰侧栏）；V11④ 多实例分屏（宿主
+ * Split 动作，u-probe 探针已定 e2e 承载）各实例独立记账、全程无 pageerror。
+ */
+async function scenarioAnchorLayout() {
+  const results = []
+  const workspace = makeWorkspaceDir('p5-layout')
+  seedProbeArtifact(workspace)
+  fs.writeFileSync(path.join(workspace, PICK_ARTIFACT_NAME), pickArtifactHtml())
+  const instance = await withInstance({ label: 'p5-layout', fixtureRoot: MINI_OD_ROOT, workspaceDir: workspace })
+  const pageErrors = []
+  try {
+    const { page } = instance
+    page.on('pageerror', (error) => { pageErrors.push(error instanceof Error ? error.message : String(error)) })
+    await pickWorkspace(page, workspace)
+    await pickDesignPreset(page)
+    await sendUserMessage(page, 'design a landing page for layout tie-in')
+
+    await stepAsync(results, 'comment-anchor·V4①：宽屏默认态基准——左侧边栏展开（Collapse sidebar 按钮在场）', async () => {
+      await waitForSidebarState(page, true)
+    })
+
+    await stepAsync(results, 'comment-anchor·V4②③：打开设计预览进 iframe——左侧边栏自动收起（toggleSidebar）且预览面板正常呈现', async () => {
+      await openDesignPanel(page)
+      // waitForFunction 回调在浏览器上下文执行，闭包变量不随函数序列化——产物名经参数传入
+      await page.waitForFunction(
+        (name) => Array.from(document.querySelectorAll('.odp-row')).some((el) => el.textContent?.trim() === name),
+        PICK_ARTIFACT_NAME,
+        { timeout: 15000 },
+      )
+      await page.locator('.odp-row', { hasText: PICK_ARTIFACT_NAME }).first().click()
+      await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
+      await waitForSidebarState(page, false)
+    })
+
+    await stepAsync(results, 'comment-anchor·V11②：同一挂载生命周期内列表↔iframe 往返——不重复触发自动切换（侧栏保持收起不反向展开）', async () => {
+      await page.locator('.odp-body .odp-button', { hasText: 'Back to artifact list' }).click()
+      await page.waitForTimeout(800)
+      await page.locator('.odp-row', { hasText: PICK_ARTIFACT_NAME }).first().click()
+      await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
+      await sleep(1500) // 若闸失效此处会重放 toggle——余量窗口
+      assert(await leftSidebarExpanded(page) === false, '列表↔iframe 往返不应重放自动切换（侧栏应保持收起）')
+    })
+
+    await stepAsync(results, 'comment-anchor·V11③：切走 tab 再切回（keepMounted 保活）——切走保持收起、切回不重放；关闭 design tab 才还原（还原恰一次）', async () => {
+      // 切走：点会话流区域（左栏已收起，主对话区在场）——keepMounted 保活面板不卸载
+      await page.locator('[contenteditable="true"]').first().click()
+      await page.waitForTimeout(800)
+      assert(await leftSidebarExpanded(page) === false, '切走期间侧栏应保持收起（keepMounted 不还原）')
+      // 切回：点 dockkit tab 头（design tab）
+      await page.locator('[data-dockkit-tab], [data-sidebar-right-tab]').first().click()
+      await page.waitForTimeout(900)
+      await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
+      await sleep(1500) // 重放窗口余量
+      assert(await leftSidebarExpanded(page) === false, '切回不应重放布局动作（闸随实例存活）')
+      // 关闭 design tab → 卸载 → 还原义务执行恰好一次（RL6）
+      await closeDesignTab(page)
+      await waitForSidebarState(page, true)
+    })
+
+    await stepAsync(results, 'comment-anchor·V5①②③：宿主按钮手动收起后打开预览——被误展开（宿主 face 无侧栏状态读取的已接受硬边界，D2 矩阵行 2）', async () => {
+      await page.locator('button[aria-label="Collapse sidebar"]').first().click()
+      await waitForSidebarState(page, false)
+      await openDesignPanel(page)
+      await page.locator('.odp-row', { hasText: PICK_ARTIFACT_NAME }).first().click()
+      await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
+      await waitForSidebarState(page, true) // 盲切换把已收起的侧栏误展开——行为如实发生
+    })
+
+    await stepAsync(results, 'comment-anchor·V5④：面板头部「Sidebar」按钮一键再收（手动接管，还原义务清除）', async () => {
+      const sidebarBtn = page.locator('.odp-note button', { hasText: 'Sidebar' }).first()
+      await sidebarBtn.waitFor({ state: 'visible', timeout: 8000 })
+      await sidebarBtn.click()
+      await waitForSidebarState(page, false)
+    })
+
+    await stepAsync(results, 'comment-anchor·V5⑥：手动接管后关闭面板——侧栏不再被触碰（还原义务已清除，保持收起）', async () => {
+      await closeDesignTab(page)
+      await sleep(1500) // 若义务未清除此处会被反向切换展开——余量窗口
+      assert(await leftSidebarExpanded(page) === false, '手动接管后关闭面板不应触碰侧栏（保持收起）')
+    })
+
+    await stepAsync(results, 'comment-anchor·V11④：宿主 Split 分屏放置第二个 design tab——pane 1→2，两实例并存全程无 pageerror（AS11 已接受代价登记形态）', async () => {
+      // 重新打开面板（前一实例已关闭）
+      await openDesignPanel(page)
+      await page.locator('.odp-row', { hasText: PICK_ARTIFACT_NAME }).first().click()
+      await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
+      const before = await page.evaluate(() => document.querySelectorAll('[data-dockkit-pane]').length)
+      const splitBtn = page.locator('button[aria-label="Split"]').first()
+      await splitBtn.waitFor({ state: 'visible', timeout: 8000 })
+      await splitBtn.click()
+      await page.waitForFunction(
+        (count) => document.querySelectorAll('[data-dockkit-pane]').length > count,
+        before,
+        { timeout: 8000 },
+      )
+      const after = await page.evaluate(() => document.querySelectorAll('[data-dockkit-pane]').length)
+      console.log(`    [P5 实测] Split 分屏：pane ${before} → ${after}`)
+      // 两实例并存的侧栏动作按 AS11 已接受代价登记（独立记账可能互踩）——判据收在
+      // 「全程无报错 + 面板头部按钮一键纠正」：两实例各有头部按钮可手动纠正。
+      const sidebarButtons = await page.locator('.odp-note button', { hasText: 'Sidebar' }).count()
+      assert(sidebarButtons >= 1, `分屏后应有面板头部侧栏按钮可纠正（实测 ${sidebarButtons} 个）`)
+      // 还原：关掉第二 pane 的 tab（Close 作用于焦点/末位 tab）
+      await closeDesignTab(page)
+      const restored = await page.evaluate(() => document.querySelectorAll('[data-dockkit-pane]').length)
+      assert(restored === before, `关闭后应还原 pane ${before}：${restored}`)
+      assert(pageErrors.length === 0, `全程不应有 pageerror：${JSON.stringify(pageErrors)}`)
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
+/**
+ * 场景 P6（comment-anchor·V7 + RL2/RL3）：沙箱红线与注入完整性（反向验证）。
+ *
+ * 判据（设计 §4.1 V7 全步骤）：① 面板 iframe sandbox 属性逐字 allow-scripts 不含
+ * allow-same-origin（注入上线后 RL2 复核）；② GET HTML 响应 = 磁盘字节 + 注入脚本标签
+ * （期望值用生产 injectPickScript 现算，差异恰为注入内容——RL3 磁盘字节不变）；③ HEAD
+ * 响应无 body 且 HTML 附 ETag、非 HTML 资源响应无注入且与磁盘逐字一致；④ 顶层直接打开
+ * 伺服 URL（无面板父窗口）脚本静默：零拾取 UI、零徽章、零 overlay（V7 步④）；⑤ 设备壳
+ * HTML（.od-frames/）响应无注入标签、产物 index.html 有注入标签（D4 谓词路径排除的对照，
+ * GL1 设备壳不可拾取边界的机器断言）。
+ */
+async function scenarioAnchorInjection() {
+  const results = []
+  const workspace = makeWorkspaceDir('p6-inject')
+  const { instance, page, workspace: ws, sessionId } = await bootDesignSessionWithArtifact({ label: 'p6-inject', workspace })
+  const workspaceReal = fs.realpathSync(ws)
+  const routeBase = `${OPENDESIGN_ARTIFACTS_PREFIX_PATH}/${sessionId}`
+  try {
+    await stepAsync(results, 'comment-anchor·V7①：面板 iframe sandbox 属性逐字 allow-scripts 且不含 allow-same-origin（RL2 注入形态复核）', async () => {
+      const sandbox = await page.getAttribute('iframe.odp-frame', 'sandbox')
+      assert(sandbox === 'allow-scripts', `sandbox 属性应逐字等于 allow-scripts：${JSON.stringify(sandbox)}`)
+    })
+
+    await stepAsync(results, 'comment-anchor·V7②：GET HTML 响应 = 磁盘字节 + 注入标签（与生产 injectPickScript 逐字对账，RL3）', async () => {
+      const outcome = await pageFetch(page, `${routeBase}/index.html`)
+      assert(outcome.status === 200, `GET 产物应 200：${outcome.status}`)
+      const disk = fs.readFileSync(path.join(workspaceReal, 'index.html'), 'utf8')
+      const expected = injectPickScript(disk)
+      assert(outcome.text === expected, `HTML 响应应逐字等于磁盘字节 + 注入段（长度 ${outcome.text.length} vs 期望 ${expected.length}）`)
+      assert(outcome.text.includes('<script data-od-pick="1">'), '响应应含注入标签开口（data-od-pick 识别属性）')
+      assert(outcome.text.includes('probe-artifact'), '响应应含产物本体内容（磁盘字节未变）')
+    })
+
+    await stepAsync(results, 'comment-anchor·V7③a：HEAD 请求——无 body 且 HTML 附 ETag（D8(c) 版本凭据）', async () => {
+      const outcome = await page.evaluate(async (pathname) => {
+        const response = await fetch(pathname, { method: 'HEAD' })
+        const text = await response.text()
+        return { status: response.status, bodyLength: text.length, etag: response.headers.get('etag') }
+      }, `${routeBase}/index.html`)
+      assert(outcome.status === 200 && outcome.bodyLength === 0, `HEAD 应 200 且无 body：${JSON.stringify(outcome)}`)
+      assert(typeof outcome.etag === 'string' && outcome.etag.startsWith('W/"'), `HTML HEAD 应附弱校验 ETag：${JSON.stringify(outcome.etag)}`)
+    })
+
+    await stepAsync(results, 'comment-anchor·V7③b：非 HTML 资源——响应与磁盘逐字一致且无注入标签', async () => {
+      const outcome = await pageFetch(page, `${routeBase}/secret-note.txt`)
+      assert(outcome.status === 200, `GET 非 HTML 资源应 200：${outcome.status}`)
+      const disk = fs.readFileSync(path.join(workspaceReal, 'secret-note.txt'), 'utf8')
+      assert(outcome.text === disk, '非 HTML 响应应与磁盘逐字一致（不注入）')
+      assert(!outcome.text.includes('data-od-pick'), '非 HTML 响应不应含注入标签')
+    })
+
+    await stepAsync(results, 'comment-anchor·V7⑤：设备壳 HTML（.od-frames/）无注入标签 + 产物 index.html 有（对照）——D4 路径排除的机器断言', async () => {
+      const shellOutcome = await pageFetch(page, `${routeBase}/.od-frames/neutral.html`)
+      assert(shellOutcome.status === 200, `设备壳应 200（材质化复制件在场）：${shellOutcome.status}`)
+      assert(!shellOutcome.text.includes('data-od-pick'), '设备壳 HTML 响应不应注入拾取脚本（GL1 壳内不可拾取边界）')
+      const shellDisk = fs.readFileSync(path.join(workspaceReal, '.od-frames', 'neutral.html'), 'utf8')
+      assert(shellOutcome.text === shellDisk, '设备壳响应应与磁盘逐字一致')
+      const artifactOutcome = await pageFetch(page, `${routeBase}/index.html`)
+      assert(artifactOutcome.text.includes('data-od-pick'), '对照：产物 index.html 响应应有注入标签')
+    })
+
+    await stepAsync(results, 'comment-anchor·V7④：顶层直开伺服 URL（无面板父窗口）——脚本静默：零拾取 UI 零徽章零 overlay，产物内容不被改动', async () => {
+      const topPage = await page.context().newPage()
+      try {
+        await topPage.goto(`${new URL(instance.url).origin}${routeBase}/index.html`, { waitUntil: 'load', timeout: 30000 })
+        await topPage.waitForTimeout(1500) // 若脚本误渲染，窗口内必现 overlay/徽章
+        const ui = await topPage.evaluate(() => ({
+          layer: document.querySelectorAll('#od-pick-layer').length,
+          panel: document.querySelectorAll('.od-pick-panel').length,
+          badges: document.querySelectorAll('.od-pick-badge').length,
+          styles: document.querySelectorAll('#od-pick-script-styles').length,
+          injected: document.querySelectorAll('script[data-od-pick="1"]').length,
+          h1Text: document.querySelector('h1')?.textContent?.trim() ?? null,
+        }))
+        assert(ui.injected === 1, `顶层直开的 GET HTML 响应仍应注入脚本标签（谓词与父窗口无关）：${JSON.stringify(ui)}`)
+        assert(ui.layer === 0 && ui.panel === 0 && ui.badges === 0 && ui.styles === 0, `顶层直开不应渲染任何拾取 UI（G1/SI2 恒静默）：${JSON.stringify(ui)}`)
+        assert(ui.h1Text === 'probe-artifact', `产物内容不应被改动：${JSON.stringify(ui.h1Text)}`)
+      } finally {
+        await topPage.close()
+      }
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
+/**
+ * 场景 P7（comment-anchor·RL5）：桥契约负路径——v ≠ 1 与前缀不符两类可构造形态双向静默。
+ *
+ * 判据（设计 §4.2 RL5 e2e 半场；来源伪造不可构造由 U4 单测 mock 承载——分工登记）：
+ * 脚本→面板方向：错 v / 错前缀的 picked 报文被面板三重校验静默（零落盘）；合法 picked
+ * 对照通道连通（落盘成功）。面板→脚本方向：错 v / 错前缀的 pick-mode 报文被脚本侧忽略
+ * （不渲染 overlay）；合法 pick-mode 对照 overlay 出现。
+ */
+async function scenarioAnchorNegativePaths() {
+  const results = []
+  const workspace = makeWorkspaceDir('p7-negative')
+  const { instance, page, workspace: ws } = await bootDesignSessionWithArtifact({ label: 'p7-negative', workspace, artifact: PICK_ARTIFACT_NAME })
+  const frameHandle = () => page.frames().find((f) => f.url().includes(OPENDESIGN_ARTIFACTS_PREFIX_PATH))
+  try {
+    await stepAsync(results, 'comment-anchor·RL5a：脚本→面板错 v 报文静默——v=2 的 picked 零落盘', async () => {
+      const posted = await frameHandle().evaluate(() => {
+        window.parent.postMessage({ v: 2, type: 'odp-pick:picked', payload: { anchor: { level: 'id', sel: '#main-title' }, text: '错版本负路径' } }, '*')
+        return true
+      })
+      assert(posted, 'postMessage 执行成功（发送通道本身可达）')
+      await sleep(2500)
+      assert(readCommentThreads(ws) === null, 'v≠1 的 picked 不应落盘（面板 G1 校验静默）')
+    })
+
+    await stepAsync(results, 'comment-anchor·RL5b：脚本→面板错前缀报文静默——非 odp-pick: 前缀的 v=1 picked 零落盘', async () => {
+      await frameHandle().evaluate(() => {
+        window.parent.postMessage({ v: 1, type: 'other:picked', payload: { anchor: { level: 'id', sel: '#main-title' }, text: '错前缀负路径' } }, '*')
+      })
+      await sleep(2500)
+      assert(readCommentThreads(ws) === null, '前缀不符的 picked 不应落盘')
+    })
+
+    await stepAsync(results, 'comment-anchor·RL5 对照：合法 v1 picked 落盘成功（同一发送通道，证明负路径拒绝来自契约校验而非通道不通）', async () => {
+      await frameHandle().evaluate(() => {
+        window.parent.postMessage({ v: 1, type: 'odp-pick:picked', payload: { anchor: { level: 'id', sel: '#main-title' }, text: '合法 picked 对照' } }, '*')
+      })
+      const threads = await waitForCommentThreads(ws, (list) => list.length >= 1)
+      assert(threads.length === 1 && threads[0].anchor?.level === 'id', `合法 picked 应落盘：${JSON.stringify(threads.map((t) => t.anchor))}`)
+    })
+
+    await stepAsync(results, 'comment-anchor·RL5c：面板→脚本错 v 报文静默——v=2 的 pick-mode 不激活拾取交互（hover 高亮框不出现）', async () => {
+      // 拾取交互激活的机器判据 = hover 后高亮框（.od-pick-box）可见；#od-pick-layer 在
+      // 对照步落盘后已因徽章渲染挂载（ensureLayer），layer 在场 ≠ 交互激活。
+      await page.evaluate(() => {
+        document.querySelector('iframe.odp-frame').contentWindow.postMessage({ v: 2, type: 'odp-pick:pick-mode', payload: { enabled: true } }, '*')
+      })
+      await sleep(1200)
+      const frameL = page.frameLocator('iframe.odp-frame')
+      await frameL.locator('#main-title').hover()
+      await sleep(600)
+      assert(await frameL.locator('.od-pick-box').isVisible() === false, 'v≠1 的 pick-mode 不应激活拾取交互（hover 高亮框不应出现）')
+    })
+
+    await stepAsync(results, 'comment-anchor·RL5d：面板→脚本错前缀报文静默 + 合法对照拾取交互激活', async () => {
+      await page.evaluate(() => {
+        document.querySelector('iframe.odp-frame').contentWindow.postMessage({ v: 1, type: 'wrong:pick-mode', payload: { enabled: true } }, '*')
+      })
+      await sleep(1200)
+      const frameL = page.frameLocator('iframe.odp-frame')
+      await frameL.locator('#main-title').hover()
+      await sleep(600)
+      assert(await frameL.locator('.od-pick-box').isVisible() === false, '前缀不符的 pick-mode 不应激活拾取交互')
+      // 合法对照：v1 pick-mode enabled:true → hover（触发 mousemove）高亮框出现（同一发送通道）
+      await page.evaluate(() => {
+        document.querySelector('iframe.odp-frame').contentWindow.postMessage({ v: 1, type: 'odp-pick:pick-mode', payload: { enabled: true } }, '*')
+      })
+      await frameL.locator('#main-title').hover()
+      await frameL.locator('.od-pick-box').waitFor({ state: 'visible', timeout: 5000 })
+      // 收尾：关掉评论模式（合法报文），不留激活态
+      await page.evaluate(() => {
+        document.querySelector('iframe.odp-frame').contentWindow.postMessage({ v: 1, type: 'odp-pick:pick-mode', payload: { enabled: false } }, '*')
+      })
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
+/**
+ * 场景 P8（comment-anchor·V6 + D3）：评论输入入口唯一化后的面板形态。
+ *
+ * 判据（设计 §4.1 V6）：① 面板无首评直发输入框（D3 移除）；② 对既有 open 线程追加文本
+ * 落盘（replies 增长）；③ resolve 后标记在位；④⑤ 拾取提交构造 .create 失败（路由拦截
+ * 500）→ iframe 输入框保持文本 + 行内错误提示 + 发送钮恢复可用（D6 submit-result
+ * ok:false 回执语义），恢复通道后重发成功；⑥ 产物不可拾取（列表渲染后删产物 → 点击行 →
+ * 伺服 404）：失败行与重试钮呈现、既有线程列表照常可追加（侧栏与伺服解耦）、评论模式
+ * 开关禁用（tooltip 产物加载中）——产物恢复 Reload 后拾取可用可发首评；面板全程不出现
+ * 首评直发输入组件。
+ */
+async function scenarioAnchorEntryUniqueness() {
+  const results = []
+  const workspace = makeWorkspaceDir('p8-entry')
+  const { instance, page, workspace: ws } = await bootDesignSessionWithArtifact({ label: 'p8-entry', workspace, artifact: PICK_ARTIFACT_NAME })
+  const frame = page.frameLocator('iframe.odp-frame')
+  const workspaceReal = fs.realpathSync(ws)
+  try {
+    // 置态：拾取一线程（供追加/resolve/不可拾取形态的既有线程面）
+    await sendCommentViaPick(page, '#main-title', '入口唯一化置态线程')
+
+    await stepAsync(results, 'comment-anchor·V6①：面板无首评直发输入框（textarea.odp-comment-input / .odp-comments-composer 全零，D3）', async () => {
+      const counts = await page.evaluate(() => ({
+        textarea: document.querySelectorAll('.odp-comments-panel textarea.odp-comment-input').length,
+        composer: document.querySelectorAll('.odp-comments-composer').length,
+      }))
+      assert(counts.textarea === 0 && counts.composer === 0, `面板不应存在直发输入组件：${JSON.stringify(counts)}`)
+    })
+
+    await stepAsync(results, 'comment-anchor·V6②：对既有 open 线程追加文本——replies 增长落盘（追加通道保留）', async () => {
+      await page.locator('.odp-reply-composer input.odp-reply-input').fill('追加探针评论')
+      await page.locator('.odp-reply-composer button.odp-button').click()
+      await page.waitForFunction(() => document.querySelectorAll('.odp-reply').length > 0, undefined, { timeout: 20000 })
+      const current = readCommentThreads(ws)[0]
+      assert(current.replies.length === 1 && current.replies[0].text === '追加探针评论', `追加应落盘：${JSON.stringify(current.replies)}`)
+    })
+
+    await stepAsync(results, 'comment-anchor·V6③：resolve 通道保留——标记已解决在位', async () => {
+      await page.locator('.odp-thread button.odp-button', { hasText: 'Mark resolved' }).click()
+      await page.waitForFunction(() => document.querySelectorAll('.odp-resolved-mark').length > 0, undefined, { timeout: 15000 })
+      assert(readCommentThreads(ws)[0].status === 'resolved', 'resolve 后 lifecycle 应 resolved')
+    })
+
+    await stepAsync(results, 'comment-anchor·V6④⑤：拾取提交构造 .create 失败（路由拦截 500）——输入框保持文本 + 行内错误提示 + 发送钮恢复（D6 失败回执）', async () => {
+      const sidebarToggle = page.locator('.odp-comments-panel button[aria-label="Comment mode"]')
+      // 置态拾取后评论模式仍开启（持续开关语义）——仅在关闭态点击开启
+      if ((await sidebarToggle.getAttribute('aria-pressed')) !== 'true') {
+        await sidebarToggle.click()
+      }
+      await frame.locator('footer a').click()
+      const panel = frame.locator('.od-pick-panel')
+      await panel.waitFor({ state: 'visible', timeout: 5000 })
+      await panel.locator('textarea').fill('失败回执探针评论')
+      // 拦截写通道 500（恢复动作可重发的构造形态；断网会连带探针噪声，路由点更精确）
+      await page.route(`**${COMMENTS_API_BASE_PATH}.create*`, (route) => route.fulfill({ status: 500, body: '{"code":"intercepted"}', contentType: 'application/json' }))
+      await panel.locator('button.od-pick-primary').click()
+      await frame.locator('.od-pick-error').waitFor({ state: 'visible', timeout: 10000 })
+      const errorText = await frame.locator('.od-pick-error').textContent()
+      assert(errorText?.trim() === 'Failed to send; please try again.', `行内错误提示应为 en 字典 sendError 文案：${JSON.stringify(errorText)}`)
+      const draftKept = await panel.locator('textarea').inputValue()
+      assert(draftKept === '失败回执探针评论', `失败后输入框应保留文本（可修改重发）：${JSON.stringify(draftKept)}`)
+      // 恢复通道 → 重发成功
+      await page.unroute(`**${COMMENTS_API_BASE_PATH}.create*`)
+      await panel.locator('button.od-pick-primary').click()
+      await page.waitForFunction(
+        () => Array.from(document.querySelectorAll('.odp-thread .odp-badge')).some((el) => el.textContent?.trim() === 'Sent'),
+        undefined,
+        { timeout: 20000 },
+      )
+      await panel.waitFor({ state: 'detached', timeout: 5000 })
+      const threads = readCommentThreads(ws)
+      assert(threads.length === 2 && threads[1].anchor?.sel === PICK_ARTIFACT_PATH_SEL, `重发应落盘第二线程：${JSON.stringify(threads.map((t) => t.anchor))}`)
+    })
+
+    await stepAsync(results, 'comment-anchor·V6⑥：产物不可拾取（列表渲染后删产物 → 点击行 → 伺服 404）——失败行呈现 + 评论模式开关禁用 + 既有线程追加照常', async () => {
+      await page.locator('.odp-body .odp-button', { hasText: 'Back to artifact list' }).click()
+      await page.waitForTimeout(1200) // 列表挂载拉取（仅挂载时拉一次——删除后行仍呈现，点击即探针 404）
+      fs.rmSync(path.join(workspaceReal, PICK_ARTIFACT_NAME))
+      await page.locator('.odp-row', { hasText: PICK_ARTIFACT_NAME }).first().click()
+      // iframe 探针 404 → 失败行 + Reload 钮（iframe-view failed 分支）
+      await page.getByText('The artifact file does not exist or has moved').waitFor({ state: 'visible', timeout: 15000 })
+      assert(await page.getByRole('button', { name: 'Reload' }).isVisible(), '失败行应带 Reload 重试钮')
+      // 失败行形态下侧栏重新挂载（expanded 复位折叠态）——先展开再查开关禁用态
+      await ensureCommentsSidebarExpanded(page)
+      // 评论模式开关禁用（未 ready——tooltip 产物加载中）
+      const disabledInfo = await page.evaluate(() => {
+        const button = document.querySelector('.odp-comments-panel button[aria-label="Comment mode"]')
+        return button === null ? null : { disabled: button.disabled, title: button.title }
+      })
+      assert(disabledInfo !== null && disabledInfo.disabled === true, `拾取不可达时评论模式开关应禁用：${JSON.stringify(disabledInfo)}`)
+      assert(disabledInfo.title === 'Artifact loading; picking is not available yet', `禁用 tooltip 应为「产物加载中」文案：${JSON.stringify(disabledInfo.title)}`)
+      // 侧栏与伺服解耦：既有线程照常可追加（D3 已接受代价登记）——追加写入最后一条线程的
+      // composer（侧栏条目序），断言按文本在任一线程 replies 中寻址
+      await page.locator('.odp-reply-composer input.odp-reply-input').last().fill('不可拾取态追加探针')
+      await page.locator('.odp-reply-composer button.odp-button').last().click()
+      const appendedDeadline = Date.now() + 20000
+      let appended = false
+      while (Date.now() < appendedDeadline && !appended) {
+        appended = readCommentThreads(ws).some((t) => t.replies.some((r) => r.text === '不可拾取态追加探针'))
+        if (!appended) await sleep(400)
+      }
+      assert(appended, `不可拾取态追加应照常落盘：${JSON.stringify(readCommentThreads(ws).map((t) => t.replies.map((r) => r.text)))}`)
+    })
+
+    await stepAsync(results, 'comment-anchor·V6⑥b：产物恢复 → Reload 后 iframe 挂载、拾取可用可发首评', async () => {
+      fs.writeFileSync(path.join(workspaceReal, PICK_ARTIFACT_NAME), pickArtifactHtml({ title: 'Restored Title' }))
+      await page.getByRole('button', { name: 'Reload' }).click()
+      await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
+      // iframe 恢复挂载使侧栏 expanded 复位折叠态——展开后再等就绪（拾取脚本 ready 二次握手）
+      await ensureCommentsSidebarExpanded(page)
+      await page.waitForFunction(
+        () => {
+          const button = document.querySelector('.odp-comments-panel button[aria-label="Comment mode"]')
+          return button !== null && !button.disabled
+        },
+        undefined,
+        { timeout: 20000 },
+      )
+      await sendCommentViaPick(page, '#main-title', '恢复后首评探针')
+      const threads = readCommentThreads(ws)
+      assert(threads.length === 3 && threads[2].anchor?.level === 'id', `恢复后拾取首评应落盘：${JSON.stringify(threads.map((t) => t.anchor))}`)
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
+/**
+ * 场景 u-probe（探针段，wave 0 · opendesign-comment-anchor 设计包；不进常规回归口径）：
+ * AS7(b) 宿主形态层 + V11 步④ 驱动性，一场景承载两探针（编号域 = 本设计包，裸用 AS/V 编号）。
+ *
+ * AS7(b) 判据（AS7 假设的宿主形态半场；(a) 本地语义层已由 probe/as7-local 独立验证）：
+ *   伺服产物 iframe（sandbox="allow-scripts"，opaque origin）上 frameLocator 能读元素文本
+ *   （id 锚与 data-od-id 锚选择器两形态）、能驱动产物内点击（同文档 DOM 变化为证）；产物
+ *   内联脚本 window.parent.postMessage 出站后宿主父页可收（生产面板桥 U4 的通道前提），
+ *   且 event.source === iframe.contentWindow 对象同一性成立（D5 来源校验可用的机制前提）。
+ *
+ * V11 步④ 判据（多实例分支的 e2e 驱动性；结论决定该步由 e2e 承载或降级真机人工验收）：
+ *   宿主 dockkit tab 动作（duplicateTab / 分屏）能否程序化触发——三条路径逐次尝试并记录：
+ *   ① tab 右键菜单（dockkit DockLayout 菜单，menuitem 由 slot sidebar.right.tab.menu.item
+ *   渲染，宿主默认空清单）；② 快捷键 pane.split（dsh-client-shortcuts：web:macos = primary+
+ *   Backslash = Meta+\，resolve 需焦点落在 sidebar 内）；③ page.evaluate 全局句柄（宿主
+ *   store 是否可达 window）。分屏成功的机器判据 = [data-dockkit-pane] 计数增加。
+ *
+ * 探针产物不在 fixture 内预置：场景运行时写盘（S12 legacy.html 同款先例），fixture 既有
+ * 契约不受探针影响。结论落盘 .tmp/dev-flow/opendesign-comment-anchor/probe/（由 u-probe
+ * 单元消费本场景输出登记）。
+ */
+async function scenarioProbeU() {
+  const results = []
+  const workspace = makeWorkspaceDir('probe-u')
+  seedProbeArtifact(workspace)
+  const instance = await withInstance({ label: 'probe-u', fixtureRoot: MINI_OD_ROOT, workspaceDir: workspace })
+  const { page, home } = instance
+  try {
+    // ── boot 链（并入套件共享 en 驱动——本文件 openVerifyPageEn 固定 en-US context 后
+    // 宿主 chrome 恒英文，u-probe 段此前的 zh 实态抓取选择器（aria=选择工作区 等）随之
+    // 退役；zh 形态登记见 probe/as7-frameLocator.md 附带发现与 runlog）────────────
+
+    await stepAsync(results, 'u-probe boot①：en 驱动选工作区 + 选设计 preset + 发消息（共享驱动形态）', async () => {
+      await pickWorkspace(page, workspace)
+      await pickDesignPreset(page)
+      const composer = page.locator('[contenteditable="true"]').first()
+      await composer.click()
+      await page.keyboard.type('design a landing page for the probe')
+      await page.waitForTimeout(300)
+      await page.getByRole('button', { name: 'Send message' }).click()
+      // 「回合已跑」信号走会话日志通道（system 先 commit 后 request——dsh-agent-loop step()
+      // 语义，套件头注）。不用页面 MISSING_CREDENTIAL 文本：其 UI 呈现窗口不稳（引擎核验
+      // 轮 45s 超时而回合实际已失败落盘），日志信号与 UI 呈现无关。
+      await waitForSessionLog(
+        home,
+        (_entry, log) => log.systemMessages.some((t) => t.includes(DESIGN_INJECTION_MARK)),
+        45000,
+      )
+      await page.waitForTimeout(1500) // 日志 batch flush 余量
+    })
+
+    await stepAsync(results, 'u-probe boot②：材质化标记在盘（评论侧栏挂载前提）+ 右栏设计预览入口进列表 + 点 index.html 行进 iframe', async () => {
+      findSessionIdBySystemMark(home, DESIGN_INJECTION_MARK) // 调用即断言：注入会话在盘（缺失抛错）
+      const framesReady = path.join(fs.realpathSync(workspace), '.od-frames', DECK_FRAMEWORK_FILE_NAME)
+      const deadline = Date.now() + 20000
+      while (!fs.existsSync(framesReady) && Date.now() < deadline) await sleep(500)
+      assert(fs.existsSync(framesReady), `材质化标记缺席：${framesReady}`)
+      await openDesignPanel(page)
+      await page.waitForFunction(
+        () => Array.from(document.querySelectorAll('.odp-row')).some((el) => el.textContent?.trim() === 'index.html'),
+        undefined,
+        { timeout: 15000 },
+      )
+      await page.locator('.odp-row').first().click()
+      await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
+    })
+
+    // ── 探针本体 ─────────────────────────────────────────────────────────────
+    // 探针产物：带 id 锚与 data-od-id 锚属性的交互元素 + 点击后同文档 DOM 变化 + postMessage 出站。
+    fs.writeFileSync(path.join(fs.realpathSync(workspace), 'pick-probe.html'), [
+      '<!doctype html>',
+      '<html lang="en">',
+      '<head><meta charset="utf-8" /><title>pick probe</title></head>',
+      '<body>',
+      '  <section id="hero" data-od-id="hero">',
+      '    <h1 id="pick-target">pick me</h1>',
+      '    <button id="pick-emit" type="button">emit pick</button>',
+      '  </section>',
+      '  <script>',
+      '    function emitPick() {',
+      "      window.parent.postMessage({ v: 1, type: 'odp-pick:picked', payload: { level: 'id', sel: '#pick-target' } }, '*')",
+      '    }',
+      "    document.getElementById('pick-emit').addEventListener('click', () => {",
+      "      document.getElementById('pick-emit').textContent = 'picked!'",
+      '      emitPick()',
+      '    })',
+      "    window.addEventListener('load', () => emitPick())", // ready 握手同通道：载入即出站一次
+      '  </script>',
+      '</body>',
+      '</html>',
+    ].join('\n'))
+
+    await stepAsync(results, 'u-probe 步①：返回列表 → 点击 pick-probe.html 行进入 iframe（伺服产物形态就位）', async () => {
+      await page.locator('.odp-body .odp-button', { hasText: 'Back to artifact list' }).click()
+      const row = page.locator('.odp-row', { hasText: 'pick-probe.html' })
+      await row.waitFor({ state: 'visible', timeout: 15000 })
+      await row.click()
+      await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
+    })
+
+    await stepAsync(results, 'u-probe AS7(b)②：frameLocator 读伺服产物元素文本（id 锚 + data-od-id 锚选择器两形态）', async () => {
+      const frame = page.frameLocator('iframe.odp-frame')
+      const byId = await frame.locator('#pick-target').textContent()
+      assert(byId === 'pick me', `frameLocator 按 id 锚读文本失败：${JSON.stringify(byId)}`)
+      const byData = await frame.locator('[data-od-id="hero"] h1').textContent()
+      assert(byData === 'pick me', `frameLocator 按 data-od-id 锚选择器读文本失败：${JSON.stringify(byData)}`)
+    })
+
+    await stepAsync(results, 'u-probe AS7(b)③：frameLocator 驱动产物内点击——同文档 DOM 变化为证（emit → picked!）', async () => {
+      const frame = page.frameLocator('iframe.odp-frame')
+      await frame.locator('#pick-emit').click()
+      await frame.locator('#pick-emit').filter({ hasText: 'picked!' }).waitFor({ timeout: 5000 })
+    })
+
+    await stepAsync(results, 'u-probe AS7(b)④：产物 postMessage 出站 → 宿主父页收到 + event.source 对象同一性（D5 校验前提）', async () => {
+      await page.evaluate(() => {
+        window.__probeInbox = []
+        window.addEventListener('message', (event) => {
+          window.__probeInbox.push({
+            data: event.data,
+            originIsNull: event.origin === 'null',
+            sourceIsFrame: event.source === document.querySelector('iframe.odp-frame').contentWindow,
+          })
+        })
+      })
+      const frame = page.frameLocator('iframe.odp-frame')
+      await frame.locator('#pick-emit').click()
+      await page.waitForFunction(
+        () => Array.isArray(window.__probeInbox) && window.__probeInbox.length >= 2,
+        undefined,
+        { timeout: 5000 }, // load 时已发一次 ready 同通道报文 + 本次点击 picked = ≥2
+      )
+      const inbox = await page.evaluate(() => window.__probeInbox)
+      const picked = inbox.filter((entry) => entry.data?.type === 'odp-pick:picked')
+      assert(picked.length >= 1, `宿主父页未收到 picked 报文：${JSON.stringify(inbox)}`)
+      assert(
+        picked.every((entry) => entry.originIsNull && entry.sourceIsFrame),
+        `出站报文来源判定不对（应 origin 'null' + source 同一性成立）：${JSON.stringify(picked)}`,
+      )
+      console.log(`    [u-probe 实测] 桥上行 ${inbox.length} 条，形态样例：${JSON.stringify(inbox.at(-1))}`)
+    })
+
+    await stepAsync(results, 'u-probe V11④⑤：tab/pane DOM 基准记录（data-dockkit-tab / data-dockkit-pane / data-sidebar-right-*）', async () => {
+      const dom = await page.evaluate(() => ({
+        tabs: Array.from(document.querySelectorAll('[data-dockkit-tab], [data-sidebar-right-tab]')).map((el) => ({
+          text: (el.textContent ?? '').trim().slice(0, 40),
+          dockTab: el.dataset.dockkitTab ?? null,
+          srTab: el.dataset.sidebarRightTab ?? null,
+        })),
+        panes: document.querySelectorAll('[data-dockkit-pane]').length,
+        floats: document.querySelectorAll('[data-dockkit-float]').length,
+        session: document.querySelector('[data-sidebar-right-session]')?.dataset.sidebarRightSession ?? null,
+      }))
+      assert(dom.tabs.length >= 1, `未找到 dockkit tab 元素（data-dockkit-tab / data-sidebar-right-tab 均空）：${JSON.stringify(dom)}`)
+      assert(dom.panes >= 1, `未找到 dockkit pane 元素：${JSON.stringify(dom)}`)
+      console.log(`    [u-probe 实测] DOM 基准：${JSON.stringify(dom)}`)
+    })
+
+    await stepAsync(results, 'u-probe V11④⑥：tab 右键菜单可开性与菜单项清单（duplicateTab 的 UI 入口探测）', async () => {
+      const tab = page.locator('[data-dockkit-tab], [data-sidebar-right-tab]').first()
+      await tab.click({ button: 'right' })
+      await page.waitForTimeout(600)
+      const menu = await page.evaluate(() => {
+        const menus = Array.from(document.querySelectorAll('[role="menu"]')).filter((el) => el.offsetWidth > 0)
+        return menus.map((el) => ({
+          items: Array.from(el.querySelectorAll('[role="menuitem"]')).map((item) => ({
+            text: (item.textContent ?? '').trim(),
+            disabled: item.disabled === true,
+          })),
+        }))
+      })
+      console.log(`    [u-probe 实测] tab 右键菜单：${JSON.stringify(menu)}`)
+      await page.keyboard.press('Escape')
+      results.push({ name: '（登记）菜单探测输出见运行日志——有 Duplicate/Split 项即可点击驱动，空清单则该入口不可驱动', ok: true })
+    })
+
+    await stepAsync(results, 'u-probe V11④⑥b：面板 chrome「Split/分栏」按钮路径实测（登记形态：结论不改裁决，快捷键为机器判据；en-US 宿主 aria=Split）', async () => {
+      try {
+        const splitBtn = page.locator('button[aria-label="Split"], button[aria-label="分栏"]')
+        const visible = await splitBtn.first().isVisible().catch(() => false)
+        const disabled = visible ? await splitBtn.first().isDisabled() : null
+        if (visible && disabled === false) {
+          const before = await page.evaluate(() => document.querySelectorAll('[data-dockkit-pane]').length)
+          await splitBtn.first().click()
+          await page.waitForTimeout(900)
+          const after = await page.evaluate(() => document.querySelectorAll('[data-dockkit-pane]').length)
+          console.log(`    [u-probe 实测] 「分栏」按钮：pane ${before} → ${after}${after > before ? '（按钮路径可驱动）' : '（点击未分屏）'}`)
+          if (after > before) {
+            // 还原（关掉第二 pane）给快捷键路径一个干净前提：dockkit 关闭按钮（aria=关闭）作用于分屏后的 tab。
+            const closeBtn = page.locator('button[aria-label="Close"], button[aria-label="关闭"]').last()
+            if (await closeBtn.isVisible().catch(() => false)) {
+              await closeBtn.click()
+              await page.waitForTimeout(700)
+              const restored = await page.evaluate(() => document.querySelectorAll('[data-dockkit-pane]').length)
+              console.log(`    [u-probe 实测] 关闭按钮还原：pane → ${restored}`)
+            }
+          }
+        } else {
+          console.log(`    [u-probe 实测] 「分栏」按钮不可用（visible=${visible} disabled=${disabled}）——按钮路径不可驱动`)
+        }
+      } catch (error) {
+        console.log(`    [u-probe 实测] 「分栏」按钮路径异常（登记不改裁决）：${error instanceof Error ? error.message : String(error)}`)
+      }
+      results.push({ name: '（登记）分栏按钮路径输出见运行日志', ok: true })
+    })
+
+    await stepAsync(results, 'u-probe V11④⑦：快捷键分屏驱动（焦点落 tab → Meta+\\ → pane 计数增加）', async () => {
+      const before = await page.evaluate(() => document.querySelectorAll('[data-dockkit-pane]').length)
+      await page.locator('[data-dockkit-tab], [data-sidebar-right-tab]').first().click() // 焦点落 sidebar（resolve 的 focusedTarget 前提）
+      await page.keyboard.press('Meta+\\') // dsh-client-shortcuts normalizeBinding：web:macos primary = meta
+      await page.waitForTimeout(900)
+      const after = await page.evaluate(() => document.querySelectorAll('[data-dockkit-pane]').length)
+      console.log(`    [u-probe 实测] Meta+\\ 分屏：pane ${before} → ${after}`)
+      assert(after > before, `Meta+\\ 未触发分屏（pane ${before} → ${after}）——快捷键路径不可驱动或焦点前提不成立`)
+    })
+
+    await stepAsync(results, 'u-probe V11④⑧：page.evaluate 全局句柄探测（宿主 store/dockkit 是否可达 window）', async () => {
+      const globals = await page.evaluate(() => Object.keys(window).filter((key) => /dsh|dock|store|sidebar/i.test(key)))
+      console.log(`    [u-probe 实测] window 上 dsh/dock/store/sidebar 相关键：${JSON.stringify(globals)}`)
+      results.push({ name: '（登记）全局句柄清单见运行日志——空清单 = page.evaluate 无 API 注入路径', ok: true })
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
 // ── 主编排 ───────────────────────────────────────────────────────────────────
 
-/** 全局看门狗：卡死（等待永不返回）时按 PID 清场并以失败退出，不留孤儿 dsh（预算随评论回路五场景扩容）。 */
-const WATCHDOG_MS = 45 * 60 * 1000
+/** 全局看门狗：卡死（等待永不返回）时按 PID 清场并以失败退出，不留孤儿 dsh（预算随锚点场景七组扩容至 24 场景）。 */
+const WATCHDOG_MS = 75 * 60 * 1000
 const watchdog = setTimeout(() => {
   console.error(`\n[e2e watchdog] ${WATCHDOG_MS}ms 全局预算耗尽，按 PID 清场退出`)
   for (const pid of [...livePids]) void killProcessTree(pid)
@@ -2265,12 +3393,20 @@ try {
     ['S7 V9+V1·RL7 resume 代际重组+检查环不变量', scenarioResume],
     ['S8 V1·V11 项目目录写入形态（5 管理名）', scenarioProjectWrites],
     ['S9 V1·A9/A10/A11 shell 包共存回归（runner 串接）', scenarioShellCoexistRegression],
-    ['S10 comment-loop·V1 评论回路首评 回注kind+落盘delivered+doctor⑫两形态+在轨', scenarioCommentLoopV1],
+    ['S10 comment-loop·V1+anchor·V1 拾取桥全路径首评 悬停/锚点行/落盘anchor/回注含anchor/徽章+doctor⑫两形态+在轨', scenarioCommentLoopV1],
     ['S11 comment-loop·V3 无活Agent边界（重启未开404零落盘/重开200如实投递）', scenarioCommentNoAgent],
     ['S12 comment-loop·V5 普通会话侧栏零出现+路由不判型', scenarioStandardSessionNoComments],
-    ['S13 comment-loop·V6 resolve→reply重开+产物重写/删除边界', scenarioCommentResolveReply],
-    ['S14 comment-loop·V10 steer前置评论投递（AS9探针载体）', scenarioCommentSteer],
-    ['S15 comment-loop·V4 写通道安全（无凭据/不可信Host-Origin/越界载荷）', scenarioCommentSecurity],
+    ['S13 comment-loop·V6 resolve→reply重开（拾取首评置态）+产物重写/删除边界', scenarioCommentResolveReply],
+    ['S14 comment-loop·V10 steer前置评论投递（AS9探针载体，拾取入口）', scenarioCommentSteer],
+    ['S15 comment-loop·V4 写通道安全（无凭据/不可信Host-Origin/越界载荷+anchor负路径三形态）', scenarioCommentSecurity],
+    ['P2 anchor·V2 三级降级三载体（id/data-od-id/path链）+徽章三枚+侧栏三级别名', scenarioAnchorLevels],
+    ['P3 anchor·V3 联动定位高亮+删id改稿后失效标注（Locate禁用）+对照条目不受影响', scenarioAnchorLocateAndMiss],
+    ['P4 anchor·V3③+V8①③+RL7 改稿可见性（≤6s ready二次握手+徽章重建id/data命中+path级失效如实标注）', scenarioAnchorRewriteVisibility],
+    ['P5 anchor·V4+V5+V11 布局联动（自动收起/还原恰一次/列表往返不重放/保活切走切回/硬边界矩阵/分屏双实例）', scenarioAnchorLayout],
+    ['P6 anchor·V7+RL2/RL3 注入完整性（sandbox逐字/响应=磁盘+注入/HEAD无body+ETag/非HTML与设备壳不注/顶层直开零UI）', scenarioAnchorInjection],
+    ['P7 anchor·RL5 桥契约负路径（错v/错前缀双向静默+合法对照连通）', scenarioAnchorNegativePaths],
+    ['P8 anchor·V6+D3 入口唯一化（无直发框/追加resolve可用/失败回执可见可重发/产物不可拾取降级与恢复）', scenarioAnchorEntryUniqueness],
+    ['u-probe AS7frameLocator伺服桥+V11④dockkit驱动性（opendesign-comment-anchor 探针段）', scenarioProbeU],
   ]
 
   // 场景子集筛选（排障/单场景复跑）：E2E_ONLY=S10,S13（按标题首段 id 匹配，缺省全跑）。

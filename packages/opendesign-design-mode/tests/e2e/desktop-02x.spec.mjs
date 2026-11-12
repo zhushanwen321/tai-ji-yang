@@ -15,12 +15,13 @@
  * 设计包第⑫节评论环）→ 材质化恰 5 管理名（V1 设计包 D8 + opendesign-assets-quality D9）→ 预览面板 iframe 产物载入 + 探针（V1·RL6/V1·RL8 的 0.2.2 形态）→
  * 检查环桌面宿主可用性（本轮 V2 的 0.2.2 形态：真机写盘 P0 产物 → 回注消息 source.kind
  * 协议信号形态断言 + report.jsonl fed-back 记录——本轮 RL1 的 0.2.2 半场）→ 评论回路桌面
- * 半场（comment-loop 设计包，任务书 U6 桌面清单）：V8 首评循环（侧栏发送 → 落盘 delivered
- * → 回注消息 kind/载荷断言 → 桌面宿主 /api 相对路径写通道可达）+ V2 重启后线程保留
- * （kill + 同 home relaunch，delivered 不回退 pending，doctor ⑫ 重启后在场形态）+ V10 steer
- * 前置评论投递（AS9 探针载体，web spec S14 桌面版同款 steer 前置步骤：长任务消息先置
- * 运行态 → 运行中发评论 → turn/start 计数判通道 → steer 形态全量断言 / followup 形态按
- * 设计 §4.1 V10 协议登记探针不适用）。
+ * 半场（comment-loop + comment-anchor 设计包，任务书 U6 桌面清单）：V9 判据子集（opendesign-comment-anchor
+ * §4.1 V9 步②「拾取发评 id 级」的桌面半场）+ V8 首评循环（拾取入口发送 → 落盘 delivered
+ * 带 anchor → 回注消息 kind/载荷断言 → 桌面宿主 /api 相对路径写通道可达）+ V2 重启后线程
+ * 保留（kill + 同 home relaunch，delivered 不回退 pending 且 anchor 逐字节保留，doctor ⑫
+ * 重启后在场形态）+ V10 steer 前置评论投递（AS9 探针载体，拾取入口；web spec S14 桌面版
+ * 同款 steer 前置步骤：长任务消息先置运行态 → 运行中拾取发评论 → turn/start 计数判通道
+ * → steer 形态全量断言 / followup 形态按设计 §4.1 V10 协议登记探针不适用）。
  *
  * 桌面壳 /api 相对路径边界（comment-loop V8 新增验证点的复现形态口径）：本 spec 的宿主 =
  * app 内嵌 0.2.2 宿主（http 形态，V1·AS7 同款复现法）——相对路径可达性以页面同源 fetch
@@ -130,7 +131,7 @@ function commentDistributionLine(threads) {
   return `线程计数：${threads.length}；各 delivery 状态分布：${distribution}`
 }
 
-/** 断言回注消息形态与生产构造逐字一致（AX2 独立 kind + D3 source 五字段 + D6 三段文本；期望值直接调 buildCommentMessage 生成）。 */
+/** 断言回注消息形态与生产构造逐字一致（AX2 独立 kind + D3 source 五字段 + D6 三段文本 + D7 锚点扩展；期望值直接调 buildCommentMessage 生成）。 */
 function assertCommentMessageText(message, thread, payloadText) {
   assert(
     message.kind === COMMENT_SOURCE_KIND,
@@ -141,6 +142,7 @@ function assertCommentMessageText(message, thread, payloadText) {
     artifactPath: thread.artifactPath,
     text: payloadText,
     createdAt: thread.createdAt,
+    ...(thread.anchor !== undefined ? { anchor: thread.anchor } : {}),
   })
   assert(
     JSON.stringify(message.source) === JSON.stringify(expected.source),
@@ -172,6 +174,73 @@ function dirtyArtifactHtml(title) {
   ].join('\n')
 }
 
+/**
+ * 拾取场景专用产物（V9 步②「拾取发评（id 级）」的载体；web spec pick-me.html 同构）：
+ * #main-title（id 级）/ section 内部无 id 段落（data 级，最近祖先 data-od-id）/ footer 裸
+ * 链接（path 级）。桌面半场只消费 id 级（V9 判据子集），三载体结构保持与 web 对账。
+ */
+const PICK_ARTIFACT_NAME = 'pick-me.html'
+function pickArtifactHtml() {
+  return [
+    '<!doctype html>',
+    '<html lang="en">',
+    '<head><meta charset="utf-8" /><title>pick target</title></head>',
+    '<body>',
+    '  <section id="hero" data-od-id="hero-sec">',
+    '    <h1 id="main-title">Main Title</h1>',
+    '    <p>intro copy for data anchor</p>',
+    '  </section>',
+    '  <footer>',
+    '    <a href="#top">bare footer link</a>',
+    '  </footer>',
+    '</body>',
+    '</html>',
+  ].join('\n')
+}
+
+/**
+ * 经拾取入口发送一条评论并等到线程徽标出现「Sent」（D3 入口唯一化后的唯一首评路径；
+ * web spec sendCommentViaPick 桌面同构：评论模式开关 → 产物内点击 → 输入面板 → 发送）。
+ * 前置：iframe 内拾取脚本已 ready（评论模式开关禁用态解除）。
+ */
+async function sendCommentViaPick(page, selector, text) {
+  const tab = page.locator('button.odp-comments-tab')
+  if (!(await page.locator('.odp-comments-panel').isVisible().catch(() => false))) {
+    await tab.waitFor({ state: 'visible', timeout: 15000 })
+    await tab.click()
+    await page.waitForSelector('.odp-comments-panel', { timeout: 10000 })
+  }
+  const toggle = page.locator('.odp-comments-panel button[aria-label="Comment mode"]')
+  await toggle.waitFor({ state: 'visible', timeout: 15000 })
+  await page.waitForFunction(
+    () => {
+      const button = document.querySelector('.odp-comments-panel button[aria-label="Comment mode"]')
+      return button !== null && !button.disabled
+    },
+    undefined,
+    { timeout: 20000 },
+  )
+  // 评论模式是持续开关（aria-pressed）而非触发器：拾取成功后模式仍开启，重复点击会把它
+  // 翻转关闭——仅在未开启时点击（web spec sendCommentViaPick 同款修正）。
+  if ((await toggle.getAttribute('aria-pressed')) !== 'true') {
+    await toggle.click()
+  }
+  const frame = page.frameLocator('iframe.odp-frame')
+  await frame.locator(selector).hover()
+  await frame.locator('.od-pick-box').waitFor({ state: 'visible', timeout: 5000 })
+  await frame.locator(selector).click()
+  const panel = frame.locator('.od-pick-panel')
+  await panel.waitFor({ state: 'visible', timeout: 5000 })
+  await panel.locator('textarea').fill(text)
+  await panel.locator('button.od-pick-primary').click()
+  await page.waitForFunction(
+    () => Array.from(document.querySelectorAll('.odp-thread .odp-badge')).some((el) => el.textContent?.trim() === 'Sent'),
+    undefined,
+    { timeout: 20000 },
+  )
+  await panel.waitFor({ state: 'detached', timeout: 5000 }).catch(() => {})
+}
+
 // ── 前置 ─────────────────────────────────────────────────────────────────────
 
 if (!fs.existsSync(DESKTOP_CLI)) {
@@ -198,6 +267,7 @@ fs.mkdirSync(workspace, { recursive: true })
 for (const name of ['index.html', 'secret-note.txt']) {
   fs.copyFileSync(path.join(E2E_FIXTURES, 'probe-artifact', name), path.join(workspace, name))
 }
+fs.writeFileSync(path.join(workspace, PICK_ARTIFACT_NAME), pickArtifactHtml())
 
 // 手写 profile（0.2.2 plugin add 缺陷的既定绕行；形态 = 0.1.7 plugin add 产物原样）
 fs.writeFileSync(path.join(profileDir, 'package.json'), JSON.stringify({
@@ -623,19 +693,15 @@ try {
     return entry.sessionId
   })()
 
-  await step('comment-loop·V8 步骤②③：设计面板评论侧栏发送首条评论——徽标「Sent」+ 线程落盘 open × delivered（桌面 0.2.2 形态）', async () => {
-    // 上一断言（检查环）不触碰面板：iframe 预览态仍在（预览步已载入 index.html）。
-    const tab = page.locator('button.odp-comments-tab')
-    await tab.waitFor({ state: 'visible', timeout: 15000 })
-    await tab.click()
-    await page.waitForSelector('.odp-comments-panel', { timeout: 10000 })
-    await page.locator('.odp-comments-panel textarea.odp-comment-input').fill('主视觉配色太艳，压暗一档')
-    await page.locator('.odp-comments-composer button.odp-button').click()
-    await page.waitForFunction(
-      () => Array.from(document.querySelectorAll('.odp-thread .odp-badge')).some((el) => el.textContent?.trim() === 'Sent'),
-      undefined,
-      { timeout: 20000 },
-    )
+  await step('comment-loop·V8 步骤②③（拾取入口，V9 步② id 级判据）：切换预览至拾取载体产物 → 评论模式拾取发评——徽标「Sent」+ 线程落盘 open × delivered 带 anchor（桌面 0.2.2 形态）', async () => {
+    // 检查环步不触碰面板：iframe 预览态仍在（index.html）。拾取载体产物经列表切换进入。
+    await page.locator('.odp-body .odp-button', { hasText: 'Back to artifact list' }).click()
+    await page.waitForTimeout(1200)
+    const row = page.locator('.odp-row', { hasText: PICK_ARTIFACT_NAME })
+    assert(await row.count() > 0, `产物列表缺拾取载体行（${PICK_ARTIFACT_NAME}）`)
+    await row.click()
+    await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
+    await sendCommentViaPick(page, '#main-title', '主视觉配色太艳，压暗一档')
     const threads = commentsThreads()
     assert(threads.length === 1, `首评应恰 1 线程：${JSON.stringify(threads.map((t) => t.id))}`)
     assert(threads[0].id.startsWith(COMMENT_THREAD_ID_PREFIX), `线程 id 应带 ${COMMENT_THREAD_ID_PREFIX} 前缀：${threads[0].id}`)
@@ -643,7 +709,14 @@ try {
       threads[0].status === 'open' && threads[0].delivery === 'delivered' && typeof threads[0].deliveredAt === 'string',
       `落盘组合态应 open × delivered（deliveredAt 在场）：${JSON.stringify({ status: threads[0].status, delivery: threads[0].delivery, deliveredAt: threads[0].deliveredAt })}`,
     )
-    assert(threads[0].artifactPath === 'index.html' && threads[0].text === '主视觉配色太艳，压暗一档', '落盘挂靠/文本不对（D8 文件级挂靠）')
+    assert(threads[0].artifactPath === PICK_ARTIFACT_NAME && threads[0].text === '主视觉配色太艳，压暗一档', '落盘挂靠/文本不对')
+    // V9 步② 判据：拾取发评 id 级——落盘 anchor 逐字锁定（桌面壳与 web 同判据）
+    assert(
+      threads[0].anchor?.level === 'id' && threads[0].anchor?.sel === '#main-title',
+      `拾取首评应带 id 级锚点（V9 步② 判据）：${JSON.stringify(threads[0].anchor)}`,
+    )
+    const badge = page.frameLocator('iframe.odp-frame').locator('.od-pick-badge')
+    assert((await badge.textContent())?.trim() === '1', `产物内编号徽章应在位且序号 1：${JSON.stringify(await badge.textContent())}`)
   })
 
   await step('comment-loop·V8 步骤③：聊天流回注消息 kind 可辨——独立 kind + 文本与 buildCommentMessage 逐字一致（AX2/D6）+ 在轨（未被 discard）', async () => {
@@ -692,12 +765,14 @@ try {
     await sleep(900)
     await page.getByText('Design preview').first().click()
     await sleep(2000)
+    // 重进拾取载体产物行（V8 首评线程挂靠该产物——侧栏按当前产物过滤，进 index.html 行
+    // 只会看到 /api 探针线程、首评不可见，V2 的 UI 呈现复核须落在首评挂靠的产物上）
     await page.waitForFunction(
-      () => Array.from(document.querySelectorAll('.odp-row .odp-row-name')).some((el) => el.textContent?.trim() === 'index.html'),
-      undefined,
+      (name) => Array.from(document.querySelectorAll('.odp-row .odp-row-name')).some((el) => el.textContent?.trim() === name),
+      PICK_ARTIFACT_NAME,
       { timeout: 15000 },
     )
-    await page.locator('.odp-row', { hasText: 'index.html' }).first().click()
+    await page.locator('.odp-row', { hasText: PICK_ARTIFACT_NAME }).first().click()
     await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
     const tab = page.locator('button.odp-comments-tab')
     await tab.waitFor({ state: 'visible', timeout: 15000 })
@@ -759,16 +834,12 @@ try {
     )
   })
 
-  await step('comment-loop·V10 步骤②③：agent 运行中经侧栏发评论——thread.delivery 回写 delivered（落盘轮询承载；徽标形态由 V8 步骤断言）', async () => {
-    // V2 步骤③已展开侧栏；doctor 步不重挂面板——不在展开态则经 tab 展开（tab 仅折叠态在 DOM）。
-    if (!(await page.locator('.odp-comments-panel').isVisible().catch(() => false))) {
-      const tab = page.locator('button.odp-comments-tab')
-      await tab.waitFor({ state: 'visible', timeout: 15000 })
-      await tab.click()
-    }
-    await page.waitForSelector('.odp-comments-panel', { timeout: 10000 })
-    await page.locator('.odp-comments-panel textarea.odp-comment-input').fill(v10CommentText)
-    await page.locator('.odp-comments-composer button.odp-button').click()
+  await step('comment-loop·V10 步骤②③（拾取入口）：agent 运行中经拾取发评论——thread.delivery 回写 delivered（落盘轮询承载；徽标形态由 V8 步骤断言）', async () => {
+    // V2 步骤③ 重进后预览态 = 拾取载体产物（pick-me.html，V2 的 UI 呈现复核落点）；
+    // 拾取 #main-title 为 id 级锚点（V8 已锁同产物 id 级，本步为通道探针载体——path 级
+    // 桌面覆盖由 web P2 全量锁值，锚点级别非 V10 判据核心）。sendCommentViaPick 内含
+    // 侧栏展开与就绪轮询。
+    await sendCommentViaPick(page, '#main-title', v10CommentText)
     // 等待第 3 线程真正落盘（既有 V8 两线程本就显示 Sent 徽标，以徽标为条件会被即时满足，
     // 读到追加前的旧文件——实测假红）。新线程 append 末尾（store.ts createCommentThread [...threads, thread]）。
     let threads = commentsThreads()
@@ -780,8 +851,12 @@ try {
     const latest = threads.at(-1)
     assert(threads.length === 3, `V10 评论应落盘为第 3 线程（V8 两探针 + V10）：${threads.length}`)
     assert(
-      latest.delivery === 'delivered' && latest.text === v10CommentText && latest.artifactPath === 'index.html',
+      latest.delivery === 'delivered' && latest.text === v10CommentText && latest.artifactPath === PICK_ARTIFACT_NAME,
       `V10 线程应 delivered 且挂靠/文本正确：${JSON.stringify({ delivery: latest.delivery, text: latest.text, artifactPath: latest.artifactPath })}`,
+    )
+    assert(
+      latest.anchor?.level === 'id' && latest.anchor?.sel === '#main-title',
+      `V10 拾取应产生 id 级锚点（拾取载体 #main-title）：${JSON.stringify(latest.anchor)}`,
     )
   })
 
