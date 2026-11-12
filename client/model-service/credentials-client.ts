@@ -117,16 +117,26 @@ export type PendingUnsetRegistration = { ok: true } | { ok: false; detail: strin
  * 调用方给用户可见降级提示（宿主凭据界面人工清理），Config 未被服务同理如实上报。
  */
 export async function registerPendingUnset(form: PluginConfigFormLike, ref: string): Promise<PendingUnsetRegistration> {
-  const snapshot = form.getSnapshot()
-  if (snapshot.status !== 'ready') return { ok: false, detail: '插件 Config 未被服务，待清理登记通道缺失' }
-  const pending = sanitizePending(sectionValue(snapshot)?.[PENDING_UNSETS_FIELD])
-  if (pending.includes(ref)) return { ok: true }
-  try {
-    await form.set(PENDING_UNSETS_FIELD, [...pending, ref])
-  } catch (error) {
-    return { ok: false, detail: error instanceof Error ? error.message : String(error) }
+  // 单次尝试：快照 → 幂等检查 → 整字段写回。form.set 被拒返回 false（业务失败 resolve 型，
+  // persist.ts 契约），不查返回值会把被拒当成功——登记谎报落盘 = AX9 要防的孤儿密钥形态。
+  const attemptOnce = async (): Promise<PendingUnsetRegistration> => {
+    const snapshot = form.getSnapshot()
+    if (snapshot.status !== 'ready') return { ok: false, detail: '插件 Config 未被服务，待清理登记通道缺失' }
+    const pending = sanitizePending(sectionValue(snapshot)?.[PENDING_UNSETS_FIELD])
+    if (pending.includes(ref)) return { ok: true }
+    try {
+      const accepted = await form.set(PENDING_UNSETS_FIELD, [...pending, ref])
+      return accepted ? { ok: true } : { ok: false, detail: '待清理登记写入被拒（Config revision 栅栏冲突）' }
+    } catch (error) {
+      return { ok: false, detail: error instanceof Error ? error.message : String(error) }
+    }
   }
-  return { ok: true }
+  const first = await attemptOnce()
+  if (first.ok) return first
+  // 被拒时宿主已自做一次镜像重读（ConfigFormLike.set 契约）——第二次尝试取重读后的最新
+  // 快照与栅栏，幂等合并后重发一次（route-store attemptCommit/commit 同款「一次重试」；
+  // 不重发则登记静默丢失）。连续失败如实返回 failed，让调用方走人工清理指引文案。
+  return await attemptOnce()
 }
 
 /** 重试结果（UI 与 verify 场景消费；removed/kept 都是 ref 名；kept = 清单实际仍持有的 ref）。 */
@@ -141,8 +151,9 @@ export interface PendingUnsetRetry {
  * 幂等重试待清理清单（打开分区时调用；D7/AX9「下次启动或打开分区时重试」的打开分区
  * 路径——插件装载（启动）路径的重试未实现，取舍登记见设计包 D7 采用段）：
  * 逐个 unset，成功即移出清单，失败保留；清单有变化才整字段写回（无变化零写入）。
- * 写回失败不外抛（挂载效应 void…then 链无 catch，section.tsx）：清单原样保留（快照未变，
- * removed 并回 kept 如实反映清单持有态），下次打开分区重试自愈（宿主 unset 幂等）。
+ * 写回被拒（set 返回 false）或传输失败都不外抛（挂载效应 void…then 链无 catch，
+ * section.tsx）：被拒先按重读快照重发一次，仍失败把 removed 并回 kept 如实反映清单
+ * 持有态（返回的 removed 不谎报已清理），下次打开分区重试自愈（宿主 unset 幂等）。
  */
 export async function retryPendingUnsets(form: PluginConfigFormLike, credentials: CredentialsRemoteLike): Promise<PendingUnsetRetry> {
   const snapshot = form.getSnapshot()
@@ -165,8 +176,21 @@ export async function retryPendingUnsets(form: PluginConfigFormLike, credentials
     }
   }
   if (removed.length > 0) {
+    // 写回 kept：被拒（false）或传输异常都不把 removed 谎报为已清理。被拒时宿主已自做一次
+    // 镜像重读（ConfigFormLike.set 契约）——重读快照后以「最新清单减去本次已清理」重发一次
+    // （他端窗口新登记的 ref 不丢）；连续失败把 removed 并回 kept（清单原样，下次打开分区
+    // 重试自愈——宿主 unset 幂等）。
     try {
-      await form.set(PENDING_UNSETS_FIELD, kept)
+      if (!await form.set(PENDING_UNSETS_FIELD, kept)) {
+        const fresh = form.getSnapshot()
+        const retryable = fresh.status === 'ready'
+        const next = retryable
+          ? sanitizePending(sectionValue(fresh)?.[PENDING_UNSETS_FIELD]).filter((item) => !removed.includes(item))
+          : kept
+        if (!retryable || !await form.set(PENDING_UNSETS_FIELD, next)) {
+          kept.push(...removed)
+        }
+      }
     } catch {
       kept.push(...removed)
     }

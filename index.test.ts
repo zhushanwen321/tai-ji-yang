@@ -348,6 +348,74 @@ describe('注册生命周期（RL9：空路由不注册 / 首路由注册 / 全�
   })
 })
 
+describe('注册失败诊断透传（settings.mutate 写入通道）', () => {
+  /** 假插件 Config：volatile 字段的 get 面（读通道合法；写通道已改走 settings.mutate）。 */
+  function fakeConfig() {
+    let diagnosis = ''
+    return {
+      routeRegistrationError: { get: () => diagnosis },
+      /** 模拟宿主 settings.mutate 提交后 volatile 引用的值更新（假 settings 只记录不写回）。 */
+      applyMutation: (value: string) => { diagnosis = value },
+    }
+  }
+
+  it('注册成功：零诊断写入、零失败日志（此前成功分支经 volatile .set 抛 TypeError 误报失败）', () => {
+    const host = createFakeHostRegistry([])
+    const holder = snapshotHolder([{ id: 'ok', name: 'OK', members: [] }], ['ok'])
+    const config = fakeConfig()
+    const adapter = createRouteAdapter({ readSnapshot: holder.readSnapshot, llm: host.llm, credentials: fakeCredentials(), readProviderProfiles: fakeProfiles({}), now: FIXED_NOW })
+    const dispose = ensureRouteRegistration(host.ctx, holder.readSnapshot, adapter, config)
+    expect(host.registeredIds()).toContain('taiji-route-ok')
+    expect(host.mutations).toEqual([]) // Config 无旧诊断 → 成功分支零写入
+    expect(host.errors).toEqual([]) // 无误报
+    dispose()
+  })
+
+  it('注册失败：诊断经 settings.mutate 写本命名空间 routeRegistrationError；重试成功后清除', () => {
+    const host = createFakeHostRegistry(['taiji-route-conflict'])
+    const holder = snapshotHolder([{ id: 'conflict', name: 'C', members: [] }], ['conflict'])
+    const config = fakeConfig()
+    const adapter = createRouteAdapter({ readSnapshot: holder.readSnapshot, llm: host.llm, credentials: fakeCredentials(), readProviderProfiles: fakeProfiles({}), now: FIXED_NOW })
+    const dispose = ensureRouteRegistration(host.ctx, holder.readSnapshot, adapter, config)
+    // 初始注册失败：诊断走 settings.mutate（ns = 本插件命名空间；ops 写 routeRegistrationError，
+    // 值形态 = 「origin scope: detail」——route-store.parseRegistrationError 的解析契约）。
+    expect(host.mutations).toHaveLength(1)
+    expect(host.mutations[0].ns).toBe('tai-ji-yang-shell')
+    expect(host.mutations[0].ops).toEqual([{
+      op: 'set',
+      path: ['routeRegistrationError'],
+      value: 'initial taiji-route-conflict: an adapter for provider "taiji-route-conflict" is already registered',
+    }])
+    expect(host.errors.filter((message) => message.includes('ROUTE_REGISTRATION_FAILED'))).toHaveLength(1)
+    // 宿主写回 + 释放冲突 → 同集合重试成功（facts 变化）→ Config 有旧诊断 → 清除写入。
+    config.applyMutation('initial taiji-route-conflict: an adapter for provider "taiji-route-conflict" is already registered')
+    host.releaseRoute('taiji-route-conflict')
+    host.fireVolatile()
+    expect(host.registeredIds()).toContain('taiji-route-conflict')
+    expect(host.mutations).toHaveLength(2)
+    expect(host.mutations[1].ops).toEqual([{ op: 'set', path: ['routeRegistrationError'], value: '' }])
+    // 清写触发的回声 volatile-update（facts 已前移、未变化）：不再追加写入（无空写）。
+    config.applyMutation('')
+    host.fireVolatile()
+    expect(host.mutations).toHaveLength(2)
+    expect(host.errors.filter((message) => message.includes('ROUTE_REGISTRATION_FAILED'))).toHaveLength(1)
+    dispose()
+  })
+
+  it('settings 服务缺席：诊断降级 warn 日志，注册链路与失败 error 日志不受影响', () => {
+    const host = createFakeHostRegistry(['taiji-route-conflict'])
+    const holder = snapshotHolder([{ id: 'conflict', name: 'C', members: [] }], ['conflict'])
+    const adapter = createRouteAdapter({ readSnapshot: holder.readSnapshot, llm: host.llm, credentials: fakeCredentials(), readProviderProfiles: fakeProfiles({}), now: FIXED_NOW })
+    const ctxWithoutSettings = { ...host.ctx, get: () => undefined }
+    const dispose = ensureRouteRegistration(ctxWithoutSettings, holder.readSnapshot, adapter)
+    expect(host.mutations).toEqual([])
+    expect(host.warnings.join('\n')).toContain('路由注册诊断未写入')
+    expect(host.errors.filter((message) => message.includes('ROUTE_REGISTRATION_FAILED'))).toHaveLength(1)
+    expect(host.registeredIds()).toEqual(['taiji-route-conflict']) // 宿主原有注册原样
+    dispose()
+  })
+})
+
 describe('成员级求值转发（V5：命中 / 回退 / 不命中跳过 vs 不可用终结）', () => {
   function setup(route: RouteEntry, options: { missingRefs?: string[]; members?: Record<string, FakeMemberConfig>; upstream?: (options: { provider: string; model: string }) => AsyncGenerator<Record<string, unknown>> } = {}) {
     const members = options.members ?? {
@@ -396,6 +464,29 @@ describe('成员级求值转发（V5：命中 / 回退 / 不命中跳过 vs 不�
     expect(error?.code).toBe('ROUTE_MEMBER_UNAVAILABLE')
     expect(error?.message).toContain('provider-a')
     expect(forwarded).toEqual([]) // 未静默换 B
+  })
+
+  it('预检读取失败与「真不在册」分开归因：detail 指向 read failed + 原始原因（码不变）', async () => {
+    // listProviders 抛错（RPC/传输失败）：不得吞成空表误报「provider 已不在册」。
+    const first = setup(twoMemberRoute(hitNow, { type: 'none' }))
+    first.llm.listProviders = async () => { throw new Error('rpc down') }
+    const error = await captureRejection(first.adapter.stream({ provider: 'taiji-route-demo', model: 'demo', messages: [] }))
+    expect(error?.code).toBe('ROUTE_MEMBER_UNAVAILABLE') // fail-closed 终结语义不变
+    expect(error?.message).toContain('read of provider registry failed')
+    expect(error?.message).toContain('rpc down')
+    // detail 前缀不撞三型归因（parseMemberUnavailableMessage 按 provider/model/credential 前缀
+    // 分派）：读取失败落 unknown 通用标注，不误报供应商已删。
+    expect(parseMemberUnavailableMessage(error?.message ?? '')).toMatchObject({ kind: 'unknown' })
+    expect(first.forwarded).toEqual([])
+
+    // listModels 抛错：不得误报「模型不在清单」。
+    const second = setup(twoMemberRoute(hitNow, { type: 'none' }))
+    second.llm.listModels = async () => { throw new Error('catalog down') }
+    const modelError = await captureRejection(second.adapter.stream({ provider: 'taiji-route-demo', model: 'demo', messages: [] }))
+    expect(modelError?.code).toBe('ROUTE_MEMBER_UNAVAILABLE')
+    expect(modelError?.message).toContain('read of model list failed')
+    expect(modelError?.message).toContain('catalog down')
+    expect(second.forwarded).toEqual([])
   })
 
   it('成员不可用终结：凭据缺失（V7 步骤 1-3，附成员与 ref）', async () => {
@@ -575,14 +666,18 @@ describe('求值纯函数对拍（Node 复刻 ↔ client 权威源，禁双实�
     expect(nodeSanitizeWhitelist(rawWhitelist)).toEqual(sanitizeWhitelist(rawWhitelist))
   })
 
-  it('特殊日期三形态求值双侧一致 + quota/combo 成员词表保留双侧同规差分（终态同步 F1-39/F1-10：差分集补全）', () => {
-    // 三种此前不在差分集的求值分支：include+mask / include 无掩码（全天）/ exclude 无掩码
-    // （isSlotCoveredAt 的 special 分支两侧逐行同构，漂移必须红灯）。
+  it('特殊日期四形态求值双侧一致 + quota/combo 成员词表保留双侧同规差分（终态同步 F1-39/F1-10：差分集补全）', () => {
+    // 四种求值分支：include+mask / include 无掩码（全天）/ exclude 无掩码 / exclude+mask
+    // （isSlotCoveredAt 的 special 分支两侧逐行同构，漂移必须红灯；exclude+mask 的期望值
+    // 锚定补齐前，该分支只有双侧一致断言，两侧同错漂移测不出）。
+    // 周表双格（周一 slot19/20）：exclude+mask 差分需要「周表命中 × mask 格内/格外」两个
+    // 正交时刻——mask 只放 slot20，slot19 留作 mask 格外的周表命中对照。
     const specials: RouteWindowMask = {
-      days: maskAt(0, 19).days,
+      days: Array.from({ length: 7 }, (_, d) => Array.from({ length: 48 }, (_, s) => d === 0 && (s === 19 || s === 20))),
       specialDates: [
         { date: '2026-01-05', name: '整日期剔除（无掩码）', mode: 'exclude' },
         { date: '01-06', name: '启用带掩码', mode: 'include', mask: Array.from({ length: 48 }, (_, s) => s === 19) },
+        { date: '02-02', name: '剔除带掩码', mode: 'exclude', mask: Array.from({ length: 48 }, (_, s) => s === 20) },
         { date: '03-08', name: '启用全天（无掩码）', mode: 'include' },
       ],
     }
@@ -595,13 +690,16 @@ describe('求值纯函数对拍（Node 复刻 ↔ client 权威源，禁双实�
       ],
     }
     // 期望值序列（防双侧共模漂移）：依次命中 exclude 无掩码 / include 掩码格 / include 掩码
-    // 非格 / include 全天 / 周表回落格。
+    // 非格 / exclude 掩码格外（周表命中）/ exclude 掩码格内（周表命中被剔除）/ include 全天 /
+    // 周表回落格。
     const moments = [
       { at: at(2026, 1, 5, 9, 30), expected: false }, // 2026-01-05 剔除无掩码 → false
       { at: at(2026, 1, 6, 9, 30), expected: true }, // 01-06 include 掩码 slot19 → true
       { at: at(2026, 1, 6, 10, 0), expected: false }, // 01-06 include 掩码 slot20 → false
+      { at: at(2026, 2, 2, 9, 30), expected: true }, // 02-02 exclude 掩码格外：周表 slot19 命中、mask[19]=false → true
+      { at: at(2026, 2, 2, 10, 0), expected: false }, // 02-02 exclude 掩码格内：周表 slot20 命中、mask[20]=true → false
       { at: at(2026, 3, 8, 14, 0), expected: true }, // 03-08 include 无掩码 → true
-      { at: at(2026, 2, 2, 9, 30), expected: true }, // 无特殊命中 → 周一 slot19 周表 → true
+      { at: at(2026, 1, 26, 9, 30), expected: true }, // 无特殊命中的周一 slot19 → 周表回落 → true
     ]
     for (const item of moments) {
       expect(nodeIsSlotCoveredAt(specials, item.at)).toBe(isSlotCoveredAt(specials, item.at))
@@ -697,6 +795,9 @@ describe('错误码词表界面侧映射（route-errors，词表三条）', () =
 function createFakeHostRegistry(initialRoutes: string[]) {
   const registry = new Set(initialRoutes)
   const errors: string[] = []
+  const warnings: string[] = []
+  /** settings.mutate 调用记录（诊断通道断言面：ns + ops）。 */
+  const mutations: { ns: string; ops: unknown[] }[] = []
   let commitCount = 0
   let volatileHandler: (() => void) | undefined
   let activeRoutes: string[] = []
@@ -709,6 +810,15 @@ function createFakeHostRegistry(initialRoutes: string[]) {
   }
 
   const ctx = {
+    // 宿主 settings 服务假件（SettingsForms.mutate 同形）：记录诊断写入调用，不真写盘。
+    get: (serviceName: string) =>
+      serviceName === 'settings'
+        ? {
+            mutate: async (ns: string, ops: unknown[]) => {
+              mutations.push({ ns, ops })
+            },
+          }
+        : undefined,
     llm: {
       registerAdapter: (providers: string[], adapter: { providerInfo: (provider: string) => { id: string; name: string } }) => {
         if (providers.length === 0) throw makeLlmError('INVALID_ADAPTER', 'an adapter must register at least one provider')
@@ -744,7 +854,7 @@ function createFakeHostRegistry(initialRoutes: string[]) {
     },
     logger: {
       error: (message: string) => { errors.push(typeof message === 'string' ? message : String(message)) },
-      warn: () => {},
+      warn: (message: string) => { warnings.push(typeof message === 'string' ? message : String(message)) },
     },
     on: (_event: string, handler: () => void) => {
       volatileHandler = handler
@@ -754,6 +864,8 @@ function createFakeHostRegistry(initialRoutes: string[]) {
   return {
     ctx,
     errors,
+    warnings,
+    mutations,
     get commitCount() {
       return commitCount
     },

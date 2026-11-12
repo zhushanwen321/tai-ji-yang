@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { moveMember, RoutesListModel, ROUTES_FIELD, WHITELIST_FIELD , parseRegistrationError } from './route-store'
 import type { PluginConfigFormLike } from './credentials-client'
 import type { ConfigFormSnapshotLike } from '../persist'
@@ -312,9 +312,11 @@ describe('renameRoute（改名重派生 + 白名单迁移，路由交互定稿 B
     expect(model.getSnapshot().routes[0].id).toBe('new-route')
     // 白名单迁移只动旧 id（悬挂条目 ghost 不受影响）。
     expect(model.getSnapshot().whitelist).toEqual(['new-route', 'ghost'])
+    // 提交次序先 whitelist 迁移后 routes 替换：两笔独立整字段写无跨字段事务，失败落在
+    // 第二笔 routes 侧时旧路由完整在场、新 id 只表现为悬挂条目（用户重试即可收敛）。
     expect(form.sets).toEqual([
-      { field: ROUTES_FIELD, value: model.getSnapshot().routes },
       { field: WHITELIST_FIELD, value: ['new-route', 'ghost'] },
+      { field: ROUTES_FIELD, value: model.getSnapshot().routes },
     ])
   })
 
@@ -349,6 +351,82 @@ describe('renameRoute（改名重派生 + 白名单迁移，路由交互定稿 B
     expect(await model.renameRoute('old', '   ')).toBeUndefined()
     expect(await model.renameRoute('missing', 'New')).toBeUndefined()
     expect(form.sets).toHaveLength(0)
+  })
+
+  it('共享 revision 推进 + 滞后镜像投递改名前内容：state 保持新 id + 单发收敛重写', async () => {
+    const before: RouteEntry[] = [{ id: 'old', name: 'Old', members: [] }]
+    const form = fakeConfigForm(routesSnapshot(before, ['old']))
+    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    await model.pending
+
+    const updated = await model.renameRoute('old', 'New')
+    expect(updated?.id).toBe('new')
+    // 滞后镜像投递改名前内容（revision 被其他命名空间写入推进到 5 > appliedRevision，
+    // 内容 = 覆写前值）：revision 栅栏放行，内容级回放守卫须拦下——rename 走
+    // writeRoutesAndWhitelist 原子提交通道（登记齐全），滞后内容命中 preImages 不采纳。
+    // （修复前：rename 裸 commit 绕过 trackPreImage/lastWritten 登记，lastWritten 为
+    // undefined 时内容守卫不触发，滞后内容被当外部变更采纳，route id 弹回旧值。）
+    const setsBefore = form.sets.length
+    form.deliver({ status: 'ready', value: { routes: before, whitelist: ['old'] }, revision: 5, writable: true })
+    await settle()
+    await settle()
+    expect(model.getSnapshot().routes.map((route) => route.id)).toEqual(['new'])
+    expect(model.getSnapshot().whitelist).toEqual(['new'])
+    // 单发收敛重写恰好一轮（ROUTES + WHITELIST 两个裸 set）。
+    expect(form.sets.length).toBe(setsBefore + 2)
+    // 同内容再次投递：reconciledFor 防抖，不再重写。
+    form.deliver({ status: 'ready', value: { routes: before, whitelist: ['old'] }, revision: 6, writable: true })
+    await settle()
+    await settle()
+    expect(form.sets.length).toBe(setsBefore + 2)
+    expect(model.getSnapshot().routes.map((route) => route.id)).toEqual(['new'])
+  })
+
+  it('滞后镜像投递两笔之间的中间态（routes 旧 + whitelist 新）：同样命中回放守卫不采纳', async () => {
+    const before: RouteEntry[] = [{ id: 'old', name: 'Old', members: [] }]
+    const form = fakeConfigForm(routesSnapshot(before, ['old']))
+    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    await model.pending
+
+    await model.renameRoute('old', 'New')
+    // 中间态（第一笔已落盘、第二笔未达的镜像快照）：由原子通道的 trackPreImageContent
+    // 登记（routes 旧 + whitelist 新），命中 preImages → 不当外部变更采纳（否则会话写入
+    // 权威让位，乐观 routes 弹回）。
+    form.deliver({
+      status: 'ready',
+      value: { routes: before, whitelist: ['new'] },
+      revision: 5,
+      writable: true,
+    })
+    await settle()
+    await settle()
+    expect(model.getSnapshot().routes.map((route) => route.id)).toEqual(['new'])
+    expect(model.getSnapshot().whitelist).toEqual(['new'])
+  })
+
+  it('改名全程零中间态 notify：乐观更新一次到位，新 id 不闪现「路由已删除」标注（MF-2-3）', async () => {
+    const before: RouteEntry[] = [{ id: 'old', name: 'Old', members: [] }]
+    const form = fakeConfigForm(routesSnapshot(before, ['old']))
+    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    await model.pending
+    const observed: { routes: string[]; whitelist: string[]; hanging: string[] }[] = []
+    model.subscribe(() => {
+      const snap = model.getSnapshot()
+      observed.push({ routes: snap.routes.map((route) => route.id), whitelist: [...snap.whitelist], hanging: [...snap.hanging] })
+    })
+
+    await model.renameRoute('old', 'New')
+    // 每一帧 notify 都不得呈现中间态：whitelist 已迁移新 id 而 routes 仍旧（新 id 判悬挂）
+    // 的帧在分两笔提交时可见（修复前首帧 hanging = ['new']），原子通道一帧到位。
+    expect(observed.length).toBeGreaterThan(0)
+    for (const frame of observed) {
+      expect(frame.hanging).not.toContain('new')
+      if (frame.whitelist.includes('new')) expect(frame.routes).toContain('new')
+    }
+    const final = model.getSnapshot()
+    expect(final.routes.map((route) => route.id)).toEqual(['new'])
+    expect(final.whitelist).toEqual(['new'])
+    expect(final.hanging).toEqual([])
   })
 })
 
@@ -434,6 +512,28 @@ describe('内容级回放守卫（共享 revision 计数下滞后内容蒙混栅
     expect(model.getSnapshot().whitelist).toEqual(['other-route', 'another'])
   })
 
+  it('收敛重写被拒不置位 reconciledFor：下一次同内容投递能再次尝试收敛', async () => {
+    const form = fakeConfigForm(whitelistSnapshot(1, []))
+    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    await model.pending
+    await model.toggleWhitelist('verify-route')
+    // 滞后内容投递，但收敛重写的两个裸 set 均被宿主拒绝（返回 false 不抛异常）——
+    // 不置位 reconciledFor（修复前：先置位，被拒后同内容投递永久跳过收敛）。
+    form.setAccepted = false
+    form.deliver(whitelistSnapshot(5, []))
+    await settle()
+    await settle()
+    // 乐观状态保留（滞后内容未采纳），收敛尝试发生过（两个被拒的裸 set）。
+    expect(model.getSnapshot().whitelist).toEqual(['verify-route'])
+    const setsAfterRefused = form.sets.length
+    // 同内容再次投递（revision 继续前进）：再次尝试收敛一轮（ROUTES + WHITELIST）。
+    form.deliver(whitelistSnapshot(6, []))
+    await settle()
+    await settle()
+    expect(form.sets.length).toBe(setsAfterRefused + 2)
+    expect(model.getSnapshot().whitelist).toEqual(['verify-route'])
+  })
+
   it('删除路由的悬挂在乐观更新即重算（不等镜像回读——V6 步骤 4 的可观察事实不再依赖滞后镜像）', async () => {
     const form = fakeConfigForm(whitelistSnapshot(1, ['verify-route']))
     const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
@@ -447,6 +547,75 @@ describe('内容级回放守卫（共享 revision 计数下滞后内容蒙混栅
   })
 })
 
+
+describe('注册探测降级（读取失败不标注 + 近期写入宽限）', () => {
+  it('listProviders 读取失败（探测不可用）：registrationFailed 不标注（与 memberAvailability 同口径）', async () => {
+    const remote = fakeRemote()
+    // 注册表读取整链失败（RPC 拒绝）：修复前降级为空集 → 差集判定把全部路由误标红。
+    remote.llm.listProviders = async () => { throw new Error('rpc down') }
+    const form = fakeConfigForm(routesSnapshot([{ id: 'r1', name: 'R1', members: [] }], []))
+    const model = new RoutesListModel({ remote, configForm: form })
+    await model.pending
+    expect(model.getSnapshot().registrationFailed).toEqual([])
+  })
+
+  it('近期写入宽限：写入后探测先于注册执行不标失败；宽限过期后的探测照常标注', async () => {
+    // 只伪造 Date（settle 的 setTimeout 保持真实）：宽限判定基于 writtenAt 与探测时刻差。
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const remote = fakeRemote() // 注册表恒空 = 差集恒在
+      const form = fakeConfigForm(routesSnapshot([], []))
+      const model = new RoutesListModel({ remote, configForm: form })
+      await model.pending
+      // 本会话刚写入 fresh（writtenAt = 当前时刻）：探测 RPC 与 Node 半场注册执行无先后
+      // 保证，宽限窗（5s）内差集不标失败（防新建路由的暂态假失败）。
+      await model.createRoute('Fresh')
+      expect(model.getSnapshot().routes.map((route) => route.id)).toEqual(['fresh'])
+      expect(model.getSnapshot().registrationFailed).toEqual([])
+      // 宽限过期（5s + 1s 余量）后的下一次探测：照常标注。
+      vi.advanceTimersByTime(6000)
+      await model.load()
+      expect(model.getSnapshot().registrationFailed).toEqual(['fresh'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('whitelist 写入不重置既有失败路由标注（宽限锚定 routes 写入时刻，MF-2-2）', async () => {
+    const remote = fakeRemote() // 注册表恒空 = 注册恒失败
+    // 初始路由非本会话写入（lastWritten 无 routes 写入历史，无宽限）：pending 后标注在场。
+    const form = fakeConfigForm(routesSnapshot([{ id: 'a', name: 'A', members: [] }], []))
+    const model = new RoutesListModel({ remote, configForm: form })
+    await model.pending
+    expect(model.getSnapshot().registrationFailed).toEqual(['a'])
+
+    // 勾选该路由（whitelist 写入，触发 commit 内重读 + probeDerived）：修复前 writeWhitelist
+    // 同样刷新宽限时刻 → 全部路由进宽限集 → 红徽消失且此后无新 load 即不恢复（whitelist
+    // 不影响注册集合，注册状态未变）；修复后宽限仍锚定 routes 写入（本会话无）→ 标注保持。
+    await model.toggleWhitelist('a')
+    expect(model.getSnapshot().registrationFailed).toEqual(['a'])
+  })
+
+  it('routes 写入的宽限窗不被后续 whitelist 写入清除（锚点保留，非清空）', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const remote = fakeRemote()
+      const form = fakeConfigForm(routesSnapshot([], []))
+      const model = new RoutesListModel({ remote, configForm: form })
+      await model.pending
+      await model.createRoute('Fresh') // routes 写入 → routesWrittenAt = t0
+      expect(model.getSnapshot().registrationFailed).toEqual([]) // 宽限内不标
+      await model.toggleWhitelist('fresh') // whitelist 写入：锚点保留（修复不清除宽限）
+      expect(model.getSnapshot().registrationFailed).toEqual([])
+      // 自 t0 起算宽限过期（whitelist 写入不推迟锚点）后的下一次探测：照常标注。
+      vi.advanceTimersByTime(6000)
+      await model.load()
+      expect(model.getSnapshot().registrationFailed).toEqual(['fresh'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
 
 describe('parseRegistrationError（Node 半场诊断透传的解析）', () => {
   it('标准形态：origin + provider id 集 + detail，id 剥 taiji-route- 前缀', () => {

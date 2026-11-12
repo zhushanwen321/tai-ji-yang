@@ -8,9 +8,10 @@
  * revision 快照约定（expectedRevision 取自展开体打开时与保存成功回执，保存不重取）、
  * settings/conflict 的重读一次重试一次（非盲重试，对齐 client/persist.ts:177-205 先例形态）、
  * 读改写只发字段级 path ops（不整替换既有 profile——宿主「模型」分区写的字段不丢；
- * models[] 条目级未建模字段经 ModelDraft.raw 并回，MF-1-5）、写入后回读校验（宿主 schema
- * 未声明的静默接受字段标注「宿主不消费」，AS17；回执与写入值逐 op 比对，不符按 rejected
- * 上报，MF-1-14）。
+ * models[] 条目级未建模字段经 ModelDraft.raw 并回，MF-1-5）；写入后回读校验（宿主 schema
+ * 未声明的静默接受字段标注「宿主不消费」，AS17；回执与写入值逐 op 覆盖比对——回执是
+ * schema 物化投影、多出的默认键不视为不符，写入值内的键缺失或被改写按 rejected 上报，
+ * MF-1-14 / MF-2-1）。
  *
  * 保存顺序（D3/D7 锚定，检查点 U1）：provider key 预检 → 凭据 ref 查重 → settings.mutate →
  * credentials.set。查重命中任一即拒绝，后两环节零执行——设置文档与凭据文件零写入。
@@ -524,9 +525,10 @@ export async function saveProvider(host: ModelServiceHost, params: SaveProviderP
   // 写入后回读校验（AS17）：mutate 返回视图即写入后快照，schema 未声明字段标注「宿主不消费」。
   const writtenProfile = readWrittenProfile(view, draft.key)
   const undeclared = undeclaredFieldPaths(writtenProfile)
-  // 写入产物实质校验（MF-1-14）：回执与本次 ops 目标值逐 op 比对——不符（宿主静默丢弃或
-  // 改写字段）按 rejected 上报而非静默 saved，UI 不得在产物缺失时呈现成功。
-  const missedFields = verifyWrittenOps(ops, writtenProfile)
+  // 写入产物实质校验（MF-1-14 / MF-2-1）：回执与本次 ops 目标值逐 op 覆盖比对——写入值
+  // 内的键缺失或被改写（宿主静默丢弃或改写字段）按 rejected 上报而非静默 saved，UI 不得
+  // 在产物缺失时呈现成功；回执多出的物化默认键忽略（existing 供 unset op 的原值比对）。
+  const missedFields = verifyWrittenOps(ops, writtenProfile, existing)
   if (missedFields.length > 0) {
     return { kind: 'rejected', message: writeMismatchMessage(missedFields) }
   }
@@ -590,6 +592,7 @@ export interface DeleteProviderParams {
  */
 export async function deleteProvider(host: ModelServiceHost, params: DeleteProviderParams): Promise<DeleteProviderResult> {
   const ops: SettingsOp[] = [{ op: 'unset', path: ['providers', params.key] }]
+  let view: SettingsNamespaceViewLike
   const first = await host.settings.mutate(LLM_PI_AI_NS, ops, undefined)
   if (!first.ok) {
     if (first.error.code !== 'settings/conflict') {
@@ -600,6 +603,16 @@ export async function deleteProvider(host: ModelServiceHost, params: DeleteProvi
     if (!second.ok) {
       return { kind: 'rejected', message: settingsConflictFailureMessage(params.key, second.error.message, fresh.revision) }
     }
+    view = second.value
+  } else {
+    view = first.value
+  }
+  // 删除产物实质校验（MF-2-5，saveProvider/writeProviderModels 同款口径）：mutate 回执即
+  // 写入后快照——整条 unset 期望回执里该 key 缺席；条目仍在 = 宿主静默吞掉 unset，按
+  // rejected 上报而非静默 deleted（否则 UI 报已删而条目下次 load 复活，删除回弹无错误归因）。
+  const missedFields = verifyWrittenOps(ops, readWrittenProfile(view, params.key), params.existing)
+  if (missedFields.length > 0) {
+    return { kind: 'rejected', message: deleteMismatchMessage(missedFields) }
   }
 
   const ref = typeof params.existing?.apiKeyEnv === 'string' ? params.existing.apiKeyEnv : undefined
@@ -664,8 +677,12 @@ export async function writeProviderModels(remote: ModelServiceHost, key: string,
     ? [{ op: 'set', path: ['providers', key, 'models'], value: models }]
     : [{ op: 'unset', path: ['providers', key, 'models'] }]
   let view: SettingsNamespaceViewLike
+  // 存量 profile（写入前快照，物化视图）：空清单 unset 的产物校验用它比对「字段仍是
+  // 原值」——物化回执下缺席字段被补为默认值，只有仍等于原值才是「未执行 unset」。
+  let existingProfile: HostProviderProfile | undefined
   try {
     const snapshot = await readLlmPiAi(remote.settings)
+    existingProfile = snapshot.providers[key]
     const first = await remote.settings.mutate(LLM_PI_AI_NS, ops, snapshot.revision)
     if (!first.ok) {
       if (first.error.code !== 'settings/conflict') {
@@ -673,6 +690,7 @@ export async function writeProviderModels(remote: ModelServiceHost, key: string,
       }
       // 非盲重试：重读最新 revision 后同形 ops 再发一次（path ops 按存储视图解析，AS11）。
       const fresh = await readLlmPiAi(remote.settings)
+      existingProfile = fresh.providers[key]
       const second = await remote.settings.mutate(LLM_PI_AI_NS, ops, fresh.revision)
       if (!second.ok) {
         return { kind: 'rejected', message: modelsConflictFailureMessage(key, second.error.message, fresh.revision) }
@@ -685,9 +703,10 @@ export async function writeProviderModels(remote: ModelServiceHost, key: string,
     return { kind: 'rejected', message: `模型清单写入失败：${messageOf(error)}。请确认宿主设置服务可用后重试。` }
   }
   const writtenProfile = readWrittenProfile(view, key)
-  // 写入产物实质校验（MF-1-14，saveProvider 同款）：回执 models 与写入值不符 = 宿主静默
-  // 丢弃或改写——按 rejected 上报而非静默 saved。
-  const missedFields = verifyWrittenOps(ops, writtenProfile)
+  // 写入产物实质校验（MF-1-14 / MF-2-1，saveProvider 同款）：回执 models 与写入值覆盖
+  // 比对——写入值内的条目/字段缺失或被改写 = 宿主静默丢弃或改写，按 rejected 上报而非
+  // 静默 saved；回执物化补齐的默认键（条目 compat 嵌套键等）忽略。
+  const missedFields = verifyWrittenOps(ops, writtenProfile, existingProfile)
   if (missedFields.length > 0) {
     return { kind: 'rejected', message: writeMismatchMessage(missedFields) }
   }
@@ -741,31 +760,70 @@ function providerTakenMessage(key: string): string {
 }
 
 /**
- * 写入产物实质校验（MF-1-14）：mutate 回执是写入后快照——逐 op 比对回执与本次目标值。
- * set op 的值须出现在回执（deepEqual），unset op 的字段须缺席；整条 set（providers.<key>）
- * 比对整条 profile。返回不符项清单（整条不符标注 key），空数组 = 产物与写入值一致。
+ * 写入产物实质校验（MF-1-14；MF-2-1 修正比对语义）：mutate 回执是写入后快照——逐 op
+ * 比对回执与本次目标值。宿主回执不是逐字回显：settings.describe().find(ns) 的视图是
+ * schema 物化投影，profile schema 的 .default(...) 字段在回执里被补齐（宿主实测 5 键
+ * 写入物化为 14 键——补 models:[] / compat 嵌套默认键等），逐字整体相等在真实宿主恒
+ * false、把实际成功的写入误报成 rejected 假失败。比对语义因此取覆盖判定「写入值 ⊆
+ * 回执」（coversWritten）：写入值的每个键在回执中逐字段相等即通过，回执多出的物化
+ * 默认键忽略；写入值内的键缺失或被改写仍按 rejected 上报（MF-1-14 的检测力不降）。
+ * unset op 的字段判定：物化投影会把文档侧缺席补成默认值，故「字段在回执在场」不再
+ * 直接判不符——在场且仍等于存量原值（existing 取自 describe 的物化视图，两侧同为
+ * 物化形态、可比）才判「宿主未执行 unset」；值已变为非原值 = unset 落地后的物化默认。
+ * 返回不符项清单（整条不符标注 key），空数组 = 产物与写入值一致。
  */
-function verifyWrittenOps(ops: SettingsOp[], written: HostProviderProfile): string[] {
+function verifyWrittenOps(ops: SettingsOp[], written: HostProviderProfile, existing: HostProviderProfile | undefined): string[] {
   const missed: string[] = []
   for (const op of ops) {
     if (op.path.length <= 2) {
-      if (op.op === 'set' && !deepEqualJson(written, op.value)) missed.push(`${String(op.path[1])}（整条）`)
+      if (op.op === 'set' && op.value !== undefined && !coversWritten(written, op.value)) missed.push(`${String(op.path[1])}（整条）`)
+      // 整条 unset（deleteProvider 的 providers.<key>）产物判据：回执里该 key 缺席
+      //（readWrittenProfile 读不到回落空对象；物化投影只对在场 profile 补默认键，缺席
+      // 不会凭空补出）——非空 = 宿主静默吞掉 unset，条目实际未删（MF-2-5）。
+      else if (op.op === 'unset' && Object.keys(written).length > 0) missed.push(`${String(op.path[1])}（整条未删除）`)
       continue
     }
     const field = op.path[2]
     if (typeof field !== 'string') continue
     if (op.op === 'set') {
-      if (!deepEqualJson(written[field], op.value)) missed.push(field)
-    } else if (written[field] !== undefined) {
-      missed.push(field)
+      if (!coversWritten(written[field], op.value)) missed.push(field)
+    } else {
+      const after = written[field]
+      // 未执行 unset 的强信号：回执字段仍等于存量原值（字段缺席或已变为默认物化值 = 已执行）。
+      if (after !== undefined && existing?.[field] !== undefined && deepEqualJson(after, existing[field])) missed.push(field)
     }
   }
   return missed
 }
 
+/**
+ * 覆盖判定（MF-2-1）：expected 的每个键在 actual 中递归相等即通过；actual 多出的键
+ * （宿主 schema 物化补齐的默认键）忽略。数组要求同长逐项——宿主物化只补条目内字段、
+ * 不增删重排条目，逐项覆盖天然覆盖「按条目 id 锚定」的建模字段比对，条目内 raw 并回
+ * 的未知字段同样在覆盖面内（宿主静默丢弃它们时照常上报）。
+ */
+function coversWritten(actual: unknown, expected: unknown): boolean {
+  if (actual === expected) return true
+  if (expected === undefined) return false
+  if (Array.isArray(expected)) {
+    if (!Array.isArray(actual) || actual.length !== expected.length) return false
+    return expected.every((item, index) => coversWritten(actual[index], item))
+  }
+  if (isRecord(expected)) {
+    if (!isRecord(actual)) return false
+    return Object.entries(expected).every(([key, value]) => coversWritten(actual[key], value))
+  }
+  return false
+}
+
 /** 回执与写入值不符的上报文案（MF-1-14）。 */
 function writeMismatchMessage(missed: string[]): string {
   return `写入已提交，但宿主回执与写入值不符（${missed.join('、')}）——内容可能被宿主静默丢弃或改写；请重试一次，仍失败请检查宿主模型适配器版本。`
+}
+
+/** 删除回执与预期不符的上报文案（MF-2-5，writeMismatchMessage 的整条 unset 同构）。 */
+function deleteMismatchMessage(missed: string[]): string {
+  return `删除已提交，但宿主回执仍含该条目（llm-pi-ai 命名空间 providers 段 ${missed.join('、')}）——删除可能被宿主静默忽略，条目或仍存在；请重试一次，仍失败请重新打开本分区确认条目状态。`
 }
 
 /** 连续冲突的四段式文案（本包 + 命名空间与字段 + 事实 + 出路，对齐 persist.ts 口径）。 */

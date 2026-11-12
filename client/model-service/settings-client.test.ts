@@ -49,9 +49,47 @@ function makeRecorder() {
   }
 }
 
+/**
+ * 宿主回执的 schema 物化投影最小模拟（MF-2-1）：宿主 describe/mutate 回执不是逐字回显
+ * ——宿主侧 settings 视图来自 fiber 运行时配置的 projectForm 物化，profile schema 的
+ * .default(...) 字段在回执里被补齐（宿主实测 5 键写入物化为 14 键：补 models:[] /
+ * compat 嵌套默认键等）。此处模拟代表性子集（顶层默认键 + models 缺席补空清单 +
+ * 条目 compat 嵌套默认键），不追求精确复刻宿主全部物化键——「回执 ⊋ 写入值」的形态
+ * 在场即锁定 verifyWrittenOps 的覆盖比对语义。显式键优先于默认键（物化不覆盖用户写入）。
+ */
+const MATERIALIZED_PROFILE_DEFAULTS: Readonly<Record<string, unknown>> = {
+  defaultContextWindow: 8192,
+  defaultMaxTokens: 4096,
+  timeoutMs: 600000,
+}
+const MATERIALIZED_MODEL_COMPAT_DEFAULTS: Readonly<Record<string, unknown>> = {
+  supportsSystemRole: true,
+  supportsDeveloperRole: true,
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** 存储视图 → 物化回执投影（不改存储本身：describe/mutate 的回执按此生成）。 */
+function materializeProfile(profile: unknown): unknown {
+  if (!isPlainRecord(profile)) return profile
+  const projected: Record<string, unknown> = { ...MATERIALIZED_PROFILE_DEFAULTS, ...profile }
+  if (projected.models === undefined) projected.models = []
+  if (Array.isArray(projected.models)) {
+    projected.models = projected.models.map((entry) => {
+      if (!isPlainRecord(entry)) return entry
+      const compat = isPlainRecord(entry.compat) ? entry.compat : {}
+      return { ...entry, compat: { ...MATERIALIZED_MODEL_COMPAT_DEFAULTS, ...compat } }
+    })
+  }
+  return projected
+}
+
 /** 假 settings remote：可脚本化的 describe/mutate（bumpRevision 供冲突场景模拟他写者提交；
  * 返回按宿主 typert 网关真实形态包 RemoteResult，业务失败由 mutateImpl 注入 {ok:false}；
- * 默认成功分支按宿主语义把 path ops 应用到存储视图再回执——写入产物校验 MF-1-14 的真值底座）。 */
+ * 默认成功分支按宿主语义把 path ops 应用到存储视图、回执按物化投影生成（describe 同款）
+ * ——写入产物校验 MF-1-14/MF-2-1 的真值底座：回执含写入值之外被补齐的物化默认键。 */
 function fakeSettings(options: {
   providers?: Record<string, unknown>
   revision?: number
@@ -63,6 +101,11 @@ function fakeSettings(options: {
   const mutations: { ns: string; ops: SettingsOp[]; revision?: number }[] = []
   const section: Record<string, unknown> = options.providers ?? {}
   let revision = options.revision ?? 7
+  const projectSection = (): Record<string, unknown> => {
+    const projected: Record<string, unknown> = {}
+    for (const [key, profile] of Object.entries(section)) projected[key] = materializeProfile(profile)
+    return projected
+  }
   return {
     mutations,
     bumpRevision() { revision += 1 },
@@ -73,7 +116,7 @@ function fakeSettings(options: {
           writable: true,
           namespaces: [{
             ns: 'llm-pi-ai',
-            value: { providers: section },
+            value: { providers: projectSection() },
             revision,
           }],
         },
@@ -94,13 +137,13 @@ function fakeSettings(options: {
         }
         const field = op.path[2] as string
         if (op.op === 'set') {
-          if (typeof section[key] !== 'object' || section[key] === null) section[key] = {}
+          if (!isPlainRecord(section[key])) section[key] = {}
           ;(section[key] as Record<string, unknown>)[field] = op.value
         } else if (section[key] !== undefined) {
           delete (section[key] as Record<string, unknown>)[field]
         }
       }
-      return { ok: true, value: { ns: 'llm-pi-ai', value: { providers: section }, revision } }
+      return { ok: true, value: { ns: 'llm-pi-ai', value: { providers: projectSection() }, revision } }
     },
   }
 }
@@ -660,6 +703,30 @@ describe('deleteProvider 删除链路（D3/D7）', () => {
     if (result.kind === 'deleted') expect(result.pendingUnset).toBeUndefined()
     expect(recorder.calls).not.toContain('credentials.unset')
   })
+
+  it('删除回执条目仍在（宿主静默吞 unset）→ rejected 上报而非静默 deleted（MF-2-5）', async () => {
+    const recorder = makeRecorder()
+    const retained = { apiKeyEnv: deriveCredentialRef('verify-a'), displayName: 'Verify A', models: [] as unknown[] }
+    const settings = fakeSettings({
+      providers: { 'verify-a': retained },
+      // 宿主回 ok 回执但未执行 unset——回执仍含该条目（物化形态，含物化补齐的 models:[]）。
+      mutateImpl: (ns) => Promise.resolve({ ok: true as const, value: { ns, value: { providers: { 'verify-a': retained } }, revision: 9 } }),
+    })
+    const credentials = fakeCredentials([], recorder)
+    const host = makeHost({ settings, credentials })
+    const result = await deleteProvider(host, {
+      key: 'verify-a',
+      existing: { apiKeyEnv: deriveCredentialRef('verify-a') },
+      crossProfileConfirmed: true,
+      registerPendingUnset: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('rejected')
+    if (result.kind !== 'rejected') return
+    expect(result.message).toContain('verify-a（整条未删除）')
+    expect(result.message).toContain('重新打开本分区')
+    // rejected 短路在凭据处置之前：条目未删成，不该动凭据。
+    expect(recorder.calls).not.toContain('credentials.unset')
+  })
 })
 
 describe('provider-key 消费方集成（AX11）', () => {
@@ -1053,13 +1120,81 @@ describe('写入产物实质校验（MF-1-14：回执与写入值不符不静默
     expect(result.message).toContain('models')
   })
 
-  it('unset op 的字段仍留在回执 → 同样不符（删除路径的产物校验）', async () => {
+  it('unset op 的字段仍是存量原值 → 不符（删除路径的产物校验；物化默认值在场不算）', async () => {
     const settings = fakeSettings({
       providers: { yanshi: { displayName: 'Y', models: [{ id: 'm1', name: 'M1', input: ['text'] }] } },
-      // 宿主未执行 unset（schema 静默容忍 models 字段）——回执仍含该字段。
-      mutateImpl: (ns) => Promise.resolve({ ok: true as const, value: { ns, value: { providers: { yanshi: { displayName: 'Y', models: [{ id: 'm1', name: 'M1', input: ['text'] }] } } }, revision: 9 } }),
+      // 宿主未执行 unset（schema 静默容忍 models 字段）——回执仍含该字段且等于存量原值。
+      // 注入回执按物化形态构造（条目带 compat 默认键）：existing 取自 describe 的物化视图，
+      // 两侧同为物化形态才可比（MF-2-1 的 unset 判定源）。
+      mutateImpl: (ns) => Promise.resolve({
+        ok: true as const,
+        value: { ns, value: { providers: { yanshi: materializeProfile({ displayName: 'Y', models: [{ id: 'm1', name: 'M1', input: ['text'] }] }) } }, revision: 9 },
+      }),
     })
     const result = await writeProviderModels(makeHost({ settings }), 'yanshi', [])
     expect(result.kind).toBe('rejected')
+  })
+})
+
+// ── 评审修复 r2（G2 组：MF-2-1 覆盖比对语义）────────────────────────────────────
+
+describe('物化回执的覆盖比对（MF-2-1：写入值 ⊆ 回执，物化默认键不误报）', () => {
+  it('新建保存：宿主物化回执（写入 3 键 → 回执补默认键与 models:[]）照常 saved，物化键不进 undeclared', async () => {
+    const settings = fakeSettings({ revision: 7 })
+    const result = await saveProvider(makeHost({ settings }), {
+      // 全表单新建不写密钥、目录默认态空清单：写入值 = displayName/api/baseURL 3 键；
+      // 宿主物化回执补 defaultContextWindow/defaultMaxTokens/timeoutMs 与 models:[]。
+      draft: { ...baseDraft, apiKeyValue: '', models: [] },
+      revision: 7,
+      existing: undefined,
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('saved')
+    if (result.kind !== 'saved') return
+    // 「回执 ⊋ 写入值」形态在场（防 fake 物化表退化回原样回显、用例失锁）：
+    expect(result.profile.models).toEqual([]) // 写入值无 models 键，回执物化补空清单
+    expect('defaultContextWindow' in result.profile).toBe(true)
+    expect(Object.keys(result.profile).length).toBeGreaterThan(3)
+    // 物化补的键均 schema 声明，不误标「宿主不消费」。
+    expect(result.undeclared).toEqual([])
+  })
+
+  it('writeProviderModels：回执条目物化补 compat 嵌套默认键照常 saved（真实宿主恒假失败形态的回归锁）', async () => {
+    const settings = fakeSettings({ providers: { yanshi: { displayName: 'Yanshi' } }, revision: 7 })
+    const models = [{ id: 'm1', name: 'M1', input: ['text'], reasoningEfforts: false }]
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', models)
+    expect(result.kind).toBe('saved')
+    if (result.kind !== 'saved') return
+    // 回执条目带物化 compat 键（写入值无 compat）——覆盖比对忽略多出键，写入字段逐项相等。
+    const writtenModel = Array.isArray(result.profile.models) ? (result.profile.models[0] as Record<string, unknown>) : undefined
+    expect(writtenModel?.compat).toEqual({ supportsSystemRole: true, supportsDeveloperRole: true })
+    expect(writtenModel?.reasoningEfforts).toBe(false)
+    expect(result.undeclared).toEqual([])
+  })
+
+  it('空清单 unset：物化回执把缺席 models 补为默认 [] 照常 saved（不是「字段仍在」）', async () => {
+    const settings = fakeSettings({ providers: { yanshi: { displayName: 'Y', models: [{ id: 'm1', name: 'M1', input: ['text'] }] } }, revision: 3 })
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', [])
+    expect(result.kind).toBe('saved')
+  })
+
+  it('写入值字段被宿主改写（非物化补键）仍 rejected：覆盖语义不降 MF-1-14 检测力', async () => {
+    const settings = fakeSettings({
+      providers: { 'verify-a': { displayName: 'Old', api: 'openai-completions', baseURL: 'http://old/v1' } },
+      // 回执把本次 set 的 baseURL 改写成另一值（写入值内的键被改写 ≠ 物化补键）——覆盖判定抓到。
+      mutateImpl: (ns) => Promise.resolve({ ok: true as const, value: { ns, value: { providers: { 'verify-a': { displayName: 'New Name', api: 'openai-completions', baseURL: 'http://hijacked/v1' } } }, revision: 9 } }),
+    })
+    const result = await saveProvider(makeHost({ settings }), {
+      draft: {
+        key: 'verify-a', isNew: false, narrow: false, displayName: 'New Name', baseURL: 'http://new/v1',
+        api: 'openai-completions', apiKeyValue: '', compat: {}, models: [],
+      },
+      revision: 7,
+      existing: { displayName: 'Old', api: 'openai-completions', baseURL: 'http://old/v1' },
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('rejected')
+    if (result.kind !== 'rejected') return
+    expect(result.message).toContain('baseURL')
   })
 })

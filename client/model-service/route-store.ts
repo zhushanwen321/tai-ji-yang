@@ -43,6 +43,12 @@ import type { PluginConfigFormLike } from './credentials-client'
 export const ROUTES_FIELD = 'routes'
 /** 白名单 Config 字段名（index.js Config 声明）。 */
 export const WHITELIST_FIELD = 'whitelist'
+/**
+ * 注册探测的近期写入宽限窗（毫秒）：本会话写入 routes 后，探测 RPC 可能先于 Node 半场
+ * ensureRouteRegistration 的注册执行返回（无先后保证），窗口内差集不标注册失败；volatile
+ * 更新链路的注册重试由宿主事件驱动，亚秒级完成，5 秒窗覆盖注册执行 + 一次事件传播的余量。
+ */
+const REGISTRATION_PROBE_GRACE_MS = 5000
 
 /** 成员可用性标注（G18 三型；providerMissing = 供应商已删）。 */
 export interface MemberAvailability {
@@ -105,14 +111,22 @@ export class RoutesListModel {
   /**
    * 本会话最近一次成功写入的 (routes, whitelist)（镜像回显对账基准）：load 的内容级回放
    * 守卫据此区分「自己写入的回显 / 滞后回放 / 外部变更」三态。undefined = 本会话尚未成功
-   * 写入（或双败后交还权威）——镜像内容无条件采纳。
+   * 写入（或双败后交还权威）——镜像内容无条件采纳。writtenAt 供回放守卫的世代序参考；
+   * routesWrittenAt 供注册探测的近期写入宽限（探测 RPC 与 Node 半场注册执行无先后保证，
+   * 窗口内差集不标失败——见 probeDerived），**仅 writeRoutes 刷新**：whitelist 写入不影响
+   * 注册集合，不得重置宽限（MF-2-2：whitelist 写入刷新宽限会使已确认注册失败的路由红徽
+   * 消失且无自动恢复）；undefined = 本会话尚未写 routes（whitelist-only 写入保留该值）。
    */
-  private lastWritten: { routes: RouteEntry[]; whitelist: string[] } | undefined
+  private lastWritten: { routes: RouteEntry[]; whitelist: string[]; writtenAt: number; routesWrittenAt: number | undefined } | undefined
   /** 最近覆写前值集合（容量 3）：滞后回放的内容判定源——被上次写入覆盖掉的旧值正是滞后
    * 快照携带的内容；容量覆盖镜像滞后窗口内的少数几个世代，越界即按外部变更采纳。 */
   private readonly preImages = new Set<string>()
-  /** 已收敛重写的内容键（单发防抖：同一滞后内容只回写一次，防镜像反复投递成回写乒乓）。 */
+  /** 已收敛重写的内容键（单发防抖：同一滞后内容只回写一次，防镜像反复投递成回写乒乓）；
+   * 仅在收敛写**成功**后置位——被拒/传输失败不置位，下一次镜像投递可再次尝试收敛。 */
   private reconciledFor: string | undefined
+  /** 收敛重写调用链内的递归防护：同一次 load 链内不再收敛（防 set 持续被拒时收敛-重读
+   * 无限循环）；外部新投递（subscribe/commit 触发的 load）不受限。 */
+  private reconcileLoopGuard = false
   /** 构造时启动的首读（测试 await model.pending 等待就绪）。 */
   readonly pending: Promise<void>
   private unsubscribe: (() => void) | undefined
@@ -195,17 +209,29 @@ export class RoutesListModel {
     if (this.lastWritten !== undefined && content !== contentKey(this.lastWritten.routes, this.lastWritten.whitelist)) {
       if (this.preImages.has(content)) {
         await this.probeDerived(this.state.routes)
-        if (this.reconciledFor !== content) {
-          this.reconciledFor = content
-          // 收敛重写走裸 set（不经 attemptCommit 的栅栏计数）：同值重写宿主是否前移
-          // revision 未知，不计数避免 appliedRevision 虚高；被拒不重试（防抖在 reconciledFor）。
+        // reconcileLoopGuard：收敛后的递归重读在同一次 load 链内不再收敛（防 set 持续被拒
+        // 时收敛-重读无限循环）；guard 只覆盖本链，外部新投递（新的 load 调用）不受限。
+        if (this.reconciledFor !== content && !this.reconcileLoopGuard) {
+          let reconciled = true
           try {
-            await this.deps.configForm.set(ROUTES_FIELD, this.lastWritten.routes)
-            await this.deps.configForm.set(WHITELIST_FIELD, this.lastWritten.whitelist)
+            const routesWritten = await this.deps.configForm.set(ROUTES_FIELD, this.lastWritten.routes)
+            const whitelistWritten = await this.deps.configForm.set(WHITELIST_FIELD, this.lastWritten.whitelist)
+            reconciled = routesWritten && whitelistWritten
           } catch {
-            // 收敛写失败：等下一次镜像投递或用户操作再收敛，不外抛（探测面已刷新）。
+            reconciled = false
           }
-          await this.load()
+          // set 被拒不抛异常（返回 false，attemptCommit 同契约）、传输异常走 catch——两种
+          // 失败都不置位 reconciledFor，让被拒后的下一次镜像投递能再次尝试收敛（原实现
+          // 先置位：被拒后同内容投递跳过收敛，Config 停留旧值、UI 与持久值分歧持续到下次
+          // 操作，重载丢编辑且无上报）。收敛重写走裸 set（不经 attemptCommit 的栅栏计数）：
+          // 同值重写宿主是否前移 revision 未知，不计数避免 appliedRevision 虚高。
+          if (reconciled) this.reconciledFor = content
+          this.reconcileLoopGuard = true
+          try {
+            await this.load()
+          } finally {
+            this.reconcileLoopGuard = false
+          }
         }
         return
       }
@@ -230,13 +256,16 @@ export class RoutesListModel {
   /** 探测面（异步；失败降级为「不标注」，不阻塞路由配置面——AX6 辅助功能接入点降级）。 */
   private async probeDerived(routes: RouteEntry[]): Promise<void> {
     // remote 方法返回 typert Result 包装，unwrapRemote 解包后失败转 rejection，由 .catch 降级。
+    // listProviders 读取失败降级为 undefined（探测不可用）而不是空集——差集判定按空集算会把
+    // 全部路由误标注册失败红徽（与 memberAvailability 的「快照不可用时无法判定，不标注」
+    // 同口径，两条探测通道降级一致）。
     const [directory, llmPiAi, registeredProviders, credentials] = await Promise.all([
       this.deps.remote.llm.listConfigurableProviders().then(unwrapRemote).catch(() => []),
       readLlmPiAi(this.deps.remote.settings).catch(() => undefined),
-      this.deps.remote.llm.listProviders().then(unwrapRemote).catch(() => []),
+      this.deps.remote.llm.listProviders().then(unwrapRemote).catch(() => undefined),
       this.describeCredentials(routes).catch(() => new Map<string, { configured: boolean }>()), 
     ])
-    const registeredRouteProviders = new Set(
+    const registeredRouteProviders = registeredProviders === undefined ? undefined : new Set(
       registeredProviders
         .map((provider) => provider.id)
         .filter((id) => id.startsWith(ROUTE_PROVIDER_PREFIX)),
@@ -252,12 +281,24 @@ export class RoutesListModel {
         : [],
     )
 
-const registrationFailed = routes
-      .map((route) => route.id)
-      .filter((id) => {
-        const expected = `${ROUTE_PROVIDER_PREFIX}${id}`
-        return squattedIds.has(expected) || !registeredRouteProviders.has(expected)
-      })
+    // 注册失败差集判定：探测不可用（读取失败）不标注；近期写入宽限——本会话刚写入的
+    // routes（探测 RPC 与 Node 半场 ensureRouteRegistration 的注册执行无先后保证），窗口内
+    // 暂不标失败防新建路由的暂态假失败，宽限过期后的下一次探测照常标注。宽限锚定
+    // routesWrittenAt（仅 writeRoutes 刷新，MF-2-2）：whitelist 写入不重置宽限——白名单
+    // 不影响注册集合，注册状态未变的路由不得因无关写入的宽限窗而红徽消失。
+    const recentWriteGrace = this.lastWritten?.routesWrittenAt !== undefined
+      && Date.now() - this.lastWritten.routesWrittenAt <= REGISTRATION_PROBE_GRACE_MS
+      ? new Set(this.lastWritten.routes.map((route) => route.id))
+      : undefined
+    const registrationFailed = registeredRouteProviders === undefined
+      ? []
+      : routes
+        .map((route) => route.id)
+        .filter((id) => {
+          if (recentWriteGrace?.has(id)) return false
+          const expected = `${ROUTE_PROVIDER_PREFIX}${id}`
+          return squattedIds.has(expected) || !registeredRouteProviders.has(expected)
+        })
     // 成员供应商下拉口径（路由交互定稿 A4）：providers 快照里已存在的条目（含自定义 route；
     // 未接入的目录 route 不直出）。displayName 目录名回落（快照条目未写 displayName 时）。
     const selectableProviders =
@@ -389,11 +430,17 @@ const registrationFailed = routes
     const updated: RouteEntry = { id, name, members: route.members }
     const routes = this.state.routes.map((candidate) => (candidate.id === oldId ? updated : candidate))
     const whitelist = this.state.whitelist.map((entry) => (entry === oldId ? id : entry))
-    this.state = { ...this.state, routes, whitelist }
-    this.notify()
-    const routesAccepted = await this.commit(ROUTES_FIELD, routes)
-    const whitelistAccepted = await this.commit(WHITELIST_FIELD, whitelist)
-    return routesAccepted && whitelistAccepted ? updated : undefined
+    // 双字段走 writeRoutesAndWhitelist 原子提交通道（登记齐全：改名前内容与两笔之间的
+    // 中间态「routes 旧 + whitelist 新」都登记覆写前值，会话写入值登记终态）——滞后镜像
+    // 投递改名前或中间内容均命中回放守卫，改名不被静默回滚。此前裸 commit 绕过登记：
+    // 共享 revision 计数被其他命名空间推进时，滞后镜像的改名前内容被当外部变更采纳，
+    // route id 弹回旧值；分两笔独立 writeWhitelist/writeRoutes 则暴露中间态（第一笔以旧
+    // routes 计算 hanging，新 id 闪现「路由已删除」标注，MF-2-3）。
+    // 提交次序先 whitelist 迁移后 routes 替换：两笔独立整字段写无跨字段事务，失败落在第二
+    // 笔 routes 侧时旧路由完整在场、白名单多出的新 id 只表现为悬挂条目（用户改名重试即可
+    // 收敛）；反向次序的失败落在 whitelist 侧——路由已按新 id 注册、白名单持旧 id，虚拟
+    // 模型从对话流消失需手工重勾。
+    return await this.writeRoutesAndWhitelist(routes, whitelist) ? updated : undefined
   }
 
   /**
@@ -430,24 +477,50 @@ const registrationFailed = routes
    * （悬挂即时重算——删路由后 hanging 无需等镜像回读即可渲染，V6 步骤 4 的可观察事实）。 */
   private async writeRoutes(routes: RouteEntry[]): Promise<boolean> {
     this.trackPreImage()
-    this.lastWritten = { routes, whitelist: this.state.whitelist }
+    this.lastWritten = { routes, whitelist: this.state.whitelist, writtenAt: Date.now(), routesWrittenAt: Date.now() }
     this.state = { ...this.state, routes, hanging: computeHanging(routes, this.state.whitelist) }
     this.notify()
     return await this.commit(ROUTES_FIELD, routes)
   }
 
-  /** whitelist 整字段写回（同 writeRoutes）。 */
+  /** whitelist 整字段写回（同 writeRoutes；不刷新 routesWrittenAt——whitelist 写入不属于
+   * 注册宽限的锚定事件，MF-2-2，见 lastWritten 字段注释）。 */
   private async writeWhitelist(whitelist: string[]): Promise<boolean> {
     this.trackPreImage()
-    this.lastWritten = { routes: this.state.routes, whitelist }
+    this.lastWritten = { routes: this.state.routes, whitelist, writtenAt: Date.now(), routesWrittenAt: this.lastWritten?.routesWrittenAt }
     this.state = { ...this.state, whitelist, hanging: computeHanging(this.state.routes, whitelist) }
     this.notify()
     return await this.commit(WHITELIST_FIELD, whitelist)
   }
 
+  /**
+   * routes + whitelist 双字段原子乐观提交（renameRoute 专用，MF-2-3）：一次登记 + 一次
+   * 终态 notify + 两笔整字段 commit（次序先 whitelist 迁移后 routes 替换，失败语义与
+   * renameRoute 注释一致）。终态一次 notify 消除两笔之间的中间态可见性：分两笔各自
+   * 乐观更新时，第一笔以旧 routes 计算 hanging 会让新 id 闪现「路由已删除」标注（真实
+   * 宿主两笔 IPC 往返几十至几百毫秒，React 订阅照常渲染中间态）。两笔各自的覆写前值
+   * （改名前内容、第一笔落盘后的「routes 旧 + whitelist 新」中间态）都进 preImages——
+   * 滞后镜像投递两者均命中回放守卫（与两笔独立提交通道的登记契约一致）。
+   */
+  private async writeRoutesAndWhitelist(routes: RouteEntry[], whitelist: string[]): Promise<boolean> {
+    this.trackPreImage()
+    this.trackPreImageContent(this.state.routes, whitelist)
+    this.lastWritten = { routes, whitelist, writtenAt: Date.now(), routesWrittenAt: Date.now() }
+    this.state = { ...this.state, routes, whitelist, hanging: computeHanging(routes, whitelist) }
+    this.notify()
+    const whitelistAccepted = await this.commit(WHITELIST_FIELD, whitelist)
+    if (!whitelistAccepted) return false
+    return await this.commit(ROUTES_FIELD, routes)
+  }
+
   /** 登记当前内容为「最近覆写前值」（容量 3，FIFO 越界丢弃——覆盖镜像滞后窗口内的世代数）。 */
   private trackPreImage(): void {
-    this.preImages.add(contentKey(this.state.routes, this.state.whitelist))
+    this.trackPreImageContent(this.state.routes, this.state.whitelist)
+  }
+
+  /** 登记指定内容为「最近覆写前值」（trackPreImage 的内容参数化形态）。 */
+  private trackPreImageContent(routes: RouteEntry[], whitelist: string[]): void {
+    this.preImages.add(contentKey(routes, whitelist))
     while (this.preImages.size > 3) {
       const oldest = this.preImages.values().next().value
       if (oldest === undefined) break
