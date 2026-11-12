@@ -281,11 +281,25 @@ export class RoutesListModel {
         : [],
     )
 
+    // 注册诊断从 Config 快照现取（probeDerived 不持有 load 的快照引用；getSnapshot 为同步零成本读）。
+    // 提前到差集判定之前：诊断是宽限例外的判定源（见下）。
+    const formSnapshot = this.deps.configForm.getSnapshot()
+    const rawRegistrationError = formSnapshot.status === 'ready' && typeof formSnapshot.value === 'object' && formSnapshot.value !== null
+      ? (formSnapshot.value as Record<string, unknown>).routeRegistrationError
+      : undefined
+    const registrationError = parseRegistrationError(rawRegistrationError)
+
     // 注册失败差集判定：探测不可用（读取失败）不标注；近期写入宽限——本会话刚写入的
     // routes（探测 RPC 与 Node 半场 ensureRouteRegistration 的注册执行无先后保证），窗口内
     // 暂不标失败防新建路由的暂态假失败，宽限过期后的下一次探测照常标注。宽限锚定
     // routesWrittenAt（仅 writeRoutes 刷新，MF-2-2）：whitelist 写入不重置宽限——白名单
     // 不影响注册集合，注册状态未变的路由不得因无关写入的宽限窗而红徽消失。
+    // 宽限例外（MF-3-1）：注册失败诊断在场且涵盖该路由 = Node 半场注册已执行且失败
+    //（index.js ensureRouteRegistration 仅在实际失败时写诊断，无暂态误报）——这不是
+    // 「探测 RPC 先于注册执行」的暂态差集，宽限不得吞掉确定性失败信号。注册失败的完整
+    // 事件链（注册失败 → 写诊断 → Config 变更 → load → probeDerived）亚秒级全部落在
+    // 宽限窗内，无此例外则窗过期后无事件再触发探测（probeDerived 仅事件驱动），注册
+    // 失败红徽与修复条在真实宿主永不出现；诊断随事件到达即旁路宽限、红徽即时呈现。
     const recentWriteGrace = this.lastWritten?.routesWrittenAt !== undefined
       && Date.now() - this.lastWritten.routesWrittenAt <= REGISTRATION_PROBE_GRACE_MS
       ? new Set(this.lastWritten.routes.map((route) => route.id))
@@ -295,7 +309,7 @@ export class RoutesListModel {
       : routes
         .map((route) => route.id)
         .filter((id) => {
-          if (recentWriteGrace?.has(id)) return false
+          if (recentWriteGrace?.has(id) && !registrationError?.routeIds.includes(id)) return false
           const expected = `${ROUTE_PROVIDER_PREFIX}${id}`
           return squattedIds.has(expected) || !registeredRouteProviders.has(expected)
         })
@@ -322,15 +336,10 @@ export class RoutesListModel {
             })
         : []
     const availability = this.buildMemberAvailability(routes, llmPiAi, credentials)
-    // 注册诊断从 Config 快照现取（probeDerived 不持有 load 的快照引用；getSnapshot 为同步零成本读）。
-    const formSnapshot = this.deps.configForm.getSnapshot()
-    const rawRegistrationError = formSnapshot.status === 'ready' && typeof formSnapshot.value === 'object' && formSnapshot.value !== null
-      ? (formSnapshot.value as Record<string, unknown>).routeRegistrationError
-      : undefined
     this.state = {
       ...this.state,
       registrationFailed,
-      registrationError: parseRegistrationError(rawRegistrationError),
+      registrationError,
       selectableProviders,
       memberAvailability: availability,
       hits: evaluateRoutesAt(routes, new Date()),

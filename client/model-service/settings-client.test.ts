@@ -76,6 +76,10 @@ function materializeProfile(profile: unknown): unknown {
   if (!isPlainRecord(profile)) return profile
   const projected: Record<string, unknown> = { ...MATERIALIZED_PROFILE_DEFAULTS, ...profile }
   if (projected.models === undefined) projected.models = []
+  // 顶层 compat 缺席物化为空对象（对齐真实宿主物化键集，MF-3-1：schemastery 把文档侧
+  // 缺席的 compat 补 {}——存量缺席条目的 describe 视图恒在场空形态，是 unset 假失败
+  // 回归用例的真值底座）。
+  if (projected.compat === undefined) projected.compat = {}
   if (Array.isArray(projected.models)) {
     projected.models = projected.models.map((entry) => {
       if (!isPlainRecord(entry)) return entry
@@ -1196,5 +1200,66 @@ describe('物化回执的覆盖比对（MF-2-1：写入值 ⊆ 回执，物化�
     expect(result.kind).toBe('rejected')
     if (result.kind !== 'rejected') return
     expect(result.message).toContain('baseURL')
+  })
+})
+
+// ── 评审修复 r3（G1 组：MF-3-1 存量物化空形态的 unset 假失败）────────────────────
+
+describe('存量物化空形态的 unset 假失败（MF-3-1）', () => {
+  it('窄表单编辑目录默认态条目（existing 物化 models:[] / compat:{}）：saved 且密钥落盘（credentials.set 被调用）', async () => {
+    // 存储侧只有 apiKeyEnv（目录默认态：models/compat 缺席），describe 物化视图补空形态。
+    // 修复前：profileDiffOps 对物化空形态发 unset models → 回执物化又补回 [] →
+    // verifyWrittenOps「回执仍等于存量原值」恒命中 → rejected 短路在 credentials.set
+    // 之前——窄表单密钥重填在真实宿主不落盘。
+    const settings = fakeSettings({ providers: { 'deepseek-official': { apiKeyEnv: 'TAIJI_DEEPSEEK_OFFICIAL_KEY' } }, revision: 7 })
+    const credentials = fakeCredentials([])
+    const existing = (await readLlmPiAi(settings)).providers['deepseek-official']
+    // fake 物化表对齐真实宿主键集：缺席 models/compat 在物化视图恒在场空形态。
+    expect(existing?.models).toEqual([])
+    expect(existing?.compat).toEqual({})
+    const result = await saveProvider(makeHost({ settings, credentials }), {
+      draft: {
+        key: 'deepseek-official', isNew: false, narrow: true,
+        displayName: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', api: 'openai-completions',
+        apiKeyValue: 'sk-refill', compat: {}, models: [],
+      },
+      revision: 7,
+      existing,
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('saved')
+    // 密钥落盘恢复：写入目标 = 既有 apiKeyEnv（D7 保留既有 ref）。
+    expect(credentials.setCalls).toEqual([{ ref: 'TAIJI_DEEPSEEK_OFFICIAL_KEY', value: 'sk-refill' }])
+    // 物化空形态不进 ops：编辑 diff 零 op（密钥重填路径唯一需要的写入就是凭据文件）。
+    expect(settings.mutations[0].ops).toEqual([])
+  })
+
+  it('全表单编辑 models/compat 缺席条目仅改 baseURL：saved（物化空形态不发 unset op）', async () => {
+    const settings = fakeSettings({ providers: { yanshi: { displayName: 'Yanshi', api: 'openai-completions', baseURL: 'http://old/v1', apiKeyEnv: 'TAIJI_YANSHI_KEY' } }, revision: 7 })
+    const existing = (await readLlmPiAi(settings)).providers.yanshi
+    expect(existing?.models).toEqual([]) // 物化空形态在场
+    expect(existing?.compat).toEqual({})
+    const result = await saveProvider(makeHost({ settings }), {
+      draft: {
+        key: 'yanshi', isNew: false, narrow: false,
+        displayName: 'Yanshi', baseURL: 'http://new/v1', api: 'openai-completions',
+        apiKeyValue: '', compat: {}, models: [],
+      },
+      revision: 7,
+      existing,
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('saved')
+    expect(settings.mutations[0].ops).toEqual([{ op: 'set', path: ['providers', 'yanshi', 'baseURL'], value: 'http://new/v1' }])
+  })
+
+  it('writeProviderModels(key, []) 于存储缺席 models（existing 物化 []）：unset 照发且 saved（清单操作台「清空」不假失败）', async () => {
+    // 清单操作台的空清单 unset 无法从 diff 源头消除（「恢复目录默认」是明确用户意图，op 必发），
+    // 由判定层放行：存量物化空形态的 unset 无实质产物，目标态「缺席」已被物化投影折叠为
+    // 同空形态——不判不符（修复前此处恒 rejected 假失败）。
+    const settings = fakeSettings({ providers: { yanshi: { displayName: 'Yanshi' } }, revision: 3 })
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', [])
+    expect(result.kind).toBe('saved')
+    expect(settings.mutations[0].ops).toEqual([{ op: 'unset', path: ['providers', 'yanshi', 'models'] }])
   })
 })

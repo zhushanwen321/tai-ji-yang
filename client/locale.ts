@@ -562,6 +562,8 @@ export const modelServiceZh = {
   /** 路由成员引用警告（D3 删除流程：列出受影响路由，用户确认后继续删除）。 */
   'delete.routeReferences': '该供应商被路由引用（{routes}）；删除后对应成员将不可用（路由视图成员行标注「供应商已删」）。确认后继续删除。',
   'credential.pendingRetry': '已自动重试清理 {n} 个待清理凭据引用',
+  /** 清单写回连续失败（MF-3-2）：凭据侧已清理但 Config 待清理清单原样未动，区分于按条数的成功提示。 */
+  'credential.pendingRetryWriteFailed': '凭据已清理，但待清理清单更新失败；下次打开本分区将自动重试',
   /** 保存链路异常的前缀（MF-1-4：saving 复位 + 可重试错误条）。 */
   'save.writeFailed': '保存失败（{detail}），请重试',
   /** 新建撞他端接入的拒绝提示（MF-1-12：不整条覆盖，刷新后编辑）。 */
@@ -801,6 +803,7 @@ export const modelServiceEn = {
   'delete.crossProfileConfirm': 'The credential ref {ref} of this provider is host-derived and may be shared by same-named providers in other profiles; deleting also clears that credential.',
   'delete.routeReferences': 'This provider is referenced by route(s) ({routes}); after deletion the affected members become unavailable (marked "provider deleted" in the routes view). Confirm to proceed.',
   'credential.pendingRetry': 'Retried clearing {n} pending credential refs',
+  'credential.pendingRetryWriteFailed': 'Credentials cleared, but updating the pending-cleanup list failed; reopening this section will retry automatically',
   'save.writeFailed': 'Save failed ({detail}); please retry',
   'save.refTakenElsewhere': 'This provider was connected in another window and was not overwritten; reopen this section and edit it there',
   'delete.failed': 'Delete failed ({detail}); please retry',

@@ -103,13 +103,15 @@ export interface JumpTarget {
  * 自己启动，就绪后经订阅通知驱动重渲染；真实 React 下 effect 后置执行 + rerender 扳机，
  * 测试夹具下 effect 同步执行、首棵树即含模型（loading 态））。挂载同时做一次待清理凭据
  * 重试（D7/AX9「下次启动或打开分区时重试」的打开分区路径；unset 失败后不再打开分区的
- * 用户其孤儿 ref 不重试，取舍登记见设计包 D7 采用段）：成功清理数 > 0 时给一条提示；
- * Config 未被服务（skipped）静默跳过——清单通道缺失不是本分区的事，不制造噪音。
+ * 用户其孤儿 ref 不重试，取舍登记见设计包 D7 采用段）：成功清理数 > 0 且清单写回落盘时
+ * 给一条提示；清单写回连续失败（writeBackFailed）换成警告条——凭据侧已清理、清单未同步，
+ * 下次打开本分区自动重试；Config 未被服务（skipped）静默跳过——清单通道缺失不是本分区
+ * 的事，不制造噪音。
  */
 export function ModelServiceSection({ t, close, remote, configForm }: ModelServiceSectionProps) {
   const activeView = useRef<ViewId>('providers')
   const jump = useRef<JumpTarget | undefined>(undefined)
-  const retryNotice = useRef<string | undefined>(undefined)
+  const retryNotice = useRef<{ kind: 'ok' | 'warn'; text: string } | undefined>(undefined)
   const providersModel = useRef<ProvidersListModel | undefined>(undefined)
   const modelsModel = useRef<ModelsListModel | undefined>(undefined)
   const routesModel = useRef<RoutesListModel | undefined>(undefined)
@@ -128,8 +130,16 @@ export function ModelServiceSection({ t, close, remote, configForm }: ModelServi
     routesModel.current = routes
     let disposed = false
     void retryPendingUnsets(configForm, remote.credentials).then((result) => {
-      if (disposed || result.removed.length === 0) return
-      retryNotice.current = t('credential.pendingRetry', { n: result.removed.length })
+      if (disposed) return
+      // 写回失败分支先行：removed 非空只代表凭据侧已清理，清单原样未动——按条数渲染
+      // 「已清理 N 条」会让用户误以为清单已同步（下次打开分区将再次重试并再次提示）。
+      if (result.writeBackFailed) {
+        retryNotice.current = { kind: 'warn', text: t('credential.pendingRetryWriteFailed') }
+      } else if (result.removed.length > 0) {
+        retryNotice.current = { kind: 'ok', text: t('credential.pendingRetry', { n: result.removed.length }) }
+      } else {
+        return
+      }
       rerender((count) => count + 1)
     })
     rerender((count) => count + 1)
@@ -188,7 +198,7 @@ export function ModelServiceSection({ t, close, remote, configForm }: ModelServi
         </div>
       </div>
       {retryNotice.current !== undefined && (
-        <div className="ms-note ms-note-ok">{retryNotice.current}</div>
+        <div className={`ms-note ${retryNotice.current.kind === 'warn' ? 'ms-note-warn' : 'ms-note-ok'}`}>{retryNotice.current.text}</div>
       )}
       {view === 'providers' && (
         providersModel.current !== undefined && (

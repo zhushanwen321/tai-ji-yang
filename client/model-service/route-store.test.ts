@@ -615,6 +615,57 @@ describe('注册探测降级（读取失败不标注 + 近期写入宽限）', (
       vi.useRealTimers()
     }
   })
+
+  it('宽限窗内注册失败诊断到达：红徽即时出现（诊断旁路宽限，MF-3-1）', async () => {
+    const remote = fakeRemote() // 注册表恒空 = 注册恒失败
+    const form = fakeConfigForm(routesSnapshot([], []))
+    const model = new RoutesListModel({ remote, configForm: form })
+    await model.pending
+    await model.createRoute('Fresh') // routes 写入 → 宽限窗开始（窗内差集不标，防暂态假失败）
+    expect(model.getSnapshot().registrationFailed).toEqual([])
+    // Node 半场注册失败写诊断（index.js ensureRouteRegistration 仅在实际失败时写）：
+    // 事件链（注册失败 → 写诊断 → Config 变更 → load → probeDerived）亚秒级全部落在
+    // 宽限窗内——诊断随 Config 变更事件送达（revision 前进、内容 = 写入回显）。
+    // 修复前：宽限吞掉窗内全部事件、窗过期后无事件再触发探测 → 红徽永不出现。
+    form.deliver({
+      status: 'ready',
+      value: {
+        routes: [{ id: 'fresh', name: 'Fresh', members: [] }],
+        whitelist: [],
+        routeRegistrationError: 'config-update taiji-route-fresh: an adapter for provider "taiji-route-fresh" is already registered',
+      },
+      revision: 2,
+      writable: true,
+    })
+    await settle()
+    await settle()
+    // 诊断在场且涵盖 fresh = 注册已执行且失败（非暂态差集）→ 不受宽限保护，标注即时恢复。
+    expect(model.getSnapshot().registrationFailed).toEqual(['fresh'])
+    expect(model.getSnapshot().registrationError?.routeIds).toEqual(['fresh'])
+  })
+
+  it('诊断不涵盖的路由宽限照常保护（旁路粒度 = 诊断 scope，暂态假失败防护不回归）', async () => {
+    const remote = fakeRemote()
+    const form = fakeConfigForm(routesSnapshot([], []))
+    const model = new RoutesListModel({ remote, configForm: form })
+    await model.pending
+    await model.createRoute('Fresh')
+    // 诊断涵盖的是另一路由（other）：fresh 的差集仍是「探测 RPC 先于注册执行」的暂态
+    // 形态，宽限照常保护（旁路只对诊断 scope 内的路由解除保护，不整体废掉宽限）。
+    form.deliver({
+      status: 'ready',
+      value: {
+        routes: [{ id: 'fresh', name: 'Fresh', members: [] }],
+        whitelist: [],
+        routeRegistrationError: 'config-update taiji-route-other: registration rejected',
+      },
+      revision: 2,
+      writable: true,
+    })
+    await settle()
+    await settle()
+    expect(model.getSnapshot().registrationFailed).toEqual([])
+  })
 })
 
 describe('parseRegistrationError（Node 半场诊断透传的解析）', () => {

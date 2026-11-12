@@ -173,6 +173,7 @@ describe('pendingCredentialUnsets 待清理联动（D7/AX9）', () => {
     expect(first.removed).toEqual(['TAIJI_OK_KEY'])
     expect(first.kept).toEqual(['TAIJI_BAD_KEY'])
     expect(first.skipped).toBe(false)
+    expect(first.writeBackFailed).toBe(false)
     expect(unsetCalls.sort()).toEqual(['TAIJI_BAD_KEY', 'TAIJI_OK_KEY'])
     expect(writes).toEqual([{ field: PENDING_UNSETS_FIELD, value: ['TAIJI_BAD_KEY'] }])
 
@@ -180,6 +181,7 @@ describe('pendingCredentialUnsets 待清理联动（D7/AX9）', () => {
     const second = await retryPendingUnsets(form, credentials)
     expect(second.removed).toEqual(['TAIJI_BAD_KEY'])
     expect(second.kept).toEqual([])
+    expect(second.writeBackFailed).toBe(false)
     expect(writes).toHaveLength(2)
     expect(writes[1].value).toEqual([])
   })
@@ -190,6 +192,7 @@ describe('pendingCredentialUnsets 待清理联动（D7/AX9）', () => {
     const result = await retryPendingUnsets(form, credentials)
     expect(result.skipped).toBe(true)
     expect(result.removed).toHaveLength(0)
+    expect(result.writeBackFailed).toBe(false)
     expect(writes).toHaveLength(0)
   })
 
@@ -198,15 +201,17 @@ describe('pendingCredentialUnsets 待清理联动（D7/AX9）', () => {
     const { credentials } = fakeCredentials([])
     const result = await retryPendingUnsets(form, credentials)
     expect(result.removed).toEqual([])
+    expect(result.writeBackFailed).toBe(false)
     expect(writes).toHaveLength(0)
   })
 
-  it('重试写回失败：不外抛，清单原样保留（removed 并回 kept 如实反映清单持有态）', async () => {
+  it('重试写回失败（传输异常）：不外抛，清单原样保留，writeBackFailed 如实置位（MF-3-2）', async () => {
     const { form, writes } = fakeForm({ value: { pendingCredentialUnsets: ['TAIJI_A_KEY'] }, failSet: true })
     const { credentials } = fakeCredentials(['TAIJI_A_KEY'])
     const result = await retryPendingUnsets(form, credentials) // 若写回外抛，此行即未处理拒绝（挂载链无 catch）
     expect(result.removed).toEqual(['TAIJI_A_KEY']) // 凭据文件侧已清理（unset 成功）
     expect(result.kept).toEqual(['TAIJI_A_KEY']) // 清单写回失败 → ref 仍在清单，下次打开分区自愈
+    expect(result.writeBackFailed).toBe(true) // 消费方据此渲染「清单更新失败」而非「已清理 N 条」
     expect(writes).toHaveLength(0)
   })
 })
@@ -235,16 +240,18 @@ describe('form.set 被拒（返回 false）不谎报成功（MF-2-4）', () => {
     const result = await retryPendingUnsets(form, credentials)
     expect(result.removed).toEqual(['TAIJI_A_KEY'])
     expect(result.kept).toEqual([])
+    expect(result.writeBackFailed).toBe(false)
     expect(writes).toEqual([{ field: PENDING_UNSETS_FIELD, value: [] }])
   })
 
-  it('重试写回：连续被拒 → removed 并回 kept（清单原样，不谎报已清理）', async () => {
+  it('重试写回：连续被拒 → removed 并回 kept + writeBackFailed 置位（清单原样，UI 区分提示，MF-3-2）', async () => {
     const { form, writes, refuseSet } = fakeForm({ value: { pendingCredentialUnsets: ['TAIJI_A_KEY'] } })
     const { credentials } = fakeCredentials(['TAIJI_A_KEY'])
     refuseSet(2)
     const result = await retryPendingUnsets(form, credentials)
-    expect(result.removed).toEqual(['TAIJI_A_KEY']) // 凭据文件侧已清理（unset 成功）
-    expect(result.kept).toEqual(['TAIJI_A_KEY']) // 写回连续被拒 → 并回 kept，下次打开分区自愈
+    expect(result.removed).toEqual(['TAIJI_A_KEY']) // 凭据文件侧已清理（unset 成功）——removed 只陈述凭据侧事实
+    expect(result.kept).toEqual(['TAIJI_A_KEY']) // 写回连续被拒 → 并回 kept（清单持有态），下次打开分区自愈
+    expect(result.writeBackFailed).toBe(true) // 消费方据此渲染「清单更新失败」而非按 removed.length 的「已清理 N 条」
     expect(writes).toHaveLength(0)
   })
 })

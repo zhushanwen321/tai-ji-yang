@@ -419,7 +419,13 @@ export function profileDiffOps(existing: HostProviderProfile, draft: ProviderDra
     const before = existing[field]
     const after = next[field]
     if (after === undefined) {
-      if (before !== undefined) ops.push({ op: 'unset', path: ['providers', key, field] })
+      // 存量为物化空形态（[] / {}）不发 unset（MF-3-1）：existing 是 describe 的物化投影，
+      // 文档侧缺席的 models/compat 在其中被补为空容器、与真实存储的显式空形态不可区分——
+      // 对存储本就缺席的字段 unset 是幂等空操作，diff 侧不产生即消除歧义源头；发出它则
+      // 回执物化又补回同空形态，verifyWrittenOps 的「回执仍等于存量原值」判据恒命中，
+      // 真实宿主恒 rejected 假失败（窄表单密钥重填被短路在 credentials.set 之前）。
+      // 存量为非空容器或非容器原值照常发 unset（用户真实清除动作）。
+      if (before !== undefined && !isEmptyContainer(before)) ops.push({ op: 'unset', path: ['providers', key, field] })
       continue
     }
     if (!deepEqualJson(before, after)) ops.push({ op: 'set', path: ['providers', key, field], value: after })
@@ -770,6 +776,8 @@ function providerTakenMessage(key: string): string {
  * unset op 的字段判定：物化投影会把文档侧缺席补成默认值，故「字段在回执在场」不再
  * 直接判不符——在场且仍等于存量原值（existing 取自 describe 的物化视图，两侧同为
  * 物化形态、可比）才判「宿主未执行 unset」；值已变为非原值 = unset 落地后的物化默认。
+ * 存量原值为物化空形态（[] / {}）的例外（MF-3-1）：unset 对它无实质产物，不判不符
+ *（否则真实宿主的存量缺席字段恒假失败）；见分支内注释。
  * 返回不符项清单（整条不符标注 key），空数组 = 产物与写入值一致。
  */
 function verifyWrittenOps(ops: SettingsOp[], written: HostProviderProfile, existing: HostProviderProfile | undefined): string[] {
@@ -789,8 +797,13 @@ function verifyWrittenOps(ops: SettingsOp[], written: HostProviderProfile, exist
       if (!coversWritten(written[field], op.value)) missed.push(field)
     } else {
       const after = written[field]
+      const before = existing?.[field]
       // 未执行 unset 的强信号：回执字段仍等于存量原值（字段缺席或已变为默认物化值 = 已执行）。
-      if (after !== undefined && existing?.[field] !== undefined && deepEqualJson(after, existing[field])) missed.push(field)
+      // 存量原值为物化空形态（[] / {}）时不判（MF-3-1）：该形态下 unset 无实质产物——目标态
+      // 「缺席」已被物化投影折叠为同空形态，恒判不符会把幂等空操作误报成 rejected 假失败
+      //（writeProviderModels 的空清单 unset 路径无法从 diff 源头消除，由本层放行）；存量原值
+      // 为非空容器或非容器原值时仍逐字比对——宿主真吞掉 unset（回执仍含原值）照常上报。
+      if (after !== undefined && before !== undefined && !isEmptyContainer(before) && deepEqualJson(after, before)) missed.push(field)
     }
   }
   return missed
@@ -843,6 +856,16 @@ function readWrittenProfile(view: SettingsNamespaceViewLike, key: string): HostP
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * 物化空形态判定：空数组 / 空对象（MF-3-1）。宿主 describe 的物化投影把文档侧缺席的
+ * models/compat 补为此形态，与用户显式写入的空形态在投影视图上不可区分——diff 侧对它
+ * 不发 unset、判定层对它不判不符，两层共用本判定。
+ */
+function isEmptyContainer(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length === 0
+  return isRecord(value) && Object.keys(value).length === 0
 }
 
 /** JSON 形态的深比较（宿主存储是 JSON 值域；undefined 视为缺席）。 */

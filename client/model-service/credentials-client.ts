@@ -145,6 +145,12 @@ export interface PendingUnsetRetry {
   kept: string[]
   /** Config 未被服务（快照 unavailable）时 true：本次未尝试，清单原样保留。 */
   skipped: boolean
+  /**
+   * 清单写回连续失败（重发后仍被拒或传输异常）时 true：凭据文件侧已清理（removed 非空）
+   * 但清单原样未动（removed 已并回 kept）。消费方据此区分提示——removed.length 在此形态下
+   * 只代表凭据侧清理数，不再等同「清单已同步清理 N 条」。
+   */
+  writeBackFailed: boolean
 }
 
 /**
@@ -153,11 +159,12 @@ export interface PendingUnsetRetry {
  * 逐个 unset，成功即移出清单，失败保留；清单有变化才整字段写回（无变化零写入）。
  * 写回被拒（set 返回 false）或传输失败都不外抛（挂载效应 void…then 链无 catch，
  * section.tsx）：被拒先按重读快照重发一次，仍失败把 removed 并回 kept 如实反映清单
- * 持有态（返回的 removed 不谎报已清理），下次打开分区重试自愈（宿主 unset 幂等）。
+ * 持有态并置 writeBackFailed（removed 只陈述凭据侧清理事实，消费方不得据其渲染
+ * 「清单已同步清理」），下次打开分区重试自愈（宿主 unset 幂等）。
  */
 export async function retryPendingUnsets(form: PluginConfigFormLike, credentials: CredentialsRemoteLike): Promise<PendingUnsetRetry> {
   const snapshot = form.getSnapshot()
-  if (snapshot.status !== 'ready') return { removed: [], kept: [], skipped: true }
+  if (snapshot.status !== 'ready') return { removed: [], kept: [], skipped: true, writeBackFailed: false }
   const pending = sanitizePending(sectionValue(snapshot)?.[PENDING_UNSETS_FIELD])
   const removed: string[] = []
   const kept: string[] = []
@@ -175,11 +182,13 @@ export async function retryPendingUnsets(form: PluginConfigFormLike, credentials
       kept.push(ref)
     }
   }
+  let writeBackFailed = false
   if (removed.length > 0) {
     // 写回 kept：被拒（false）或传输异常都不把 removed 谎报为已清理。被拒时宿主已自做一次
     // 镜像重读（ConfigFormLike.set 契约）——重读快照后以「最新清单减去本次已清理」重发一次
     // （他端窗口新登记的 ref 不丢）；连续失败把 removed 并回 kept（清单原样，下次打开分区
-    // 重试自愈——宿主 unset 幂等）。
+    // 重试自愈——宿主 unset 幂等），并置 writeBackFailed 让消费方区分提示（凭据侧已清理、
+    // 清单未同步——按 removed.length 渲染「已清理 N 条」会谎报清单状态）。
     try {
       if (!await form.set(PENDING_UNSETS_FIELD, kept)) {
         const fresh = form.getSnapshot()
@@ -189,13 +198,15 @@ export async function retryPendingUnsets(form: PluginConfigFormLike, credentials
           : kept
         if (!retryable || !await form.set(PENDING_UNSETS_FIELD, next)) {
           kept.push(...removed)
+          writeBackFailed = true
         }
       }
     } catch {
       kept.push(...removed)
+      writeBackFailed = true
     }
   }
-  return { removed, kept, skipped: false }
+  return { removed, kept, skipped: false, writeBackFailed }
 }
 
 /** 便捷转发：key → ref（组件侧展示「将写入的凭据引用」时用）。 */
