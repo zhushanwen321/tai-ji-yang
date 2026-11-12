@@ -424,14 +424,15 @@ describe('成员级求值转发（V5：命中 / 回退 / 不命中跳过 vs 不�
     }
     const { llm, forwarded } = fakeLlm(members, options.upstream)
     const holder = snapshotHolder([route], [route.id])
+    const credentials = fakeCredentials(options.missingRefs ?? [])
     const adapter = createRouteAdapter({
       readSnapshot: holder.readSnapshot,
       llm,
-      credentials: fakeCredentials(options.missingRefs ?? []),
+      credentials,
       readProviderProfiles: fakeProfiles({ 'provider-a': 'TAIJI_A_KEY', 'provider-b': 'TAIJI_B_KEY' }),
       now: FIXED_NOW,
     })
-    return { adapter, forwarded, holder, llm }
+    return { adapter, forwarded, holder, llm, credentials }
   }
 
   it('首个条件命中成员即候选：chunk 原样透传且转发目标 = 物理成员（V5 步骤 5）', async () => {
@@ -487,6 +488,17 @@ describe('成员级求值转发（V5：命中 / 回退 / 不命中跳过 vs 不�
     expect(modelError?.message).toContain('read of model list failed')
     expect(modelError?.message).toContain('catalog down')
     expect(second.forwarded).toEqual([])
+
+    // credentials.describe 抛错（宿主凭据服务不可达）：不得吞掉异常误报「凭据未配置」。
+    const third = setup(twoMemberRoute(hitNow, { type: 'none' }))
+    third.credentials.describe = async () => { throw new Error('kv unreachable') }
+    const credentialError = await captureRejection(third.adapter.stream({ provider: 'taiji-route-demo', model: 'demo', messages: [] }))
+    expect(credentialError?.code).toBe('ROUTE_MEMBER_UNAVAILABLE') // fail-closed 终结语义不变
+    expect(credentialError?.message).toContain('read of credential status failed for TAIJI_A_KEY')
+    expect(credentialError?.message).toContain('kv unreachable')
+    // detail 前缀不撞 credential 三型归因：读取失败落 unknown 通用标注，不误报密钥未填。
+    expect(parseMemberUnavailableMessage(credentialError?.message ?? '')).toMatchObject({ kind: 'unknown' })
+    expect(third.forwarded).toEqual([])
   })
 
   it('成员不可用终结：凭据缺失（V7 步骤 1-3，附成员与 ref）', async () => {
