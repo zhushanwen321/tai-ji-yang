@@ -221,15 +221,17 @@ describe('卸载清洁度（V5 = p1 设计包卸载验收场景）', () => {
     expect(Config.type).toBe('object')
     expect(Object.keys(Config.dict)).toEqual([
       'appearance', 'projects', 'assignments', 'expanded',
-      'pendingCredentialUnsets', 'routes', 'whitelist',
+      'pendingCredentialUnsets', 'routeRegistrationError', 'routes', 'whitelist',
     ])
     expect(Config.dict.appearance.meta.volatile).toBe(true)
-    // 其余六个字段同为 volatile（持久但免重挂载——设置表单通道只收 volatile 字段）；
-    // pendingCredentialUnsets/routes/whitelist 是模型服务字段（dsh-model-service M1/M2）
+    // 其余七个字段同为 volatile（持久但免重挂载——设置表单通道只收 volatile 字段）；
+    // pendingCredentialUnsets/routes/whitelist 是模型服务字段（dsh-model-service M1/M2），
+    // routeRegistrationError 是注册失败诊断字段（SettingsForms mutate 写入）
     expect(Config.dict.projects.meta.volatile).toBe(true)
     expect(Config.dict.assignments.meta.volatile).toBe(true)
     expect(Config.dict.expanded.meta.volatile).toBe(true)
     expect(Config.dict.pendingCredentialUnsets.meta.volatile).toBe(true)
+    expect(Config.dict.routeRegistrationError.meta.volatile).toBe(true)
     expect(Config.dict.routes.meta.volatile).toBe(true)
     expect(Config.dict.whitelist.meta.volatile).toBe(true)
 
