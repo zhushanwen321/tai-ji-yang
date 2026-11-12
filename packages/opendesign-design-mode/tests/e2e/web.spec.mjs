@@ -117,8 +117,10 @@
  * 探针段（opendesign-comment-anchor 设计包 wave 0；编号裸用该包 AS/V 编号）：
  *   u-probe —— AS7(b) frameLocator 驱动伺服产物 iframe + V11 步④ dockkit tab 动作驱动性。
  *   结论已由 u-probe 单元落盘 .tmp/dev-flow/opendesign-comment-anchor/probe/（AS7 成立、
- *   分屏可驱动）；场景保留作驱动形态回归（boot 链已并入本套件共享 en 驱动），探针本体
- *   步骤维持登记性质不承担常规回归断言。
+ *   分屏可驱动）；场景随套件全量运行、承担驱动形态回归断言（boot 链已并入本套件共享 en
+ *   驱动）：11 步中 8 步带硬断言（boot 链两步、步①进 iframe、AS7(b)②③④、V11④⑤ tab/pane
+ *   基准、V11④⑦ Meta+\ 分屏——失败即场景红、套件非零退出），仅 3 个探测输出步骤（tab 右键
+ *   菜单清单 / 分栏按钮路径 / 全局句柄清单）维持登记性质（无条件 ok，结论看运行日志）。
  */
 import { spawn, spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
@@ -2479,7 +2481,9 @@ async function scenarioCommentSecurity() {
  * ② 点击带锚属性祖先 section 的内部无 id 段落 → data 级 {level:'data', sel:'[data-od-id="hero-sec"]'}
  * （最近祖先命中）；③ 点击页脚无 id 无锚属性裸链接 → path 级（tag:nth-of-type 链从产物根
  * 可达）。三线程载荷校验通过（落盘成功）且徽章三枚钉在命中元素上。deck 形态
- * （data-screen-label、值带空格）的降级生成不设独立场景：U3 锚点生成单测锁值（V2 判据登记）。
+ * （data-screen-label、值带空格）的降级生成不设独立场景：由 serve.test.ts「锚点生成层锁值」
+ * 用例承载（从 PICK_SCRIPT_SOURCE 切片求值直驱 buildAnchor——空格值不降级 / 引号反斜杠落
+ * path / 锚属性序与降级序逐项锁值；V2 判据登记，落位 U3 领土 tests/serve.test.ts）。
  */
 async function scenarioAnchorLevels() {
   const results = []
@@ -2620,8 +2624,10 @@ async function scenarioAnchorLocateAndMiss() {
  * 判据：模拟模型改稿（改目标元素内容、保留 id 与 data-od-id 锚属性、在 footer 内插入同型
  * 兄弟使 path 级序数漂移）→ 伺服 ETag 变化 → 面板版本探针在 ≤6 秒内感知并重挂 iframe，
  * 新文档拾取脚本 ready 二次握手（RL7）→ anchors 重发 → 徽章重建且 id/data 级命中；path 级
- * 失效如实标注、不判失败（D1 已接受代价；放行以 AS10 观测未触发 D1 重审线为界——AS10
- * 观测结论见 probe/anchor-distribution.md，重审呈报随交付登记）。
+ * 失效如实标注、不判失败（D1 已接受代价。AS10 观测已触发 D1 重审线：真实写盘产物样本
+ * 9 文件 3274 元素 path 级 97.6%、锚属性 0 命中——probe/anchor-distribution.md；按方案 B
+ * 口径收尾 = path 级失效为常态、失效如实标注即达标，材质化回写锚属性增强（方案 A）为立项
+ * 候选待用户裁决——评估材料 opendesign-comment-anchor.as10-review.md）。
  */
 async function scenarioAnchorRewriteVisibility() {
   const results = []
@@ -3138,7 +3144,8 @@ async function scenarioAnchorEntryUniqueness() {
 }
 
 /**
- * 场景 u-probe（探针段，wave 0 · opendesign-comment-anchor 设计包；不进常规回归口径）：
+ * 场景 u-probe（探针段，wave 0 · opendesign-comment-anchor 设计包；随套件全量运行，承担
+ * 驱动形态回归断言——11 步中 8 步硬断言，仅 tab 右键菜单 / 分栏按钮 / 全局句柄三步登记性质）：
  * AS7(b) 宿主形态层 + V11 步④ 驱动性，一场景承载两探针（编号域 = 本设计包，裸用 AS/V 编号）。
  *
  * AS7(b) 判据（AS7 假设的宿主形态半场；(a) 本地语义层已由 probe/as7-local 独立验证）：

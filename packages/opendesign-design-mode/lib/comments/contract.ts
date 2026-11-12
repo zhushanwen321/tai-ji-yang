@@ -5,8 +5,9 @@
  * 形状来源：opendesign-comment-loop 设计 §3.1（D1 评论数据文件 / D2 写通道路由族 /
  * D3 来源标记 / D5 lifecycle × delivery 双维状态机 / D8 文件级定位）+ 元素锚点段形状来源
  * opendesign-comment-anchor 设计 §3.3 D1（CommentAnchor 值对象 / 三级降级序词表）。
- * 本文件只承载类型与常量词表，不含运行时逻辑：状态机转移表在 lib/comments/thread.ts（U1），
- * 文件读写在 lib/comments/store.ts（U1），路由注册在 lib/serve/comments-api.ts（U2）。
+ * 机制逻辑分流：状态机转移表在 lib/comments/thread.ts（U1），文件读写在 lib/comments/store.ts
+ * （U1），路由注册在 lib/serve/comments-api.ts（U2）；本文件除类型与常量词表外同时承载锚点
+ * 载荷校验谓词 isCommentAnchor（U1 文件清单明文——词表与其校验一体承载，单一登记处完整性）。
  * 编号口径：裸编号分域归属——既有段落（线程 schema / 路由族 / 来源标记）的 D/AX/GL 属
  * opendesign-comment-loop 包，元素锚点段的 D1 属 opendesign-comment-anchor 包（以段落归属
  * 区分两包同形编号）；引用其他设计包（V1 代 / 二轮 opendesign-assets-quality）的同形编号

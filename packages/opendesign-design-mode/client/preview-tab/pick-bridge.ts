@@ -46,7 +46,7 @@ type PickBridgeOutboundAction = (typeof PICK_BRIDGE_OUTBOUND_ACTIONS)[number]
 /** 内容版本探针的轮询间隔（D8(c)：5 秒定时 + 聚焦/可见性恢复；e2e RL7 的判定窗口以它为界）。 */
 export const CONTENT_PROBE_INTERVAL_MS = 5000
 
-/** picked 载荷非法时 submit-result 的回执原因（脚本输入框行内呈现；双语同脚本自身兜底文案）。 */
+/** picked 载荷非法时 submit-result 的回执原因（脚本输入框行内呈现；双语形态与脚本自身兜底文案一致——文案不同：本条是载荷非法回执，脚本兜底是提交失败重试提示，lib/comments/pick-script.ts showPanelError）。 */
 export const PICK_PAYLOAD_INVALID_REASON = 'Invalid pick payload. 评论载荷非法'
 
 /** 入站 message 的最小结构视图（真实 MessageEvent 的结构子集；测试可直接造对象）。 */
