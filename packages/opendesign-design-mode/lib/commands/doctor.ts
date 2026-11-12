@@ -16,8 +16,9 @@
  * 探测（git -C <用户登记路径> rev-parse --show-toplevel，路径经命令参数登记不写死）、
  * 逐协议比对 ok/drift/无法比对三态 + 各自恢复动作、clone HEAD 滞后已知信息行）；
  * ⑪ 质量发现（D10⑪/SC5：读会话目录 .od-quality/report.jsonl 呈现 P0/P1/P2 发现（含回注
- * 裁决）、监听器生命周期状态与产物写盘身份记录（D5④ 快照豁免回查数据源）；无记录时报
- * 「本轮会话无检查记录」+ 监听器未启动原因）；⑫ 评论环（comment-loop 设计包 D7/G7：会话
+ * 裁决）、监听器生命周期状态与产物写盘身份记录（D5④ 快照豁免回查数据源）+ 锚属性补写
+ * 记录（本设计包 §3.3 D7：逐行按时间序呈现 inserted/skipped/gaveUp，不做跨行聚合，
+ * 无补写记录不渲染该段）；无记录时报「本轮会话无检查记录」+ 监听器未启动原因）；⑫ 评论环（comment-loop 设计包 D7/G7：会话
  * 工作目录 .od-comments/comments.json 的存在性与线程计数、各 delivery 状态分布、文件
  * parse 健康度（损坏时报告并指引恢复——手工修复或删除重建，插件不自动重建）、写通道
  * 路由族注册状态）。
@@ -588,7 +589,8 @@ function renderProtocolAuditSection(sourceClonePath: string | null): string[] {
   return lines
 }
 
-// ── ⑪ 质量发现（D10⑪/SC5；读侧消费 U5 feedback.ts 的 report.jsonl 三行型记录）──
+// ── ⑪ 质量发现（D10⑪/SC5；读侧消费 feedback.ts 的 report.jsonl 四行型记录，其中
+//    anchor-backfill 补写行登记于本设计包 §3.3 D7）──
 
 /** 发现记录 reason 的中文裁决说明（词表 = U5 FindingRecordReason；doctor 按「为什么没回注」呈现）。 */
 export const FINDING_REASON_LABELS: Record<FindingRecordReason, string> = {
@@ -624,7 +626,12 @@ function readQualityReportLines(sessionCwd: string): { lines: QualityReportLine[
   return { lines, corruptCount, fileExists: true }
 }
 
-/** 第⑪节渲染：监听器状态 + 发现清单（含回注裁决）+ 产物写盘身份记录；无记录给未启动原因。 */
+/** 补写放弃原因的中文说明（词表 = 本设计包 §3.3 D7 gaveUp；doctor 按「为什么没写回」呈现，未知值原样兜底）。 */
+const ANCHOR_BACKFILL_GAVE_UP_LABELS: Record<'utf8', string> = {
+  utf8: 'UTF-8 无损校验未通过，写回会破坏原文件',
+}
+
+/** 第⑪节渲染：监听器状态 + 发现清单（含回注裁决）+ 产物写盘身份记录 + 锚属性补写记录；无记录给未启动原因。 */
 function renderQualityFindingsSection(sessionCwd: string | null): string[] {
   if (sessionCwd === null) {
     return ['- 会话工作目录未知，无法读取检查记录（不影响本报告其余各项）。']
@@ -679,6 +686,20 @@ function renderQualityFindingsSection(sessionCwd: string | null): string[] {
   out.push(`- 产物写盘身份记录：${artifacts.length} 条（快照豁免的回查数据源，D5④）。`)
   for (const artifact of artifacts) {
     out.push(`  - ${artifact.path}（${artifact.at}）`)
+  }
+
+  // 锚属性补写记录（本设计包 §3.3 D7）：逐行按时间序呈现（JSONL 追加序即时间序，filter 保序），
+  // 每行自带 inserted/skipped/gaveUp——不做跨行求和或取末条聚合（同产物多轮补写的每行都是
+  // 独立事实，聚合口径不唯一就不聚合，走查裁决）；无补写记录的会话不渲染本段（空态不渲染）。
+  const backfills = reportLines.filter((line): line is Extract<QualityReportLine, { type: 'anchor-backfill' }> => line.type === 'anchor-backfill')
+  if (backfills.length > 0) {
+    out.push(`- 锚属性补写记录：${backfills.length} 条（逐行独立事实，不聚合）。`)
+    for (const line of backfills) {
+      const gaveUpText = typeof line.gaveUp === 'string' && line.gaveUp !== ''
+        ? `；放弃写回（${ANCHOR_BACKFILL_GAVE_UP_LABELS[line.gaveUp] ?? line.gaveUp}）`
+        : ''
+      out.push(`  - ${line.at} ${line.path}：插入 ${line.inserted} / 跳过 ${line.skipped}${gaveUpText}`)
+    }
   }
   return out
 }

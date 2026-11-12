@@ -11,7 +11,8 @@
  * 5. 产物身份行（D5④）：session-artifact 零命中也记且同路径一代只记一行、resume/unrecognized
  *    两 kind 不写身份行；
  * 6. report.jsonl 落盘（RL9）：发现行 reason 词表逐形态落盘、fed-back 运行中 P1/P2 行标
- *    p1p2、读侧 readArtifactIdentityPaths 损坏行容忍；
+ *    p1p2、读侧 readArtifactIdentityPaths 损坏行容忍；anchor-backfill 行词表（本设计包
+ *    §3.3 D7/RL7）：落盘字段与设计一致、gaveUp 仅防线触发时携带、未知 type 行宽容忽略；
  * 7. 边界：P0 findings 直接构造（回注器契约独立于检查器实现）、空发现 no-findings。
  *
  * 检查函数不注入：回注器消费的是 LintFinding[] 结构契约（lint.ts 导出类型），发现用例
@@ -412,6 +413,37 @@ describe('report.jsonl 落盘与读侧（doctor ⑪ 读侧行格式契约）', (
     )
     expect(line).toMatchObject({ type: 'finding', path: 'deck.html', severity: 'P0', id: 'scroll-into-view', reason: 'fed-back' })
     expect('snippet' in (line ?? {})).toBe(false)
+  })
+
+  it('anchor-backfill 行词表（本设计包 §3.3 D7）：落盘字段与设计一致，gaveUp 仅防线触发时携带', async () => {
+    const { cwd } = await makeHarness({ registry: new Map() })
+    // 常规补写行：无放弃原因，gaveUp 键不落行（JSON.stringify 丢 undefined，与 finding 行 snippet 缺席先例一致）。
+    await appendQualityReportLine(cwd, { type: 'anchor-backfill', at: '2026-11-10T02:00:01.000Z', path: 'src/a.html', inserted: 2, skipped: 1 })
+    // 防线放弃行：gaveUp 携带原因词表值；no-op 形态 inserted=0 同样成行（「检查过但无需补」可区分）。
+    await appendQualityReportLine(cwd, { type: 'anchor-backfill', at: '2026-11-10T02:00:02.000Z', path: 'src/b.html', inserted: 0, skipped: 3, gaveUp: 'utf8' })
+    const raw = await readFile(qualityReportPath(cwd), 'utf8')
+    const backfillRaw = raw.split('\n').filter((text) => text.includes('"anchor-backfill"'))
+    expect(backfillRaw).toHaveLength(2)
+    expect(backfillRaw[0]).not.toContain('gaveUp')
+    const lines = (await readReport(cwd)).filter(
+      (line): line is Extract<QualityReportLine, { type: 'anchor-backfill' }> => line.type === 'anchor-backfill',
+    )
+    expect(lines).toEqual([
+      { type: 'anchor-backfill', at: '2026-11-10T02:00:01.000Z', path: 'src/a.html', inserted: 2, skipped: 1 },
+      { type: 'anchor-backfill', at: '2026-11-10T02:00:02.000Z', path: 'src/b.html', inserted: 0, skipped: 3, gaveUp: 'utf8' },
+    ])
+  })
+
+  it('未知 type 行宽容忽略（与既有 parse 宽容语义一致）：readArtifactIdentityPaths 不收也不抛错', async () => {
+    const { cwd } = await makeHarness({ registry: new Map() })
+    // 未知 type 行（未来行型先于本插件落盘的形态）+ 损坏行夹在 artifact 行前后。
+    const { appendFile, mkdir } = await import('node:fs/promises')
+    await mkdir(join(cwd, '.od-quality'), { recursive: true })
+    await appendFile(qualityReportPath(cwd), '{"type":"future-kind","at":"2026-11-10T03:00:00.000Z","path":"x.html"}\n', 'utf8')
+    await appendQualityReportLine(cwd, { type: 'artifact', at: '2026-11-10T03:00:01.000Z', path: 'gen.html' })
+    await appendFile(qualityReportPath(cwd), '{"type":"anchor-backfill","trunc\n', 'utf8')
+    const identities = await readArtifactIdentityPaths(cwd)
+    expect([...identities]).toEqual(['gen.html'])
   })
 })
 

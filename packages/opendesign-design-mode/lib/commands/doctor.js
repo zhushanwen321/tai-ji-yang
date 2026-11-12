@@ -373,6 +373,9 @@ function readQualityReportLines(sessionCwd) {
   }
   return { lines, corruptCount, fileExists: true };
 }
+const ANCHOR_BACKFILL_GAVE_UP_LABELS = {
+  utf8: "UTF-8 无损校验未通过，写回会破坏原文件"
+};
 function renderQualityFindingsSection(sessionCwd) {
   if (sessionCwd === null) {
     return ["- 会话工作目录未知，无法读取检查记录（不影响本报告其余各项）。"];
@@ -415,6 +418,14 @@ function renderQualityFindingsSection(sessionCwd) {
   out.push(`- 产物写盘身份记录：${artifacts.length} 条（快照豁免的回查数据源，D5④）。`);
   for (const artifact of artifacts) {
     out.push(`  - ${artifact.path}（${artifact.at}）`);
+  }
+  const backfills = reportLines.filter((line) => line.type === "anchor-backfill");
+  if (backfills.length > 0) {
+    out.push(`- 锚属性补写记录：${backfills.length} 条（逐行独立事实，不聚合）。`);
+    for (const line of backfills) {
+      const gaveUpText = typeof line.gaveUp === "string" && line.gaveUp !== "" ? `；放弃写回（${ANCHOR_BACKFILL_GAVE_UP_LABELS[line.gaveUp] ?? line.gaveUp}）` : "";
+      out.push(`  - ${line.at} ${line.path}：插入 ${line.inserted} / 跳过 ${line.skipped}${gaveUpText}`);
+    }
   }
   return out;
 }

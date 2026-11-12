@@ -22,7 +22,8 @@
  * 9. 第⑩节：对账三态 fixture 断言（合成 git clone：ok / drift / 无法比对各自可证伪，
  *    RL5；任务书验收条款②）与 clone 探测单元（GPK1 命令口径）
  * 10. 第⑪节：report.jsonl 读侧断言（U5 三行型真写侧落行 + 损坏行容忍 + 无记录未启动
- *     原因，RL9；任务书验收条款③）
+ *     原因，RL9；任务书验收条款③）+ 锚属性补写记录（本设计包 §3.3 D7/V9/RL7：逐行
+ *     呈现不聚合、空态不渲染、未知 type 行不呈现）
  * 11. 第⑫节：评论环断言（comment-loop 设计包 D7——文件存在性与线程计数 / delivery 分布
  *     经 comments store 真实写侧对账、损坏 parse 健康度恢复指引就地呈现不并入第⑦节、
  *     写通道路由族契约词表声明形态）
@@ -786,6 +787,32 @@ describe('第⑪节 质量发现（report.jsonl 读侧 + 无记录降级，D10�
   it('会话工作目录未知：第⑪节报目录未知，不抛错', () => {
     const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd: null })
     expect(report).toContain('- 会话工作目录未知，无法读取检查记录（不影响本报告其余各项）。')
+  })
+
+  it('锚属性补写记录逐行呈现（本设计包 §3.3 D7/V9）：每行自带补写计数与放弃原因，同产物多轮不聚合', async () => {
+    const sessionCwd = makeTempDir('doctor-qf-backfill')
+    await appendQualityReportLine(sessionCwd, { type: 'watcher', at: '2026-11-10T02:00:00.000Z', event: 'started' })
+    // 同产物 src/a.html 两轮补写：两行都按时间序逐行呈现（不做求和或取末条聚合，D7 权威口径）。
+    await appendQualityReportLine(sessionCwd, { type: 'anchor-backfill', at: '2026-11-10T02:00:01.000Z', path: 'src/a.html', inserted: 2, skipped: 1 })
+    await appendQualityReportLine(sessionCwd, { type: 'anchor-backfill', at: '2026-11-10T02:00:02.000Z', path: 'src/a.html', inserted: 0, skipped: 3, gaveUp: 'utf8' })
+    const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd })
+    expect(report).toContain('- 锚属性补写记录：2 条（逐行独立事实，不聚合）。')
+    expect(report).toContain('  - 2026-11-10T02:00:01.000Z src/a.html：插入 2 / 跳过 1')
+    expect(report).toContain('  - 2026-11-10T02:00:02.000Z src/a.html：插入 0 / 跳过 3；放弃写回（UTF-8 无损校验未通过，写回会破坏原文件）')
+  })
+
+  it('无补写记录不渲染补写段（空态不渲染，V9）；未知 type 行宽容忽略不呈现', async () => {
+    const sessionCwd = makeTempDir('doctor-qf-no-backfill')
+    await appendQualityReportLine(sessionCwd, { type: 'watcher', at: '2026-11-10T03:00:00.000Z', event: 'started' })
+    await appendQualityReportLine(sessionCwd, { type: 'artifact', at: '2026-11-10T03:00:01.000Z', path: 'src/b.html' })
+    // 未知 type 行（未来行型先于本插件落盘的形态）：parse 宽容语义，doctor 不呈现也不失败。
+    const reportFile = join(sessionCwd, '.od-quality', 'report.jsonl')
+    writeFileSync(reportFile, `${readFileSync(reportFile, 'utf8')}{"type":"future-kind","at":"2026-11-10T03:00:02.000Z","path":"x.html"}\n`, 'utf8')
+    const report = buildDoctorReport({ profileResult: miniProfileResult(), sessionCwd })
+    expect(report).not.toContain('锚属性补写记录')
+    // 既有段照常呈现（未知行不破坏分流），未知行本身无呈现行。
+    expect(report).toContain('- 监听器状态：运行中推定（按 report.jsonl 最后一条生命周期记录：最近 started 2026-11-10T03:00:00.000Z；进程重启后未刷新，可能已停止）；累计启动 1 次 / 自毁 0 次。')
+    expect(report).toContain('- 产物写盘身份记录：1 条（快照豁免的回查数据源，D5④）。')
   })
 })
 

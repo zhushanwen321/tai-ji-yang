@@ -11,9 +11,9 @@
  * ②每会话每文件回注上限（缺省 2 次，仅完整内容命中消耗——完整性哨兵跳过的半写不会
  *   到达本模块，天然不消耗额度；超限 P0 与 P1/P2 同落发现记录，doctor 第⑪节呈现）。
  *
- * .od-quality/report.jsonl 行格式（SC5 唯一权威，追加式 JSONL；本模块是全部记录行的
- * 唯一写侧——watcher.ts 的生命周期行经 appendQualityReportLine 写入，doctor 第⑪节读侧
- * 消费；行格式由本单元定义，U6 依赖此契约）：
+ * .od-quality/report.jsonl 行格式（SC5 唯一权威，追加式 JSONL；appendQualityReportLine 是
+ * 全部记录行的唯一写入口——watcher.ts 的生命周期行与本模块的 artifact/finding 行经它写入，
+ * anchor-backfill 补写行由补写器经同一入口写入，doctor 第⑪节读侧消费）：
  *   {"type":"artifact","at":"<ISO>","path":"<cwd 相对路径>"}
  *     —— 产物写盘身份记录：监听期间快照外写盘经完整性哨兵后记一行，零 P0 命中也记
  *        （身份记录是回查数据不是发现）；resume 后下一代监听器按 path 回查构建豁免集（D5④）。
@@ -23,6 +23,10 @@
  *        同运行的 P1/P2 行标 p1p2）。
  *   {"type":"watcher","at":"<ISO>","event":"started"|"destroyed","cwd":"…","reason":"…"}
  *     —— 监听器生命周期（SI3）：destroyed 必带 reason；started 带 cwd。
+ *   {"type":"anchor-backfill","at":"<ISO>","path":"<cwd 相对路径>","inserted":<本次插入数>,
+ *    "skipped":<跳过数（已带属性 + 畸形 + 注释内）>,"gaveUp":"utf8"?}
+ *     —— 锚属性补写记录（本设计包 §3.3 D7）：每次补写执行记一行（含 no-op inserted=0 与
+ *        放弃行），gaveUp 仅防线触发时携带原因；doctor 第⑪节逐行按时间序呈现不聚合。
  *
  * AX7 红线：回注消息 source.kind 用包专有标识且文本开头自报身份，绝不冒充用户发言。
  * 宿主 UserMessage 是开放字面量（role/content/source 三件，AS2 实读：llm message.ts 的
@@ -73,6 +77,10 @@ export type QualityReportLine =
     reason: FindingRecordReason
   }
   | { type: 'watcher'; at: string; event: 'started' | 'destroyed'; cwd?: string; reason?: string }
+  // 锚属性补写记录（本设计包 §3.3 D7）：每次补写执行一行，no-op 也记（inserted=0，
+  // 「检查过但无需补」与「从没检查过」在 doctor 读侧可区分）；gaveUp 仅防线触发时携带
+  // 放弃原因（'utf8' = UTF-8 无损校验未通过，写回会破坏原文件）。
+  | { type: 'anchor-backfill'; at: string; path: string; inserted: number; skipped: number; gaveUp?: 'utf8' }
 
 /**
  * 追加一行检查发现记录（自动创建 .od-quality/ 目录；追加式，绝不改写既有行）。
