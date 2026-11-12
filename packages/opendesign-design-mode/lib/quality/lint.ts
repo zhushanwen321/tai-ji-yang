@@ -478,6 +478,16 @@ export function lintArtifact(rawHtml: unknown): LintFinding[] {
   // Either `data-od-id` (web/mobile prototypes) or `data-screen-label`
   // (decks) counts. Whichever the artifact uses, every <section> should
   // carry one so the chat layer can target it.
+  //
+  // Known blind spot (greppy fidelity, upstream-faithful — deliberately
+  // NOT fixed here): a tag whose attribute value contains ">" (e.g.
+  // data-note="a>b") is matched only up to that ">", so an anchor
+  // attribute sitting between there and the real tag end stays
+  // invisible and P2 keeps firing even after the anchor backfiller
+  // (lib/quality/backfill.ts) has tagged it — read-only check, false
+  // positives are tolerated (upstream design intent); the backfiller
+  // runs the same TAGGED regex over the quote-aware full tag window
+  // (stricter than lint, as it writes to disk) and converges.
   const sections = html.match(/<section\b[^>]*>/gi) ?? []
   const tagged = sections.filter(
     (s) => /data-od-id\s*=/.test(s) || /data-screen-label\s*=/.test(s),

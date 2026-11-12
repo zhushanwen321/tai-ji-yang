@@ -28,12 +28,12 @@ function backfillAnchors(buffer) {
       skipped += 1;
       continue;
     }
-    if (TAGGED_RE.test(m[0])) {
+    const tagEnd = findTagEnd(html, tagStart);
+    if (tagEnd === void 0) {
       skipped += 1;
       continue;
     }
-    const tagEnd = findTagEnd(html, tagStart);
-    if (tagEnd === void 0) {
+    if (TAGGED_RE.test(html.slice(tagStart, tagEnd + 1))) {
       skipped += 1;
       continue;
     }

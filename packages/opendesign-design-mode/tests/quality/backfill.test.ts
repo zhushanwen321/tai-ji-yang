@@ -4,14 +4,16 @@
  * 断言结构：
  * 1. 防线组（RL1）：非 UTF-8 Buffer 返原字节 + gaveUp:'utf8'；引号配对失败标签零插入
  *    （且防线按标签逐个生效：坏标签跳过 + 好标签正常补写）；属性值含 > 的双/单引号完整
- *    形态插入在真实标签边界（不走查必修 1 的升级防线）；合法输入输出快照逐字节比对
- *    （Buffer.equals）；
+ *    形态插入在真实标签边界（不走查必修 1 的升级防线）；tagged 判定窗口 = 完整标签串：
+ *    值含 > 标签首轮补写后二轮 skipped 收敛（截断窗口判定会重复插入永不收敛）、已带
+ *    锚属性 + 值含 > 标签首轮即跳过；合法输入输出快照逐字节比对（Buffer.equals）；
  * 2. 生成组（RL5）：同输入两次调用输出逐字节一致（确定性）；同内容两 section 查重后缀
  *    区分；原文既有同 hash 值时新插入带后缀；空 section 窗口（空串/极短串）不抛错、
  *    相邻空 section 窗口不同不撞值；
  * 3. 注释组（RL6）：注释内教学示例零插入且注释段逐字保留（AS10 语义）；
  * 4. 共存组（V7）：已带 data-screen-label 的标签跳过（查重集合只收 data-od-id 值）、
- *    无属性标签正常插入 data-od-id。
+ *    无属性标签正常插入 data-od-id；已带锚属性且属性值含 > 的标签首轮即跳过（tagged
+ *    判定窗口 = 完整标签串，不重复插入第二个锚属性）。
  *
  * 期望值计算：G2 规格常量（属性名 / id 前缀 / 指纹窗口 / hash 位数）从
  * lib/quality/backfill.js import 复用（单一登记处，本文件不重复字面量定义）；hash 按
@@ -105,6 +107,17 @@ describe('防线组（RL1）', () => {
         `<section data-note=${quote}a>b${quote}${attrText(id)}><p>x</p></section>`,
       )
     }
+  })
+
+  it('属性值含 > 的标签二轮收敛：tagged 判定窗口 = 完整标签串，第二轮见补写属性 skipped 零插入（D5 幂等纯函数层）', () => {
+    // 截断窗口反证：m[0] = `<section data-note="a>` 截在值内 > 处，补写属性落在截断点
+    // 之后——按截断串判定则二轮再插入新后缀属性（-2/-3 递增），永不收敛
+    const first = backfillAnchors(Buffer.from('<section data-note="a>b"><p>x</p></section>', 'utf8'))
+    expect(first.inserted).toHaveLength(1) // 引号配对完整 = 边界完整可补写（D4 防线不拦）
+    const second = backfillAnchors(first.buffer)
+    expect(second.inserted).toEqual([]) // 完整标签串含首轮补写的 data-od-id= → tagged 跳过
+    expect(second.skipped).toBe(1)
+    expect(second.buffer.equals(first.buffer)).toBe(true) // 二轮字节不变 = 零状态收敛成立
   })
 
   it('合法输入输出快照逐字节比对（两个 section 全补写）', () => {
@@ -230,5 +243,17 @@ describe('共存组（V7）', () => {
     const result = backfillAnchors(Buffer.from(`${labeled}\n<section>${body}</section>`, 'utf8'))
     // 既有值恰为 screen-label 的展示值：若查重集合误收它，新插入会错带 -2 后缀
     expect(result.inserted).toEqual([{ id }])
+  })
+
+  it('已带锚属性且属性值含 > 的标签首轮即跳过：完整标签串命中 tagged（截断窗口判定会漏判并重复插入第二个锚属性）', () => {
+    for (const quote of ["'", '"'] as const) {
+      for (const attr of ['data-od-id', 'data-screen-label']) {
+        const input = `<section data-note=${quote}a>b${quote} ${attr}="x"><p>x</p></section>`
+        const result = backfillAnchors(Buffer.from(input, 'utf8'))
+        expect(result.inserted).toEqual([]) // 已带即跳过（D4 tagged）：零插入
+        expect(result.skipped).toBe(1)
+        expect(result.buffer.toString('utf8')).toBe(input) // 字节不变
+      }
+    }
   })
 })

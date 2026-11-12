@@ -3,19 +3,25 @@
  * data-od-id 属性——Buffer 进、{补写后 Buffer, 插入清单, 跳过/放弃计数} 出，零 I/O
  * （不读盘不写盘，写回由质量环检查函数接线承载，设计 §3.3 D1：补写步骤位于完整性哨兵
  * 后、三类命中分类后、lint 前——补写后内容供 lint 与回注消费，missing-section-anchor
- * 对补写成功的产物恒不触发）。
+ * 对补写成功的产物恒不触发；口径限常规标签形态：属性值含 > 的标签（AS12）其补写属性
+ * 落在 lint 的 [^>]* 截断窗口之外，lint 仍报 P2——lint 只统计不写盘、greppy 误报可
+ * 容忍（正源行为保真），该盲区登记在 lint.ts P2-1 段注释）。
  *
  * 判定口径（设计 §3.3 D4，与 lint P2-1 完全对齐——lintArtifact 的 P2-1 检查段同正则
- * 同语义）：
+ * 同语义；写盘防线比 lint 严，D4 不采用②）：
  * ① 匹配 /<section\b[^>]*>/gi 的全部起始标签（不区分顶层或嵌套，与 lint 统计口径一致）；
  * ② 注释区间排除（AS10，lint 注释剥离前置的同款语义）：先扫描原文收集 <!--...--> 区间，
  *    匹配起点落在区间内的跳过；写回在原文执行（保注释）；
- * ③ 已带 data-od-id= 或 data-screen-label= 的标签跳过（与 lint 的 tagged 判定同一正则）；
- * ④ 引号上下文感知边界校验（补写器独有的写盘防线，lint 只读不写故不需要）：自标签头起
+ * ③ 引号上下文感知边界校验（补写器独有的写盘防线，lint 只读不写故不需要）：自标签头起
  *    扫描，遇 " 或 ' 进入对应引号上下文、至同种引号再次出现，上下文内的 > 不算标签结束；
  *    仅当找到「处于引号上下文之外的 >」（此时其前引号已全部配对完成）时该标签视为边界
  *    完整、可插入，否则跳过。双引号与单引号属性值同权校验（防 data-note='a>b' 这类含
- *    > 的属性值把 [^>]* 截断在值中间、插入点落在属性值内写坏文件）。
+ *    > 的属性值把 [^>]* 截断在值中间、插入点落在属性值内写坏文件）；
+ * ④ tagged 跳过判定（与 lint 的 tagged 判定同一正则，判定窗口 = ③ 确定的完整标签串
+ *    html.slice(tagStart, tagEnd+1)，而非 SECTION_TAG_RE 的 [^>]* 截断串）：属性值含 >
+ *    时锚属性可落在截断点之外（补写器自插入的属性恒落在真实边界前 = 截断点之后），按
+ *    截断串判定会漏判已带属性 → 重复插入 → 二轮永不收敛（D5 零状态自循环的第一条机制
+ *    即「见已带属性 → 无插入」）。实现次序 ③ 先于 ④：tagged 判定需要 ③ 的边界结果。
  *
  * id 生成（设计 §3.3 D3 + 守护 G2）：值 = 'od-sec-' + section 内容哈希前 8 位 hex
  * （指纹输入 = 该 section 起始标签结束后 256 字符原文，去首尾空白，sha256）；同文件
@@ -71,7 +77,9 @@ const COMMENT_RE = /<!--[\s\S]*?-->/g
 
 /**
  * tagged 判定（lint P2-1 的 tagged 过滤同形正则，大小写敏感与 lint 保持同口径）：
- * data-od-id= 或 data-screen-label= 任一命中即视为已带锚属性。
+ * data-od-id= 或 data-screen-label= 任一命中即视为已带锚属性。判定窗口由调用方保证 =
+ * 引号边界确定后的完整标签串（backfillAnchors 判定 ④）——直接喂 lint 式 [^>]* 截断串
+ * 会在属性值含 > 形态漏判锚属性（截断点之后不可见），二轮重复插入永不收敛。
  */
 const TAGGED_RE = new RegExp(`${OD_ANCHOR_ATTR}\\s*=|data-screen-label\\s*=`)
 
@@ -113,15 +121,18 @@ export function backfillAnchors(buffer: Buffer): BackfillResult {
       skipped += 1
       continue
     }
-    // ③ tagged 跳过：已带 data-od-id= 或 data-screen-label=（与 lint tagged 判定同正则）
-    if (TAGGED_RE.test(m[0])) {
-      skipped += 1
-      continue
-    }
-    // ④ 引号上下文感知边界校验：引号未配对 = 标签边界不确定，跳过保原字节（防线目标 =
+    // ③ 引号上下文感知边界校验：引号未配对 = 标签边界不确定，跳过保原字节（防线目标 =
     // 插入点永不落在属性值内，AS12）
     const tagEnd = findTagEnd(html, tagStart)
     if (tagEnd === undefined) {
+      skipped += 1
+      continue
+    }
+    // ④ tagged 跳过：判定窗口 = ③ 确定的完整标签串（非 m[0] 截断串——属性值含 > 时
+    // 锚属性可落在截断点之外，补写器自插入的属性恒在截断点之后，按截断串判定二轮
+    // 永远看不到 → 重复插入永不收敛）。正则与 lint tagged 判定同款，窗口比 lint 宽
+    // 是「防线必须比 lint 严」的延伸（lint 只统计不写盘，补写器写盘需完整视野）
+    if (TAGGED_RE.test(html.slice(tagStart, tagEnd + 1))) {
       skipped += 1
       continue
     }

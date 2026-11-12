@@ -224,11 +224,17 @@ describe('真实写盘触发（临时目录真实写盘 → 防抖后检查回�
     expect(input.findings.some((f) => f.id === 'purple-gradient')).toBe(true)
     expect(input.findings.some((f) => f.id === 'emoji-icon')).toBe(true)
     // report.jsonl 落盘：started 行（RL9 监听器生命周期半场）+ 锚补写 no-op 行（锚补写·D7：
-    // P0_HTML 无 section，补写器零插入也记 inserted=0 行——「检查过但无需补」可区分语义）；
+    // P0_HTML 无 section，补写器零插入也记 inserted=0 行——「检查过但无需补」可区分语义；
+    // 本组实锁该行在场与 inserted=0 值，补写行二轮 no-op 语义另有锚补写·RL3 用例锁值）；
     // 回注侧零动作断言保持：零身份行、零发现行
     await until(() => reportLines(cwd).some((line) => line.type === 'watcher' && line.event === 'started'))
+    await until(() => reportLines(cwd).some((line) => line.type === 'anchor-backfill'))
     const report = await readReport(cwd)
     expect(report.filter((line) => line.type === 'watcher')).toHaveLength(1)
+    const backfillRows = report.filter((line) => line.type === 'anchor-backfill')
+    expect(backfillRows).toHaveLength(1) // D7 no-op 落行：零插入也记（「检查过但无需补」可区分）
+    expect(backfillRows[0]?.inserted).toBe(0)
+    expect(backfillRows[0]?.path).toBe('index.html')
     expect(report.filter((line) => line.type === 'artifact' || line.type === 'finding')).toHaveLength(0)
   })
 })
@@ -765,6 +771,29 @@ describe('锚补写防自循环二轮幂等（锚补写·RL3 / V6：二轮检查
     // 两轮检查链都到达回注回调（events 承载；二轮内容与一轮一致是指纹 duplicate 的前提）
     expect(h.events.length).toBeGreaterThanOrEqual(2)
     expect(h.events[1]?.content).toBe(h.events[0]?.content)
+  })
+
+  it('属性值含 > 的产物二轮同样收敛（tagged 判定窗口 = 完整标签串）：首轮 inserted=1、二轮 no-op skipped=1、磁盘恰一个锚属性', async () => {
+    const cwd = await makeCwd()
+    const h = await startHarness(cwd)
+    // AS12 形态：data-note="a>b" 引号配对完整（可补写形态），首轮补写属性落在
+    // SECTION_TAG_RE 的 [^>]* 截断点之后——若按截断串判定，二轮看不到补写属性会
+    // 再插入 -2 后缀属性（每轮 +31 字节无限膨胀），本用例锁完整串判定的收敛行为
+    const html = '<!doctype html><html><body><section data-note="a>b"><p>x</p></section></body></html>'
+    await writeFile(join(cwd, 'quoted.html'), html, 'utf8')
+    const input = await h.waitEvent((candidate) => candidate.relativePath === 'quoted.html')
+    expect(input.kind).toBe('session-artifact')
+    expect(input.content).toContain('data-od-id="od-sec-') // 首轮补写后内容进回注
+    // 二轮事件（补写写回触发）经防抖进链：等二轮 anchor-backfill 行落盘
+    await until(() => backfillLines(cwd).length >= 2)
+    await delay(SETTLE_MS) // 若有第三轮重复副作用在此窗口暴露
+    const lines = backfillLines(cwd)
+    expect(lines).toHaveLength(2) // 恰两轮：首轮补写 + 二轮 no-op（截断窗口判定会 3+ 行不收敛）
+    expect(lines[0]?.inserted).toBe(1)
+    expect(lines[1]?.inserted).toBe(0)
+    expect(lines[1]?.skipped).toBe(1) // 二轮完整标签串含补写属性 → tagged 跳过
+    const final = await readFile(join(cwd, 'quoted.html'), 'utf8')
+    expect(final.match(/data-od-id=/g)).toHaveLength(1) // 磁盘恰一个锚属性（无膨胀）
   })
 })
 
