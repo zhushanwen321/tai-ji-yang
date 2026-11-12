@@ -7,8 +7,10 @@
  * 全部机制：provider key 保存前预检（拦宿主 prepareRoutes 的 DUPLICATE_ADAPTER 整批拒绝）、
  * revision 快照约定（expectedRevision 取自展开体打开时与保存成功回执，保存不重取）、
  * settings/conflict 的重读一次重试一次（非盲重试，对齐 client/persist.ts:177-205 先例形态）、
- * 读改写只发字段级 path ops（不整替换既有 profile——宿主「模型」分区写的字段不丢）、
- * 写入后回读校验（宿主 schema 未声明的静默接受字段标注「宿主不消费」，AS17）。
+ * 读改写只发字段级 path ops（不整替换既有 profile——宿主「模型」分区写的字段不丢；
+ * models[] 条目级未建模字段经 ModelDraft.raw 并回，MF-1-5）、写入后回读校验（宿主 schema
+ * 未声明的静默接受字段标注「宿主不消费」，AS17；回执与写入值逐 op 比对，不符按 rejected
+ * 上报，MF-1-14）。
  *
  * 保存顺序（D3/D7 锚定，检查点 U1）：provider key 预检 → 凭据 ref 查重 → settings.mutate →
  * credentials.set。查重命中任一即拒绝，后两环节零执行——设置文档与凭据文件零写入。
@@ -155,7 +157,16 @@ export interface ModelDraft {
   nameEdited?: boolean
   /** 自定义档输入的草稿值（UI 态，不入宿主写盘；仅驱动行内校验提示的显隐）。 */
   levelInput?: string
+  /**
+   * 条目级读改写保真载体（MF-1-5）：原始条目中本草案未建模的字段（宿主声明的 compat 与
+   * 全部未知字段）——modelFromDraft 写回时原样并回，全表单 diff 与行内编辑两条写路径都
+   * 不再整段丢字段。仅当原始条目含未建模字段时由 modelToDraft 携带（新草案无 raw = 无可保留）。
+   */
+  raw?: Record<string, unknown>
 }
+
+/** 本草案建模的 models[] 条目字段（写回面）；清单外字段（compat 与未知字段）经 raw 并回。 */
+const MODELED_MODEL_FIELDS: readonly string[] = ['id', 'name', 'contextWindow', 'maxTokens', 'input', 'reasoningEfforts']
 
 /** 供应商编辑草案（展开体表单的提交形态）。 */
 export interface ProviderDraft {
@@ -301,6 +312,14 @@ export function modelFromDraft(draft: ModelDraft): HostProviderProfile {
     // 「off with a value sends that value」；全集七档即历史「全部档位」的写盘形态）。
     entry.reasoningEfforts = levelsToEfforts(draft.levels)
   }
+  // 条目级读改写保真（MF-1-5）：宿主声明但本草案未建模的字段（compat）与全部未知字段从
+  // 原始条目原样并回——全表单保存的整段 diff 与行内编辑的原位替换都不再静默丢字段。
+  if (draft.raw !== undefined) {
+    for (const [field, value] of Object.entries(draft.raw)) {
+      if (MODELED_MODEL_FIELDS.includes(field)) continue
+      entry[field] = value
+    }
+  }
   return entry
 }
 
@@ -326,13 +345,14 @@ export function prettifyId(id: string): string {
 }
 
 /**
- * 存量 models[] 条目 → 编辑草案（未知字段不进草案——它们由字段级 diff 之外的读改写保留面保证）。
+ * 存量 models[] 条目 → 编辑草案。未建模字段（compat 与未知字段）经 raw 携带原始条目，
+ * modelFromDraft 写回时并回（MF-1-5 条目级读改写保真——:329 注释承诺的保留机制由此成立）。
  *
  * reasoningEfforts 归档（D3 读改写保真）：显式 false → 非思考（写回 false 与既有值一致）；
- * 键值完全同名的字典 → 已声明档位集合（自由组合进 badge 交互，写回同名映射逐字一致）；
- * 其他一切形态（值≠键的字典、省略字段、未知结构）→ preserve 原样保留态（草案携带原始值，
- * 写回逐字透传，不静默改写宿主权威数据——宿主「模型」分区可写任意 THINKING_LEVELS 组合
- * 与键名，非同名形态可达）。
+ * 键值同名且可安全重写的字典 → 已声明档位集合（自由组合进 badge 交互，写回同名映射逐字
+ * 一致）；其他一切形态（值≠键的字典、省略字段、未知结构，以及同名但宿主写入门必拒的
+ * 形态——空字典与仅 off）→ preserve 原样保留态（草案携带原始值，写回逐字透传，不静默
+ * 改写宿主权威数据；preserve 往返零 diff 即零写入，宿主 strict 校验不会被触发）。
  */
 export function modelToDraft(model: Record<string, unknown>): ModelDraft {
   const efforts = model.reasoningEfforts
@@ -342,15 +362,18 @@ export function modelToDraft(model: Record<string, unknown>): ModelDraft {
   let preserveRaw: unknown
   if (efforts === false) {
     thinkingEnabled = false // 写回 false，与既有值一致（无损）
-  } else if (isRecord(efforts) && isSameNameEfforts(efforts)) {
+  } else if (isRecord(efforts) && isRewritableEfforts(efforts)) {
     thinkingEnabled = true
     levels = Object.keys(efforts)
   } else {
-    // 非 false、非同名映射字典（含 off 值为空串等值≠键的字典）、省略该字段（宿主语义 =
-    // 沿用目录能力）或其他未知形态：原样保留，写回逐字透传。
+    // 非 false、非可安全重写的同名映射字典（值≠键、非词表键、空字典、仅 off——后两者是
+    // 宿主写入门必拒形态）、省略该字段（宿主语义 = 沿用目录能力）或其他未知形态：
+    // 原样保留，写回逐字透传。
     preserve = true
     preserveRaw = efforts
   }
+  // 未建模字段存在时携带原始条目（写回并回的保真载体）。
+  const hasUnmodeled = Object.keys(model).some((field) => !MODELED_MODEL_FIELDS.includes(field))
   return {
     id: typeof model.id === 'string' ? model.id : '',
     name: typeof model.name === 'string' ? model.name : '',
@@ -361,7 +384,20 @@ export function modelToDraft(model: Record<string, unknown>): ModelDraft {
     levels,
     preserve,
     ...(preserveRaw !== undefined ? { preserveRaw } : {}),
+    ...(hasUnmodeled ? { raw: model } : {}),
   }
+}
+
+/**
+ * 同名映射字典能否安全归档为自由选集：键值完全同名、键全部 ∈ THINKING_LEVELS 且含 off
+ * 以外的档（宿主 resolveModelReasoning：空字典与「off 之外无档」都是 strict 写入门必拒
+ * 形态；非词表键同名映射写回会造出宿主不接受的 wire 值——都归 preserve 逐字透传）。
+ */
+function isRewritableEfforts(efforts: Record<string, unknown>): boolean {
+  const keys = Object.keys(efforts)
+  return isSameNameEfforts(efforts)
+    && keys.every((key) => THINKING_LEVELS.includes(key))
+    && keys.some((key) => key !== 'off')
 }
 
 /** reasoningEfforts 字典的「键值完全同名」判定（归档为已声明档位集合的判据）。 */
@@ -390,11 +426,13 @@ export function profileDiffOps(existing: HostProviderProfile, draft: ProviderDra
   return ops
 }
 
-/** 保存结果（UI 按.kind 分支渲染；refused 两态都不产生任何写入）。 */
+/** 保存结果（UI 按.kind 分支渲染；refused 三态都不产生任何写入）。 */
 export type SaveProviderResult =
   | { kind: 'saved'; profile: HostProviderProfile; revision: number | undefined; refConfigured: boolean; refMessage: string | undefined; undeclared: string[] }
   | { kind: 'refused-route'; message: string }
   | { kind: 'refused-ref'; branch: 'a' | 'b'; message: string }
+  /** 新建撞他端接入（MF-1-12）：本端快照之后其他客户端接入了同 key 条目——放弃整条 set 不覆盖。 */
+  | { kind: 'refused-existing'; message: string }
   | { kind: 'rejected'; message: string }
 
 /** 保存参数（revision 由调用方持有——展开体打开时/上次保存回执的快照，D3）。 */
@@ -449,6 +487,16 @@ export async function saveProvider(host: ModelServiceHost, params: SaveProviderP
   // 宿主网关对业务失败 resolve {ok:false}（不 reject），失败判定按 Result 的 ok/code 走。
   // 新建整条 set 带 apiKeyEnv（D7 只存 ref 名）：本次保存带密钥才写——文档条目引用派生 ref，
   // 宿主解析才有凭据可用（缺失时徽章「未配置」+ 重填重试，D3 可见可救）。
+  // 跨端覆盖防护（MF-1-12）：他端在本端快照之后接入同 key 时，整条 set 会覆盖他端字段
+  // （窄表单值不含 apiKeyEnv/modelOverrides/compat）。持有 revision 栅栏时他端接入必然推进
+  // revision → 首发即 settings/conflict → 冲突分支重读后按下方检查放弃；栅栏缺失（无条件
+  // 写、不会触发冲突）时提交前补一次重读检查。
+  if (draft.isNew && revision === undefined) {
+    const current = await readLlmPiAi(host.settings)
+    if (current.providers[draft.key] !== undefined) {
+      return { kind: 'refused-existing', message: providerTakenMessage(draft.key) }
+    }
+  }
   const ops = draft.isNew
     ? [{ op: 'set' as const, path: ['providers', draft.key], value: profileFromDraft(draft, wantsKey ? credentialRef : undefined) }]
     : profileDiffOps(existing ?? {}, draft, draft.key)
@@ -460,6 +508,10 @@ export async function saveProvider(host: ModelServiceHost, params: SaveProviderP
     }
     // 非盲重试：重读最新 revision 后同形 ops 再发一次（path ops 按存储视图解析，AS11）。
     const fresh = await readLlmPiAi(host.settings)
+    // 新建撞他端接入（MF-1-12）：重读显示 key 已存在 → 放弃整条 set，不覆盖他端条目。
+    if (draft.isNew && fresh.providers[draft.key] !== undefined) {
+      return { kind: 'refused-existing', message: providerTakenMessage(draft.key) }
+    }
     const second = await host.settings.mutate(LLM_PI_AI_NS, ops, fresh.revision)
     if (!second.ok) {
       return { kind: 'rejected', message: settingsConflictFailureMessage(draft.key, second.error.message, fresh.revision) }
@@ -472,6 +524,12 @@ export async function saveProvider(host: ModelServiceHost, params: SaveProviderP
   // 写入后回读校验（AS17）：mutate 返回视图即写入后快照，schema 未声明字段标注「宿主不消费」。
   const writtenProfile = readWrittenProfile(view, draft.key)
   const undeclared = undeclaredFieldPaths(writtenProfile)
+  // 写入产物实质校验（MF-1-14）：回执与本次 ops 目标值逐 op 比对——不符（宿主静默丢弃或
+  // 改写字段）按 rejected 上报而非静默 saved，UI 不得在产物缺失时呈现成功。
+  const missedFields = verifyWrittenOps(ops, writtenProfile)
+  if (missedFields.length > 0) {
+    return { kind: 'rejected', message: writeMismatchMessage(missedFields) }
+  }
 
   // ④ credentials.set：写入目标与 ② 查重同源（编辑既有 provider 落其既有 apiKeyEnv）。
   // 设置成功凭据失败 → 徽章「未配置」+ 重填重试（不回滚 ③）。业务失败是 resolve 型
@@ -627,6 +685,12 @@ export async function writeProviderModels(remote: ModelServiceHost, key: string,
     return { kind: 'rejected', message: `模型清单写入失败：${messageOf(error)}。请确认宿主设置服务可用后重试。` }
   }
   const writtenProfile = readWrittenProfile(view, key)
+  // 写入产物实质校验（MF-1-14，saveProvider 同款）：回执 models 与写入值不符 = 宿主静默
+  // 丢弃或改写——按 rejected 上报而非静默 saved。
+  const missedFields = verifyWrittenOps(ops, writtenProfile)
+  if (missedFields.length > 0) {
+    return { kind: 'rejected', message: writeMismatchMessage(missedFields) }
+  }
   return {
     kind: 'saved',
     profile: writtenProfile,
@@ -669,6 +733,39 @@ function messageOf(error: unknown): string {
 /** settings/rejected 与凭据链路之外的失败：原样透传宿主消息（含恢复线索）。 */
 function rejectedMessage(message: string): string {
   return `宿主拒绝写入模型服务设置（llm-pi-ai 命名空间）：${message}。请检查端点/协议/模型字段是否满足宿主校验后重试。`
+}
+
+/** 新建撞他端接入的拒绝文案（MF-1-12：放弃整条 set，不覆盖他端条目）。 */
+function providerTakenMessage(key: string): string {
+  return `供应商「${key}」已在其他窗口接入；为避免覆盖，本次未写入，请重新打开本分区后编辑该条目。`
+}
+
+/**
+ * 写入产物实质校验（MF-1-14）：mutate 回执是写入后快照——逐 op 比对回执与本次目标值。
+ * set op 的值须出现在回执（deepEqual），unset op 的字段须缺席；整条 set（providers.<key>）
+ * 比对整条 profile。返回不符项清单（整条不符标注 key），空数组 = 产物与写入值一致。
+ */
+function verifyWrittenOps(ops: SettingsOp[], written: HostProviderProfile): string[] {
+  const missed: string[] = []
+  for (const op of ops) {
+    if (op.path.length <= 2) {
+      if (op.op === 'set' && !deepEqualJson(written, op.value)) missed.push(`${String(op.path[1])}（整条）`)
+      continue
+    }
+    const field = op.path[2]
+    if (typeof field !== 'string') continue
+    if (op.op === 'set') {
+      if (!deepEqualJson(written[field], op.value)) missed.push(field)
+    } else if (written[field] !== undefined) {
+      missed.push(field)
+    }
+  }
+  return missed
+}
+
+/** 回执与写入值不符的上报文案（MF-1-14）。 */
+function writeMismatchMessage(missed: string[]): string {
+  return `写入已提交，但宿主回执与写入值不符（${missed.join('、')}）——内容可能被宿主静默丢弃或改写；请重试一次，仍失败请检查宿主模型适配器版本。`
 }
 
 /** 连续冲突的四段式文案（本包 + 命名空间与字段 + 事实 + 出路，对齐 persist.ts 口径）。 */

@@ -17,8 +17,12 @@
  *   ROUTE_NO_ACTIVE_MEMBER  `route "<id>" has no active member: <原因>`
  *   ROUTE_MEMBER_UNAVAILABLE `route "<id>" member "<provider>/<model>" is unavailable: <原因>`
  *
- * 界面文案一律经 locale 字典（双语对账由 locale.test 保证）；本模块持有码 → locale 键的
- * 映射与参数提取，不持文案字面（禁在 TS 里写用户可见文案——本包 locale 双语纪律）。
+ * 界面文案纪律：视图层文案一律经 locale 字典（双语对账由 locale.test 保证），禁在 TS 里
+ * 写用户可见文案。既定例外（评审 MF-1-15 登记）：模型服务数据层（settings-client.ts /
+ * credentials-client.ts / discovery.ts）的错误与恢复文案在 TS 内以中文硬编码，不经字典
+ * ——它们逐字包裹宿主英文原文与动态参数（revision / ref / key / 字段清单），模板化收益
+ * 低且产品定位中文优先；视图层对这些结果的框架与提示行（保存/删除失败前缀、接入占用
+ * 提示等）仍一律走 locale 字典。
  */
 
 /** 错误码词表（与 index.js 的构造侧同字面；新增码两侧同步）。 */

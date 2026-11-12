@@ -49,6 +49,15 @@ function thinkingLevelKey(level: string): ModelServiceLocaleKey {
   return `thinking.level.${level}` as ModelServiceLocaleKey
 }
 
+/**
+ * 档位集是否含 off 以外的档（宿主 resolveModelReasoning 的写入门校验：reasoningEfforts
+ * 字典必须含 off 以外的档——空字典与仅 off 都是 strict 写入必拒形态，MF-1-9）。
+ * 「支持思考」开启的自由选集恒须满足；移除后不满足即翻非思考（写 false 的合法形态）。
+ */
+function hasNonOffLevel(levels: readonly string[]): boolean {
+  return levels.some((level) => level !== 'off')
+}
+
 /** 模型编辑行的 props：草案 + 变更回调（ProviderEditModel 持状态）。 */
 export interface ModelEditProps {
   t: Translate
@@ -187,7 +196,18 @@ export function ModelEdit({ t, draft, onChange }: ModelEditProps) {
                   type="button"
                   className="ms-level-remove"
                   aria-label={`${t('model.levelRemove')} ${t(thinkingLevelKey(level))}`}
-                  onClick={() => { onChange({ ...draft, levels: draft.levels.filter((item) => item !== level) }) }}
+                  onClick={() => {
+                    const next = draft.levels.filter((item) => item !== level)
+                    // 移除后没有 off 以外的档（删空 / 仅剩 off）→ 翻非思考：reasoningEfforts:false
+                    // 是宿主合法写盘形态（宿主对这两种形态的指引即「set false for a
+                    // non-reasoning model」）；checkbox 随之可见地取消，再勾选按空集给全集的
+                    // 既有规则重启（MF-1-9，对照 checkbox 分支空集自动给全集的自动修复先例）。
+                    if (!hasNonOffLevel(next)) {
+                      onChange({ ...draft, thinkingEnabled: false, preserve: false, levels: [] })
+                      return
+                    }
+                    onChange({ ...draft, levels: next })
+                  }}
                 >
                   ×
                 </button>
@@ -200,7 +220,11 @@ export function ModelEdit({ t, draft, onChange }: ModelEditProps) {
                 className="ms-level-pill"
                 onClick={() => {
                   // preserve 态点任一档位即转自由选集（以点选档为种子），preserve 语义解除。
-                  onChange({ ...draft, thinkingEnabled: true, preserve: false, levels: [...draft.levels, level] })
+                  // 种子不含 off 以外的档（点 off 进空集）时给全集种子——空集加入 off 会写出
+                  // 宿主必拒的 {off:'off'}；checkbox 开启空集给全集的同款自动修复（MF-1-9）。
+                  const seed = [...draft.levels, level]
+                  const levels = hasNonOffLevel(seed) ? seed : [...THINKING_LEVELS]
+                  onChange({ ...draft, thinkingEnabled: true, preserve: false, levels })
                 }}
               >
                 + {t(thinkingLevelKey(level))}
@@ -216,7 +240,10 @@ export function ModelEdit({ t, draft, onChange }: ModelEditProps) {
                 if (event.key !== 'Enter') return
                 if (levelInputInvalid) return
                 if (draft.levels.includes(levelInputRaw)) return
-                onChange({ ...draft, levels: [...draft.levels, levelInputRaw], levelInput: '' })
+                // 与 pill 同款种子规则（MF-1-9）：空集 Enter off 给全集（{off:'off'} 宿主必拒）。
+                const seed = [...draft.levels, levelInputRaw]
+                const levels = hasNonOffLevel(seed) ? seed : [...THINKING_LEVELS]
+                onChange({ ...draft, levels, levelInput: '' })
               }}
             />
             {levelInputInvalid && <span className="ms-level-error">{t('model.levelInvalid')}</span>}

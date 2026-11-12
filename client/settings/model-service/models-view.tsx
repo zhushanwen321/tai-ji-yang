@@ -67,6 +67,8 @@ export interface ModelGroupSnapshot {
   rows: ModelListRow[]
   /** 目录模型（复制到自定义清单 / 自定义此清单的数据源；custom/managed 组为空）。 */
   directoryModels: DiscoveredModel[]
+  /** 目录模型读取失败提示（MF-1-18：失败显形——携带恢复动作，区分「目录无模型」与「读取失败」）。 */
+  directoryError: string | undefined
   /** 自定义条目原文（models[] 值域——行内编辑/删除/复制的整段替换底稿；仅 custom 组非空）。 */
   customEntries: HostProviderProfile[]
 }
@@ -173,11 +175,15 @@ export class ModelsListModel {
         groups.push(customGroup(entry, models, reasoningOf, t))
         continue
       }
-      // 目录默认态 / 覆盖态：目录分支读目录模型（provider 命中目录零网络；未命中且无
-      // baseURL 探测失败 → 该组无行，组头动作回落「添加模型」）。
+      // 目录默认态 / 覆盖态：目录分支读目录模型（provider 命中目录零网络）。失败显形
+      // （MF-1-18）：failed outcome 的可行动 recovery 文案进组提示行，不再降级为空清单
+      // （组头动作回落「添加模型」的既有行为保留）。
       const outcome = await discoverProviderModels(this.deps.remote.llm, { provider: entry.provider })
       const directoryModels = outcome.kind === 'failed' ? [] : outcome.models
-      groups.push(directoryGroup(entry, directoryModels, reasoningOf, isNonEmptyRecord(profile.modelOverrides), t))
+      const directoryError = outcome.kind === 'failed'
+        ? `${t('models.directoryLoadFailed')}：${outcome.recovery}（${outcome.message}）`
+        : undefined
+      groups.push(directoryGroup(entry, directoryModels, reasoningOf, isNonEmptyRecord(profile.modelOverrides), t, directoryError))
     }
     // 快照有而目录未刷新的 route 补组（custom 语义；字段从条目直读）。
     for (const [key, profile] of Object.entries(snapshot?.providers ?? {})) {
@@ -244,6 +250,14 @@ export class ModelsListModel {
     }
     const group = this.findGroup(editing.key)
     if (group === undefined) return false
+    // 同组 id 查重（MF-1-13）：改 id 撞同组既有条目 / 新增已存在 id 时零写入 + duplicateId
+    // 提示（宿主 strict 写入门拒收重复 id——「lists model "x" more than once」整次保存被拒；
+    // 对照 copyToCustom 的同款前置）。原位替换排除自身行位。
+    if (group.customEntries.some((existing, at) => at !== editing.index && existing.id === id)) {
+      this.state = { ...this.state, notice: this.deps.t('models.duplicateId', { id }) }
+      this.notify()
+      return false
+    }
     const entries = [...group.customEntries]
     const entry = modelFromDraft({ ...editing.draft, id })
     if (editing.isNew) entries.push(entry)
@@ -475,6 +489,9 @@ export function ModelsView({ t, model, onJump, onGoToProviders }: ModelsViewProp
                 )}
               </span>
             </div>
+            {group.directoryError !== undefined && (
+              <div className="ms-note ms-note-err">{group.directoryError}</div>
+            )}
             <div className="ms-model-list">
               {group.rows.map((row, index) => {
                 const rowEditing = editingHere && state.editing !== undefined && !state.editing.isNew && state.editing.index === index
@@ -576,7 +593,7 @@ function managedGroup(entry: ConfigurableProviderRow, catalog: ModelCatalogLike 
     inputModalities: t('models.fieldMissing'),
     reasoning: (model.reasoning?.efforts ?? []).map((effort) => effort.name).join(' / '),
   }))
-  return { providerKey: entry.provider, providerName: entry.displayName, source: 'managed', rows, directoryModels: [], customEntries: [] }
+  return { providerKey: entry.provider, providerName: entry.displayName, source: 'managed', rows, directoryModels: [], directoryError: undefined, customEntries: [] }
 }
 
 /** 自定义清单组（字段从设置快照条目直读；推理标注从 catalog 补）。 */
@@ -598,16 +615,18 @@ function customGroup(
       reasoning: (reasoning.get(`${entry.provider}:${modelId}`) ?? []).join(' / '),
     }
   })
-  return { providerKey: entry.provider, providerName: entry.displayName, source: 'custom', rows, directoryModels: [], customEntries: [...models] }
+  return { providerKey: entry.provider, providerName: entry.displayName, source: 'custom', rows, directoryModels: [], directoryError: undefined, customEntries: [...models] }
 }
 
-/** 目录默认态 / 覆盖态组（目录分支字段；缺失标未提供；覆盖态组只读标注）。 */
+/** 目录默认态 / 覆盖态组（目录分支字段；缺失标未提供；覆盖态组只读标注；
+ * directoryError = 目录读取失败提示行，MF-1-18）。 */
 function directoryGroup(
   entry: ConfigurableProviderRow,
   models: DiscoveredModel[],
   reasoning: Map<string, string[]>,
   overrideOnly: boolean,
   t: Translate,
+  directoryError: string | undefined,
 ): ModelGroupSnapshot {
   const missing = t('models.fieldMissing')
   const rows = models.map((model) => ({
@@ -624,6 +643,7 @@ function directoryGroup(
     source: overrideOnly ? 'override' : 'directory',
     rows,
     directoryModels: [...models],
+    directoryError,
     customEntries: [],
   }
 }

@@ -166,7 +166,7 @@ describe('思考档位 badge 组（自由组合）', () => {
     expect(changes[1].preserve).toBe(false)
   })
 
-  it('preserve 态：标注在场、badge 组可见但无已选 badge；点任一 pill 即转自由选集（preserve 解除）', () => {
+  it('preserve 态：标注在场、badge 组可见但无已选 badge；点非 off pill 即转自由选集（preserve 解除，种子 = 点选档）', () => {
     const draft = baseDraft({ thinkingEnabled: false, levels: [], preserve: true, preserveRaw: { custom: 'low' } })
     const { elements, changes } = render(draft)
     const texts = elements.map(textOf).join('\n')
@@ -183,10 +183,12 @@ describe('思考档位 badge 组（自由组合）', () => {
       return typeof className === 'string' && className.split(/\s+/).includes('ms-level-pill')
     })
     expect(pills).toHaveLength(THINKING_LEVELS.length)
-    ;(pills[0].props.onClick as () => void)()
+    // pills[0] = off（空集点 off 的全集种子规则由 MF-1-9 用例锁定）；此处点非 off 档
+    // （minimal）验证「种子 = 点选档」的既有语义。
+    ;(pills[1].props.onClick as () => void)()
     expect(changes[0].preserve).toBe(false)
     expect(changes[0].thinkingEnabled).toBe(true)
-    expect(changes[0].levels).toEqual([THINKING_LEVELS[0]])
+    expect(changes[0].levels).toEqual(['minimal'])
   })
 
   it('勾选「支持思考」从 preserve 转自由选集并给全集档位（空档位集不满足宿主校验）', () => {
@@ -228,6 +230,87 @@ describe('思考档位 badge 组（自由组合）', () => {
   it('写读往返对齐：badge 组草案经 levelsToEfforts 写盘 = 同名映射字典（模型卡交互与宿主词表一致）', () => {
     const draft = baseDraft({ levels: ['off', 'low', 'max'] })
     expect(levelsToEfforts(draft.levels)).toEqual({ off: 'off', low: 'low', max: 'max' })
+  })
+
+  // ── 评审修复 r1（G2 组：MF-1-9 档位下限防护——不再写出宿主必拒的 reasoningEfforts 形态）──
+
+  it('× 移除最后一档（删空）→ 翻非思考：thinkingEnabled=false + levels 清空（写 reasoningEfforts:false 合法形态）', () => {
+    const { elements, changes } = render(baseDraft({ levels: ['high'] }))
+    const group = elements.find((element) => element.props['aria-label'] === t('model.thinkingLevels'))!
+    const removeButton = collectElements(group).find((element) => {
+      const className = element.props.className
+      return typeof className === 'string' && className.split(/\s+/).includes('ms-level-remove')
+    })
+    ;(removeButton!.props.onClick as () => void)()
+    expect(changes[0].thinkingEnabled).toBe(false)
+    expect(changes[0].preserve).toBe(false)
+    expect(changes[0].levels).toEqual([])
+  })
+
+  it('× 移除后仅剩 off（{off:"off"} 宿主必拒形态）→ 同样翻非思考，不产出 off-only 选集', () => {
+    const session = driver(baseDraft({ levels: ['off', 'high'] }))
+    const group = session.elements.find((element) => element.props['aria-label'] === t('model.thinkingLevels'))!
+    const badges = collectElements(group).filter((element) => {
+      const className = element.props.className
+      return typeof className === 'string' && className.split(/\s+/).includes('ms-level-badge')
+    })
+    // 移除 high（剩 off）→ 翻非思考；再勾选「支持思考」→ 空集给全集（既有规则），可正常重启。
+    const highBadge = badges.find((badge) => textOf(badge).includes(t('thinking.level.high')))!
+    ;(collectElements(highBadge).find((element) => {
+      const className = element.props.className
+      return typeof className === 'string' && className.split(/\s+/).includes('ms-level-remove')
+    })!.props.onClick as () => void)()
+    expect(session.current.thinkingEnabled).toBe(false)
+    expect(session.current.levels).toEqual([])
+    session.rerender() // 驱动器时序：交互后重渲染，取新草案闭包的 checkbox
+    const checkbox = session.elements.find((element) => element.props.type === 'checkbox')!
+    ;(checkbox.props.onChange as (event: { target: { checked: boolean } }) => void)({ target: { checked: true } })
+    expect(session.current.levels).toEqual([...THINKING_LEVELS])
+  })
+
+  it('移除 off 本身（其余档保留）正常进行：levels 只去 off，不触发翻非思考', () => {
+    const { elements, changes } = render(baseDraft({ levels: ['off', 'high'] }))
+    const group = elements.find((element) => element.props['aria-label'] === t('model.thinkingLevels'))!
+    const badges = collectElements(group).filter((element) => {
+      const className = element.props.className
+      return typeof className === 'string' && className.split(/\s+/).includes('ms-level-badge')
+    })
+    const offBadge = badges.find((badge) => textOf(badge).includes(t('thinking.level.off')))!
+    ;(collectElements(offBadge).find((element) => {
+      const className = element.props.className
+      return typeof className === 'string' && className.split(/\s+/).includes('ms-level-remove')
+    })!.props.onClick as () => void)()
+    expect(changes[0].thinkingEnabled).toBe(true)
+    expect(changes[0].levels).toEqual(['high'])
+  })
+
+  it('preserve 空集起点点 off pill / Enter off → 给全集种子（不产出 {off:"off"}）', () => {
+    const seed = baseDraft({ thinkingEnabled: false, levels: [], preserve: true, preserveRaw: { custom: 'low' } })
+    // pill 路径：preserve 空集点「+ 关闭」
+    const pillSession = driver(seed)
+    const pillGroup = pillSession.elements.find((element) => element.props['aria-label'] === t('model.thinkingLevels'))!
+    const offPill = collectElements(pillGroup).filter((element) => {
+      const className = element.props.className
+      return typeof className === 'string' && className.split(/\s+/).includes('ms-level-pill')
+    }).find((pill) => textOf(pill).includes(t('thinking.level.off')))!
+    ;(offPill.props.onClick as () => void)()
+    expect(pillSession.current.preserve).toBe(false)
+    expect(pillSession.current.levels).toEqual([...THINKING_LEVELS])
+
+    // Enter 路径：空集输入 off 回车
+    const enterSession = driver(baseDraft({ thinkingEnabled: true, levels: [] }))
+    const levelInput = enterSession.elements.find((element) => {
+      const className = element.props.className
+      return typeof className === 'string' && className.split(/\s+/).includes('ms-level-input')
+    })!
+    ;(levelInput.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'off' } })
+    enterSession.rerender()
+    const enterInput = enterSession.elements.find((element) => {
+      const className = element.props.className
+      return typeof className === 'string' && className.split(/\s+/).includes('ms-level-input')
+    })!
+    ;(enterInput.props.onKeyDown as (event: { key: string }) => void)({ key: 'Enter' })
+    expect(enterSession.current.levels).toEqual([...THINKING_LEVELS])
   })
 })
 

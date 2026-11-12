@@ -85,7 +85,7 @@ Node 半场只承载默认色玄这一套的「宿主默认 palette 之上的最
 
 ### 3.2 CSS 交付形态
 
-`client/` 下全部 `*.css` 由构建脚本按路径序拼接为一段纯文本，factory 执行时以固定 id 注入一个 `<style>` 进 `document.head`（同 id 已在则覆盖内容，幂等）。不走 CSS Modules：类名隔离靠 `taiji-` 前缀命名约定。例外是会话头与 hero 的**宿主侧重塑 CSS**（第 9、10 节），它们选择宿主元素而非本包类名。
+`client/` 下全部 `*.css` 由构建脚本按路径序拼接为一段纯文本，factory 执行时以固定 id 注入一个 `<style>` 进 `document.head`（同 id 已在则覆盖内容，幂等）。不走 CSS Modules：类名隔离靠 `taiji-` 前缀命名约定；唯一登记例外是模型服务分区用 `ms-` 域内子命名空间（偏离登记 `docs/DSH-PLUGIN-RULES.md` §6 P-7）。例外是会话头与 hero 的**宿主侧重塑 CSS**（第 9、10 节），它们选择宿主元素而非本包类名。
 
 ## 4. 构建链与安装链
 

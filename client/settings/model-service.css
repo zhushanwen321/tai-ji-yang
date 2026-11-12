@@ -1,9 +1,16 @@
 /* 「模型服务」分区样式（dsh-model-service M1；与 client/settings/model-service/*.tsx 同域，
  * 经构建脚本的目录扫描注入——普通 CSS 文本 + ms- 前缀类名隔离，不用 CSS Modules）。
  *
+ * 类名前缀：本分区用 ms- 作域内子命名空间，是全仓 taiji- 前缀约定的登记偏离
+ * （docs/DSH-PLUGIN-RULES.md §6 偏离登记 P-7）——隔离机制相同（构建注入单 style +
+ * 全仓唯一前缀），仅前缀不含 taiji- 根；统一为 taiji-ms-*（taiji-pb- 先例）列后续重构批次。
+ *
  * 取色纪律（D10）：全部颜色走 --taiji-* 子 token（u-foundation 交付的 soft/ring/ink 派生档）
- * 与宿主 alias token（var(--dsw-alias-*)），不声明任何内联色值、不引入新色相；圆角走
- * --dsw-radius-*（太极四档）。覆盖层换色后本分区自动跟随。
+ * 与宿主 alias token（var(--dsw-alias-*)），不声明任何内联色值、不引入新色相。覆盖层换色后
+ * 本分区自动跟随。圆角走 --dsw-radius-*；两条例外走字面值：全圆 pill 形态（badge / chip /
+ * tag 族）用 999px（token 档位无全圆，语义 = 胶囊两端不以内容高度变化）；48 格时段格用
+ * 1px（格子宽仅十余像素、高 16px，最小档 xs=4px 在该宽度下视觉占比过重，时段格需要接近
+ * 直角以保持刻度条带形态）。
  *
  * 排版对照宿主设置分区行 chrome（appearance-row.css 同口径：16px 0 内距 + 0.5px 分隔线，
  * 标题 14px/22px/400）。 */
@@ -24,9 +31,10 @@
   flex-wrap: wrap;
 }
 
+/* 分区标题（14px/22px/400——与 taiji-section / appearance-row 分区标题同口径，见文件头）。 */
 .ms-section-title {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 22px;
 }
 
@@ -572,6 +580,14 @@
   gap: 4px;
 }
 
+/* 自定义清单态的模型区容器（provider-edit-body 目录被替换后的 else 分支）——与目录默认态
+ * .ms-directory 同构：列布局 + 4px 行距，行内容（清单行 + 动作行）随之获得纵向节奏。 */
+.ms-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .ms-directory-row {
   display: flex;
   align-items: center;
@@ -720,6 +736,13 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+/* 来源徽章色：自定义清单 = brand-soft（与 .ms-badge-custom 同取值——分组头的「自定义」态
+ * 是模型清单操作台的主态，不回落 .ms-badge 灰底）；目录/覆盖/托管按各自语义取色。 */
+.ms-source-badge-custom {
+  background: var(--taiji-brand-soft);
+  color: var(--taiji-ink);
+}
+
 .ms-source-badge-managed {
   background: var(--dsw-alias-bg-layer-1);
   color: var(--dsw-alias-label-secondary);
@@ -789,6 +812,14 @@
 .ms-route-card-selected {
   border-color: var(--taiji-brand-ring);
   background: var(--dsw-alias-bg-layer-1);
+}
+
+/* 卡展开体（修复条 / 管线标题 / 成员管线 / 添加成员的容器）：列布局 + 4px 行距，
+ * 与卡体 .ms-route-card 同构（routes-view.test 以此类名为查询钩子）。 */
+.ms-route-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .ms-route-card-head {
@@ -964,6 +995,13 @@
   align-items: center;
 }
 
+/* 表头行（corner + 五个窗口列名，纯文本不可点）：底部分隔线与数据行区分
+ * （.ms-model-group-head 同款表头形态）。 */
+.ms-weekmatrix-head {
+  padding-bottom: 2px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+}
+
 .ms-weekmatrix-corner,
 .ms-weekmatrix-daylabel {
   font-size: 11px;
@@ -1040,6 +1078,12 @@
   padding: 0;
 }
 
+/* 3 小时刻度格（slot % 6 === 0，与 .ms-dayslots-tick 标尺对齐）：未选中态以浮起面色区分
+ * 刻度；选中态由 .ms-dayslot-on（后定义，同特异性）覆盖为 brand-soft。 */
+.ms-dayslot-hour {
+  background: var(--dsw-alias-bg-layer-1);
+}
+
 .ms-dayslot-on {
   background: var(--taiji-brand-soft);
   border-color: var(--taiji-brand-ring);
@@ -1050,6 +1094,12 @@
   justify-content: space-between;
   font-size: 10px;
   color: var(--dsw-alias-label-secondary);
+}
+
+/* 时刻刻度（48 格条下方标尺的 8 个时刻文本）：不折行，窄容器下保持一格一刻度的可读性。 */
+.ms-dayslots-tick {
+  white-space: nowrap;
+  line-height: 14px;
 }
 
 .ms-specials {

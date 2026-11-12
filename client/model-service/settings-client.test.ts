@@ -50,7 +50,8 @@ function makeRecorder() {
 }
 
 /** 假 settings remote：可脚本化的 describe/mutate（bumpRevision 供冲突场景模拟他写者提交；
- * 返回按宿主 typert 网关真实形态包 RemoteResult，业务失败由 mutateImpl 注入 {ok:false}）。 */
+ * 返回按宿主 typert 网关真实形态包 RemoteResult，业务失败由 mutateImpl 注入 {ok:false}；
+ * 默认成功分支按宿主语义把 path ops 应用到存储视图再回执——写入产物校验 MF-1-14 的真值底座）。 */
 function fakeSettings(options: {
   providers?: Record<string, unknown>
   revision?: number
@@ -60,6 +61,7 @@ function fakeSettings(options: {
   bumpRevision(): void
 } {
   const mutations: { ns: string; ops: SettingsOp[]; revision?: number }[] = []
+  const section: Record<string, unknown> = options.providers ?? {}
   let revision = options.revision ?? 7
   return {
     mutations,
@@ -71,7 +73,7 @@ function fakeSettings(options: {
           writable: true,
           namespaces: [{
             ns: 'llm-pi-ai',
-            value: { providers: options.providers ?? {} },
+            value: { providers: section },
             revision,
           }],
         },
@@ -82,7 +84,23 @@ function fakeSettings(options: {
       const injected = options.mutateImpl !== undefined ? await options.mutateImpl(ns, ops, expectedRevision) : undefined
       if (injected !== undefined) return injected
       revision += 1
-      return { ok: true, value: { ns: 'llm-pi-ai', value: { providers: options.providers ?? {} }, revision } }
+      for (const op of ops) {
+        if (op.path[0] !== 'providers' || op.path.length < 2) continue
+        const key = op.path[1] as string
+        if (op.path.length === 2) {
+          if (op.op === 'set') section[key] = op.value
+          else delete section[key]
+          continue
+        }
+        const field = op.path[2] as string
+        if (op.op === 'set') {
+          if (typeof section[key] !== 'object' || section[key] === null) section[key] = {}
+          ;(section[key] as Record<string, unknown>)[field] = op.value
+        } else if (section[key] !== undefined) {
+          delete (section[key] as Record<string, unknown>)[field]
+        }
+      }
+      return { ok: true, value: { ns: 'llm-pi-ai', value: { providers: section }, revision } }
     },
   }
 }
@@ -860,17 +878,188 @@ describe('writeProviderModels 模型清单写通道（清单交互定稿 C3）',
   })
 
   it('回读校验：写入后回执里 schema 未声明的字段进 undeclared（AS17）', async () => {
+    // 写入值本身携带未声明字段（MF-1-5 的 raw 并回可达此形态：既有条目带未知字段），
+    // 宿主静默接受原样存储——回执与写入值一致（MF-1-14 校验过），undeclared 标注「宿主不消费」。
+    const written = [{ id: 'm1', name: 'M1', input: ['text'], unknownField: 1 }]
     const settings = fakeSettings({
       providers: { yanshi: {} },
-      mutateImpl: (ns, ops) => {
-        const op = ops[0]
-        const injected = [{ id: 'm1', name: 'M1', input: ['text'], unknownField: 1 }]
-        return Promise.resolve({ ok: true as const, value: { ns, value: { providers: { yanshi: { models: injected } } }, revision: 9 } })
-      },
+      mutateImpl: (ns) => Promise.resolve({ ok: true as const, value: { ns, value: { providers: { yanshi: { models: written } } }, revision: 9 } }),
     })
-    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', models)
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', written)
     expect(result.kind).toBe('saved')
     if (result.kind !== 'saved') return
     expect(result.undeclared).toEqual(['models[0].unknownField'])
+  })
+})
+
+// ── 评审修复 r1（G2 组：MF-1-5 / MF-1-9 / MF-1-12 / MF-1-14）──────────────────────
+
+describe('条目级读改写保真（MF-1-5：compat 与未知字段不因编辑丢失）', () => {
+  const existingWithExtras = {
+    displayName: 'Yanshi', api: 'openai-completions', baseURL: 'http://y/v1',
+    models: [{ id: 'm1', name: 'M1', input: ['text'], reasoningEfforts: false, compat: { supportsStore: true }, turboMode: 'x' }],
+  }
+
+  it('modelToDraft → modelFromDraft 往返：compat 与未知字段原样保留（草案 raw 携带原始条目）', () => {
+    const draft = modelToDraft(existingWithExtras.models[0])
+    expect(draft.raw).toBe(existingWithExtras.models[0])
+    expect(modelFromDraft(draft)).toEqual(existingWithExtras.models[0])
+  })
+
+  it('既有条目带 compat 时全表单保存零 models op（不改模型区不触发整段 set， displayName 变更同样零 models op）', () => {
+    const drafts = existingWithExtras.models.map(modelToDraft)
+    const ops = profileDiffOps(existingWithExtras, {
+      key: 'yanshi', isNew: false, narrow: false,
+      displayName: '改名', // 只改显示名——models 不发 op（MF-1-5 的核心回归面）
+      baseURL: 'http://y/v1', api: 'openai-completions', apiKeyValue: '', compat: {}, models: drafts,
+    }, 'yanshi')
+    expect(ops).toEqual([{ op: 'set', path: ['providers', 'yanshi', 'displayName'], value: '改名' }])
+  })
+
+  it('无未建模字段的条目不携带 raw（新草案无 raw = 无可保留面，形态不变）', () => {
+    const draft = modelToDraft({ id: 'm', name: 'M', input: ['text'], reasoningEfforts: false })
+    expect(draft.raw).toBeUndefined()
+    expect(modelFromDraft(draft)).toEqual({ id: 'm', name: 'M', input: ['text'], reasoningEfforts: false })
+  })
+})
+
+describe('思考档位归档收紧（MF-1-9：宿主写入门必拒形态走 preserve）', () => {
+  it('仅 off 的同名映射与空字典 → preserve（写回逐字透传，往返零 diff 不触发宿主校验）', () => {
+    const offOnly = modelToDraft({ id: 'a', name: 'A', input: ['text'], reasoningEfforts: { off: 'off' } })
+    expect(offOnly.preserve).toBe(true)
+    expect(offOnly.preserveRaw).toEqual({ off: 'off' })
+    expect(modelFromDraft(offOnly).reasoningEfforts).toEqual({ off: 'off' })
+    const emptyDict = modelToDraft({ id: 'b', name: 'B', input: ['text'], reasoningEfforts: {} })
+    expect(emptyDict.preserve).toBe(true)
+    expect(emptyDict.preserveRaw).toEqual({})
+  })
+
+  it('含 off 以外档的同名映射照常归自由选集（含 off 键的组合不受影响）', () => {
+    const mixed = modelToDraft({ id: 'a', name: 'A', input: ['text'], reasoningEfforts: { off: 'off', high: 'high' } })
+    expect(mixed.preserve).toBe(false)
+    expect(mixed.thinkingEnabled).toBe(true)
+    expect(mixed.levels).toEqual(['off', 'high'])
+  })
+
+  it('非词表键的同名映射（写回会造非法 wire 值）→ preserve 逐字透传', () => {
+    const alien = modelToDraft({ id: 'a', name: 'A', input: ['text'], reasoningEfforts: { turbo: 'turbo' } })
+    expect(alien.preserve).toBe(true)
+    expect(modelFromDraft(alien).reasoningEfforts).toEqual({ turbo: 'turbo' })
+  })
+})
+
+describe('新建跨端覆盖防护（MF-1-12：他端接入同 key 不整条覆盖）', () => {
+  it('持有栅栏时他端接入 → 首发冲突 → 重读见 key 已存在 → refused-existing 零覆盖', async () => {
+    const settings = fakeSettings({
+      // 他端已接入 deepseek-official（describe 重读可见）；本端持有 revision 7（接入前快照）。
+      providers: { 'deepseek-official': { apiKeyEnv: 'OTHER_WINDOW_KEY', modelOverrides: { legacy: { name: 'L' } } } },
+      revision: 8,
+      mutateImpl: (_ns, _ops, expectedRevision) => {
+        if (expectedRevision === 7) {
+          return Promise.resolve({ ok: false as const, error: { code: 'settings/conflict', message: 'stale revision', details: {} } })
+        }
+        return undefined
+      },
+    })
+    const result = await saveProvider(makeHost({ settings }), {
+      draft: { ...baseDraft, key: 'deepseek-official', narrow: true },
+      revision: 7,
+      existing: undefined,
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('refused-existing')
+    expect(settings.mutations).toHaveLength(1) // 只发了被拒的首发，零整条 set 落盘
+    expect((await readLlmPiAi(settings)).providers['deepseek-official']?.apiKeyEnv).toBe('OTHER_WINDOW_KEY') // 他端字段未被覆盖
+  })
+
+  it('栅栏缺失（无条件写不触发冲突）→ 提交前重读见 key 已存在 → refused-existing 零写入', async () => {
+    const settings = fakeSettings({ providers: { zai: { apiKeyEnv: 'OTHER_KEY' } } })
+    const result = await saveProvider(makeHost({ settings }), {
+      draft: { ...baseDraft, key: 'zai', narrow: true },
+      revision: undefined,
+      existing: undefined,
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('refused-existing')
+    expect(settings.mutations).toHaveLength(0)
+  })
+
+  it('他端接入的是其他 key（非同名）不拦截：冲突重试照常收敛', async () => {
+    const settings = fakeSettings({
+      providers: { other: { apiKeyEnv: 'X' } },
+      revision: 8,
+      mutateImpl: (_ns, _ops, expectedRevision) => {
+        if (expectedRevision === 7) {
+          return Promise.resolve({ ok: false as const, error: { code: 'settings/conflict', message: 'stale revision', details: {} } })
+        }
+        return undefined
+      },
+    })
+    const result = await saveProvider(makeHost({ settings }), {
+      draft: { ...baseDraft, key: 'deepseek-official', narrow: true, apiKeyValue: '' },
+      revision: 7,
+      existing: undefined,
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('saved')
+    expect(settings.mutations).toHaveLength(2)
+  })
+})
+
+describe('写入产物实质校验（MF-1-14：回执与写入值不符不静默 saved）', () => {
+  it('saveProvider 编辑：回执缺失本次 set 的字段（宿主静默丢弃）→ rejected 上报缺失字段', async () => {
+    const settings = fakeSettings({
+      providers: { 'verify-a': { displayName: 'Old', api: 'openai-completions', baseURL: 'http://old/v1' } },
+      mutateImpl: (ns) => Promise.resolve({ ok: true as const, value: { ns, value: { providers: { 'verify-a': { displayName: 'Old' } } }, revision: 9 } }),
+    })
+    const result = await saveProvider(makeHost({ settings }), {
+      draft: {
+        key: 'verify-a', isNew: false, narrow: false, displayName: 'New Name', baseURL: 'http://new/v1',
+        api: 'openai-completions', apiKeyValue: '', compat: {}, models: [],
+      },
+      revision: 7,
+      existing: { displayName: 'Old', api: 'openai-completions', baseURL: 'http://old/v1' },
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('rejected')
+    if (result.kind !== 'rejected') return
+    expect(result.message).toContain('baseURL')
+    expect(result.message).toContain('宿主回执与写入值不符')
+  })
+
+  it('saveProvider 新建：回执整条 profile 与写入值不符 → rejected（标注整条）', async () => {
+    const settings = fakeSettings({
+      mutateImpl: (ns) => Promise.resolve({ ok: true as const, value: { ns, value: { providers: {} }, revision: 9 } }),
+    })
+    const result = await saveProvider(makeHost({ settings }), {
+      draft: { ...baseDraft, apiKeyValue: '' },
+      revision: 7,
+      existing: undefined,
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('rejected')
+    if (result.kind !== 'rejected') return
+    expect(result.message).toContain('verify-a（整条）')
+  })
+
+  it('writeProviderModels：回执 models 与写入值不符 → rejected 而非 saved + 空对象回落', async () => {
+    const settings = fakeSettings({
+      providers: { yanshi: {} },
+      mutateImpl: (ns) => Promise.resolve({ ok: true as const, value: { ns, value: { providers: { yanshi: {} } }, revision: 9 } }),
+    })
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', [{ id: 'm1', name: 'M1', input: ['text'] }])
+    expect(result.kind).toBe('rejected')
+    if (result.kind !== 'rejected') return
+    expect(result.message).toContain('models')
+  })
+
+  it('unset op 的字段仍留在回执 → 同样不符（删除路径的产物校验）', async () => {
+    const settings = fakeSettings({
+      providers: { yanshi: { displayName: 'Y', models: [{ id: 'm1', name: 'M1', input: ['text'] }] } },
+      // 宿主未执行 unset（schema 静默容忍 models 字段）——回执仍含该字段。
+      mutateImpl: (ns) => Promise.resolve({ ok: true as const, value: { ns, value: { providers: { yanshi: { displayName: 'Y', models: [{ id: 'm1', name: 'M1', input: ['text'] }] } } }, revision: 9 } }),
+    })
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', [])
+    expect(result.kind).toBe('rejected')
   })
 })

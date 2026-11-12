@@ -306,25 +306,31 @@ export class ProvidersListModel {
     return sanitizeRoutes(section[ROUTES_FIELD])
   }
 
-  /** 第二击：真正删除（跨 profile 确认语义 = 用户点了第二击即确认）。 */
+  /** 第二击：真正删除（跨 profile 确认语义 = 用户点了第二击即确认）。全链路统一异常捕获
+   * （MF-1-4）：mutate 传输层 reject 向上抛时给可重试的错误条，不静默卡流程。 */
   async confirmDelete(): Promise<void> {
     const armed = this.state.deleteArmed
     if (armed === undefined || this.snapshot === undefined) return
     this.state = { ...this.state, deleteArmed: undefined, notice: undefined, error: undefined }
-    const result = await deleteProvider(this.deps.remote, {
-      key: armed.key,
-      existing: this.snapshot.providers[armed.key],
-      crossProfileConfirmed: true,
-      registerPendingUnset: (ref) => registerPendingUnset(this.deps.configForm, ref),
-    })
-    if (result.kind === 'rejected') {
-      this.state = { ...this.state, error: result.message }
-      this.notify()
-      return
-    }
-    await this.load()
-    if (result.pendingUnset !== undefined) {
-      this.state = { ...this.state, notice: result.unsetMessage }
+    try {
+      const result = await deleteProvider(this.deps.remote, {
+        key: armed.key,
+        existing: this.snapshot.providers[armed.key],
+        crossProfileConfirmed: true,
+        registerPendingUnset: (ref) => registerPendingUnset(this.deps.configForm, ref),
+      })
+      if (result.kind === 'rejected') {
+        this.state = { ...this.state, error: result.message }
+        this.notify()
+        return
+      }
+      await this.load()
+      if (result.pendingUnset !== undefined) {
+        this.state = { ...this.state, notice: result.unsetMessage }
+        this.notify()
+      }
+    } catch (error) {
+      this.state = { ...this.state, error: this.deps.t('delete.failed', { detail: messageOf(error) }) }
       this.notify()
     }
   }
@@ -575,4 +581,9 @@ export function ProvidersView({ t, model, jumpTarget, onJumpConsumed }: Provider
 
 function isNonEmptyRecord(value: unknown): boolean {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length > 0
+}
+
+/** 异常 → 展示消息（删除链路 catch 的 detail 插值源，MF-1-4）。 */
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }

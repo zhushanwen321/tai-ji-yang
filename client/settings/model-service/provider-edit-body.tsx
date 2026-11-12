@@ -175,6 +175,8 @@ export interface ProviderEditSnapshot {
   undeclared: string[]
   /** 目录默认态的目录模型清单（只读展示）。 */
   directoryModels: DiscoveredModel[]
+  /** 目录模型读取失败提示（MF-1-18：失败显形——携带恢复动作，区分「目录无模型」与「读取失败」）。 */
+  directoryError: string | undefined
 }
 
 /** 展开体的构造依赖。 */
@@ -252,6 +254,7 @@ export class ProviderEditModel {
       notice: undefined,
       undeclared: [],
       directoryModels: [],
+      directoryError: undefined,
     }
     this.refreshKeyPreview()
     if (!this.state.customOnly && this.state.directoryMode) void this.loadDirectoryModels()
@@ -376,18 +379,26 @@ export class ProviderEditModel {
     this.notify()
   }
 
-  /** 目录默认态的目录模型只读清单（挂载时经目录分支拉取，零网络）。 */
+  /** 目录默认态的目录模型只读清单（挂载时经目录分支拉取，零网络）。失败显形（MF-1-18）：
+   * failed outcome 携带可行动 recovery 文案——写入 directoryError 提示行，不再静默丢弃
+   * （空清单 = 用户无法区分「目录无模型」与「读取失败」）。 */
   private async loadDirectoryModels(): Promise<void> {
     const outcome = await discoverProviderModels(
       this.deps.remote.llm,
       { provider: this.target.key },
       this.deps.catalogProviderKeys,
     )
-    if (outcome.kind === 'catalog' || outcome.kind === 'endpoint') {
-      this.directoryModels = outcome.models
-      this.state = { ...this.state, directoryModels: outcome.models }
+    if (outcome.kind === 'failed') {
+      this.state = {
+        ...this.state,
+        directoryError: `${this.deps.t('models.directoryLoadFailed')}：${outcome.recovery}（${outcome.message}）`,
+      }
       this.notify()
+      return
     }
+    this.directoryModels = outcome.models
+    this.state = { ...this.state, directoryModels: outcome.models, directoryError: undefined }
+    this.notify()
   }
 
   // ── 发现与连通性 ──
@@ -482,68 +493,82 @@ export class ProviderEditModel {
     this.state = { ...this.state, saving: true, blockedMessage: undefined, error: undefined, notice: undefined }
     this.notify()
 
-    const draft: ProviderDraft = {
-      // 新建全表单：key 由显示名即时派生（AX11）；编辑与窄表单：key 固定——窄表单新建的
-      // key = 所选目录 route（条目身份由目录决定，不经显示名派生）。
-      key: this.target.isNew && !this.state.narrow ? deriveProviderKey(this.state.displayName.trim()) : this.target.key,
-      isNew: this.target.isNew,
-      narrow: this.state.narrow,
-      displayName: this.state.displayName.trim(),
-      baseURL: this.state.baseURL.trim(),
-      api: this.state.api,
-      apiKeyValue: this.state.apiKeyValue.trim(),
-      compat: writableCompat(this.state.compat, this.state.api),
-      models: this.state.models,
-    }
-    const result = await saveProvider(this.deps.remote, {
-      draft,
-      revision: this.heldRevision,
-      existing: this.diffBase,
-      refGuard: (ref, ownRef) => checkCredentialRefAvailable(
-        { credentials: this.deps.remote.credentials, profileRefs: collectProfileRefs(this.deps.providers) },
-        ref,
-        ownRef,
-      ),
-    })
+    // 保存全链路统一异常捕获（MF-1-4）：预检 unwrapRemote throw 与 mutate 传输层 reject 都
+    // 会向上抛——不捕获则 saving 永久卡 true（按钮禁用零提示）。catch 复位 saving 并给
+    // 可重试的错误条；四个正常结果分支之外不再有裸 await 出口。
+    try {
+      const draft: ProviderDraft = {
+        // 新建全表单：key 由显示名即时派生（AX11）；编辑与窄表单：key 固定——窄表单新建的
+        // key = 所选目录 route（条目身份由目录决定，不经显示名派生）。
+        key: this.target.isNew && !this.state.narrow ? deriveProviderKey(this.state.displayName.trim()) : this.target.key,
+        isNew: this.target.isNew,
+        narrow: this.state.narrow,
+        displayName: this.state.displayName.trim(),
+        baseURL: this.state.baseURL.trim(),
+        api: this.state.api,
+        apiKeyValue: this.state.apiKeyValue.trim(),
+        compat: writableCompat(this.state.compat, this.state.api),
+        models: this.state.models,
+      }
+      const result = await saveProvider(this.deps.remote, {
+        draft,
+        revision: this.heldRevision,
+        existing: this.diffBase,
+        refGuard: (ref, ownRef) => checkCredentialRefAvailable(
+          { credentials: this.deps.remote.credentials, profileRefs: collectProfileRefs(this.deps.providers) },
+          ref,
+          ownRef,
+        ),
+      })
 
-    if (result.kind === 'refused-route') {
-      this.state = { ...this.state, saving: false, notice: { kind: 'err', text: this.deps.t('save.refTakenRoute') } }
-      this.notify()
-      return
-    }
-    if (result.kind === 'refused-ref') {
+      if (result.kind === 'refused-route') {
+        this.state = { ...this.state, saving: false, notice: { kind: 'err', text: this.deps.t('save.refTakenRoute') } }
+        this.notify()
+        return
+      }
+      if (result.kind === 'refused-ref') {
+        this.state = {
+          ...this.state,
+          saving: false,
+          notice: { kind: 'err', text: result.branch === 'a' ? this.deps.t('save.refTakenA') : this.deps.t('save.refTakenB') },
+        }
+        this.notify()
+        return
+      }
+      if (result.kind === 'refused-existing') {
+        // 他端已接入同 key（MF-1-12）：放弃整条 set，用户刷新后编辑既有条目。
+        this.state = { ...this.state, saving: false, notice: { kind: 'err', text: this.deps.t('save.refTakenElsewhere') } }
+        this.notify()
+        return
+      }
+      if (result.kind === 'rejected') {
+        this.state = { ...this.state, saving: false, error: result.message }
+        this.notify()
+        return
+      }
+
+      // 成功：凭据失败不回滚设置（D3 可见可救——徽章「未配置」+ 重填重试）。
+      this.heldRevision = result.revision
+      this.diffBase = result.profile
+      // 新建保存成功：目标翻转为既有 provider 的编辑语义（key 固定、不再走新建预检与整条
+      // set）——展开体保持打开时二次保存走字段级 diff，不会撞自身的 route 预检。
+      if (this.target.isNew) this.target = { ...this.target, key: draft.key, isNew: false }
+      const notice = result.refConfigured
+        ? { kind: 'ok' as const, text: this.deps.t('save.saved') }
+        : { kind: 'warn' as const, text: `${this.deps.t('credential.missing')}：${result.refMessage ?? ''}` }
       this.state = {
         ...this.state,
         saving: false,
-        notice: { kind: 'err', text: result.branch === 'a' ? this.deps.t('save.refTakenA') : this.deps.t('save.refTakenB') },
+        notice,
+        undeclared: result.undeclared,
+        apiKeyValue: '', // 密钥不回显（AX1：成功后清草稿；失败时用户在展开体重填）
       }
+      this.deps.onSaved()
       this.notify()
-      return
-    }
-    if (result.kind === 'rejected') {
-      this.state = { ...this.state, saving: false, error: result.message }
+    } catch (error) {
+      this.state = { ...this.state, saving: false, error: this.deps.t('save.writeFailed', { detail: messageOf(error) }) }
       this.notify()
-      return
     }
-
-    // 成功：凭据失败不回滚设置（D3 可见可救——徽章「未配置」+ 重填重试）。
-    this.heldRevision = result.revision
-    this.diffBase = result.profile
-    // 新建保存成功：目标翻转为既有 provider 的编辑语义（key 固定、不再走新建预检与整条
-    // set）——展开体保持打开时二次保存走字段级 diff，不会撞自身的 route 预检。
-    if (this.target.isNew) this.target = { ...this.target, key: draft.key, isNew: false }
-    const notice = result.refConfigured
-      ? { kind: 'ok' as const, text: this.deps.t('save.saved') }
-      : { kind: 'warn' as const, text: `${this.deps.t('credential.missing')}：${result.refMessage ?? ''}` }
-    this.state = {
-      ...this.state,
-      saving: false,
-      notice,
-      undeclared: result.undeclared,
-      apiKeyValue: '', // 密钥不回显（AX1：成功后清草稿；失败时用户在展开体重填）
-    }
-    this.deps.onSaved()
-    this.notify()
   }
 
   /** 重置错误/提示行（用户再次编辑前清屏）。 */
@@ -726,6 +751,7 @@ export function ProviderEditBody({ t, model, focusModel, onCancel }: ProviderEdi
           <div className="ms-directory">
             <div className="ms-note ms-note-ok">{t('models.directoryMode')}</div>
             <div className="ms-note">{t('models.catalogNote')}</div>
+            {state.directoryError !== undefined && <div className="ms-note ms-note-err">{state.directoryError}</div>}
             {state.directoryModels.map((model) => (
               <div key={model.id} className={`ms-directory-row${focusModel === model.id ? ' ms-row-focus' : ''}`}>
                 {/* 目录通道只返回 id/显示名/输入模态（无上下文与思考档位）——摘要不虚构其余字段。 */}
@@ -841,6 +867,11 @@ export function ProviderEditBody({ t, model, focusModel, onCancel }: ProviderEdi
 }
 
 // ── 工具 ────────────────────────────────────────────────────────────────────
+
+/** 异常 → 展示消息（保存链路 catch 的 detail 插值源，MF-1-4）。 */
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
 
 /** 协议 id → locale key。 */
 function protocolKey(protocol: string): 'provider.protocol.openai-completions' | 'provider.protocol.openai-responses' | 'provider.protocol.anthropic-messages' {

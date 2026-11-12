@@ -25,7 +25,11 @@ interface ViewModule {
 const loader = createTsxLoader()
 const viewModule = loader.load(VIEW_PATH) as unknown as ViewModule
 
-const t = (key: keyof typeof modelServiceZh) => modelServiceZh[key]
+const t = (key: keyof typeof modelServiceZh, params?: Record<string, unknown>) => {
+  let text = modelServiceZh[key]
+  for (const [name, value] of Object.entries(params ?? {})) text = text.replaceAll(`{${name}}`, String(value))
+  return text
+}
 
 /** 目录行（settingsNs 决定托管/可编辑归属；declared 决定目录型/自定义型）。 */
 function directoryRow(provider: string, options: { declared?: boolean; ns?: string; displayName?: string } = {}): ConfigurableProviderRow {
@@ -221,5 +225,44 @@ describe('expand 展开形态（目录型窄表单 / 自定义全表单）', () 
     const snapshot = model.getSnapshot().editing?.getSnapshot()
     expect(snapshot?.narrow).toBe(false)
     expect(snapshot?.customOnly).toBe(true)
+  })
+})
+
+// ── 评审修复 r1（G2 组：MF-1-4 删除链路异常捕获）─────────────────────────────────
+
+describe('删除链路异常捕获（MF-1-4：confirmDelete 传输层 reject 不静默卡流程）', () => {
+  it('mutate 传输层 reject：确认态清除、错误条给可重试指引', async () => {
+    const deps = fakeDeps({
+      providers: { 'my-custom': { displayName: '我的自定义' } },
+      directory: [directoryRow('my-custom', { declared: true })],
+    })
+    deps.remote.settings.mutate = () => Promise.reject(new Error('transport down'))
+    const model = new viewModule.ProvidersListModel(deps)
+    await model.pending
+    model.requestDelete('my-custom')
+    expect(model.getSnapshot().deleteArmed).toBeDefined()
+    await model.confirmDelete()
+    const snapshot = model.getSnapshot()
+    expect(snapshot.deleteArmed).toBeUndefined() // 确认态已消费，不滞留
+    expect(snapshot.error).toBe('删除失败（transport down），请重试')
+  })
+
+  it('正常删除链路（对照）：unset 成功 → 无错误、行刷新后消失', async () => {
+    const providers: Record<string, Record<string, unknown>> = { 'my-custom': { displayName: '我的自定义' } }
+    const deps = fakeDeps({ providers, directory: [directoryRow('my-custom', { declared: true })] })
+    // fakeDeps 的 mutate 不应用 ops——本用例就地应用 unset，describe（重读）随之看到条目消失。
+    deps.remote.settings.mutate = async (_ns: string, ops: { op: string; path: (string | number)[] }[]) => {
+      for (const op of ops) {
+        if (op.op === 'unset' && op.path[0] === 'providers') delete providers[op.path[1] as string]
+      }
+      return { ok: true, value: { ns: 'llm-pi-ai' } }
+    }
+    const model = new viewModule.ProvidersListModel(deps)
+    await model.pending
+    model.requestDelete('my-custom')
+    await model.confirmDelete()
+    const snapshot = model.getSnapshot()
+    expect(snapshot.error).toBeUndefined()
+    expect(snapshot.rows.some((row) => row.key === 'my-custom')).toBe(false)
   })
 })

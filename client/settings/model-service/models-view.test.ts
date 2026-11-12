@@ -104,6 +104,7 @@ function group(overrides: Partial<ModelGroupSnapshot> = {}): ModelGroupSnapshot 
     source: 'custom',
     rows: [{ modelId: 'a1', modelName: 'A1', contextWindow: '1048576', maxTokens: '未提供', inputModalities: 'text', reasoning: '' }],
     directoryModels: [],
+    directoryError: undefined,
     customEntries: [],
     ...overrides,
   }
@@ -278,12 +279,14 @@ describe('ModelsView 分组组头与行内动作接线', () => {
 
 // ── ModelsListModel 行为（分组拼装 / 筛选 / 写路径）──────────────────────────────────
 
-/** 假宿主：设置文档 providers 段可注入，mutate 就地合并 path ops（写路径往返的真值底座）。 */
+/** 假宿主：设置文档 providers 段可注入，mutate 就地合并 path ops（写路径往返的真值底座）；
+ * discoverFailFor 注入目录读取失败的 provider（MF-1-18 失败显形用例）。 */
 function fakeHost(options: {
   providers?: Record<string, Record<string, unknown>>
   directory?: { provider: string; displayName: string; settingsNs: string }[]
   catalogGroups?: { id: string; name: string; models: { id: string; name: string }[] }[]
   discover?: { provider: string; models: { id: string; name?: string }[] }[]
+  discoverFailFor?: string[]
 } = {}): ModelServiceHost & { mutations: { ops: SettingsOp[] }[] } {
   const providers: Record<string, Record<string, unknown>> = structuredClone(options.providers ?? {})
   const mutations: { ops: SettingsOp[] }[] = []
@@ -316,6 +319,9 @@ function fakeHost(options: {
         }
       },
       async discoverModels(_ns: string, request: { provider?: string }) {
+        if ((options.discoverFailFor ?? []).includes(request.provider ?? '')) {
+          return { ok: false, error: { code: 'llm/discovery', message: 'no model listing', details: {} } }
+        }
         const hit = (options.discover ?? []).find((entry) => entry.provider === request.provider)
         return { ok: true, value: hit?.models ?? [] }
       },
@@ -476,5 +482,72 @@ describe('ModelsListModel 写路径（writeProviderModels 消费侧）', () => {
     expect(host.mutations[0].ops).toEqual([{ op: 'unset', path: ['providers', 'alpha', 'models'] }])
     expect(model.getSnapshot().notice).toBe(modelServiceZh['models.directoryMode'])
     expect(model.getSnapshot().groups[0].source).toBe('directory')
+  })
+
+  // ── 评审修复 r1（G2 组：MF-1-13 同组 id 查重 / MF-1-5 条目级保真 / MF-1-18 失败显形）──
+
+  it('saveEdit 同组 id 查重（MF-1-13）：改 id 撞同组既有条目 → duplicateId 提示零写入；原位改自己的 id 不拦', async () => {
+    const host = fakeHost({
+      providers: { alpha: { models: [{ id: 'a1', name: 'A1', input: ['text'] }, { id: 'a2', name: 'A2', input: ['text'] }] } },
+      directory: [{ provider: 'alpha', displayName: 'Alpha', settingsNs: 'llm-pi-ai' }],
+    })
+    const model = await makeModel(host)
+    model.beginEdit('alpha', 0)
+    model.setEditDraft({ id: 'a2', name: 'A1 改', contextWindow: undefined, maxTokens: undefined, input: ['text'], thinkingEnabled: false, levels: [], preserve: true })
+    expect(await model.saveEdit()).toBe(false)
+    expect(model.getSnapshot().notice).toBe('模型 a2 已在自定义清单中，未重复添加')
+    expect(host.mutations).toHaveLength(0)
+    // 原位替换不把自身算作冲突：编辑第 0 条且 id 保持 a1 → 正常写入。
+    model.beginEdit('alpha', 0)
+    model.setEditDraft({ id: 'a1', name: 'A1 改', contextWindow: undefined, maxTokens: undefined, input: ['text'], thinkingEnabled: false, levels: [], preserve: true })
+    expect(await model.saveEdit()).toBe(true)
+    expect(host.mutations).toHaveLength(1)
+  })
+
+  it('saveEdit 新增已存在 id 同样拦截（MF-1-13）', async () => {
+    const host = fakeHost({
+      providers: { alpha: { models: [{ id: 'a1', name: 'A1', input: ['text'] }] } },
+      directory: [{ provider: 'alpha', displayName: 'Alpha', settingsNs: 'llm-pi-ai' }],
+    })
+    const model = await makeModel(host)
+    model.beginAdd('alpha')
+    model.setEditDraft({ id: 'a1', name: '再来一个', contextWindow: undefined, maxTokens: undefined, input: ['text'], thinkingEnabled: false, levels: [], preserve: true })
+    expect(await model.saveEdit()).toBe(false)
+    expect(model.getSnapshot().notice).toBe('模型 a1 已在自定义清单中，未重复添加')
+    expect(host.mutations).toHaveLength(0)
+  })
+
+  it('行内编辑保存后条目级 compat 仍在（MF-1-5：raw 并回，行内编辑不丢宿主声明字段）', async () => {
+    const host = fakeHost({
+      providers: { alpha: { models: [{ id: 'a1', name: 'A1', input: ['text'], compat: { supportsStore: true } }] } },
+      directory: [{ provider: 'alpha', displayName: 'Alpha', settingsNs: 'llm-pi-ai' }],
+    })
+    const model = await makeModel(host)
+    model.beginEdit('alpha', 0)
+    const editing = model.getSnapshot().editing
+    expect(editing?.draft.raw).toEqual({ id: 'a1', name: 'A1', input: ['text'], compat: { supportsStore: true } }) // modelToDraft 携带原始条目
+    // 镜像真实交互（ModelEdit 的 onChange 展开合并草案，raw 随编辑保留）：只改显示名。
+    model.setEditDraft({ ...editing!.draft, name: 'A1 改' })
+    expect(await model.saveEdit()).toBe(true)
+    const written = (host.mutations[0].ops[0].value as Record<string, unknown>[])[0]
+    expect(written.compat).toEqual({ supportsStore: true })
+    expect(written.name).toBe('A1 改')
+  })
+
+  it('目录读取失败显形（MF-1-18）：组 directoryError 携带恢复动作，渲染错误提示行而非空清单', async () => {
+    const host = fakeHost({
+      providers: { dirp: {} },
+      directory: [{ provider: 'dirp', displayName: 'DirP', settingsNs: 'llm-pi-ai' }],
+      discoverFailFor: ['dirp'],
+    })
+    const model = await makeModel(host)
+    const snapshot = model.getSnapshot()
+    expect(snapshot.groups[0].directoryError).toContain(modelServiceZh['models.directoryLoadFailed'])
+    expect(snapshot.groups[0].directoryError).toContain('请手动添加模型') // recovery（可行动）
+    expect(snapshot.groups[0].rows).toEqual([])
+    // 渲染面：组内提示行在场（区分「目录无模型」与「读取失败」）。
+    const elements = renderView(readySnapshot({ providersExist: true, groups: snapshot.groups }))
+    const alerts = elements.filter((element) => element.props.className === 'ms-note ms-note-err').map((element) => textOf(element))
+    expect(alerts).toContain(snapshot.groups[0].directoryError)
   })
 })

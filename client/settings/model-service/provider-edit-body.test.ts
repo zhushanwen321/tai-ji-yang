@@ -27,7 +27,11 @@ interface BodyModule {
 const loader = createTsxLoader()
 const bodyModule = loader.load(BODY_PATH) as unknown as BodyModule
 
-const t = (key: keyof typeof modelServiceZh) => modelServiceZh[key]
+const t = (key: keyof typeof modelServiceZh, params?: Record<string, unknown>) => {
+  let text = modelServiceZh[key]
+  for (const [name, value] of Object.entries(params ?? {})) text = text.replaceAll(`{${name}}`, String(value))
+  return text
+}
 
 /** 假宿主通道（构造器只在目录默认态才探目录；本文件用例均带存量 models，探测面不触发；
  * remote 返回按宿主 typert 网关真实形态包 RemoteResult）。 */
@@ -255,5 +259,100 @@ describe('恢复目录默认的两段确认（U6，D11 采用段警示语义）'
     armed.requestRestoreDirectory()
     armed.addModel()
     expect(armed.getSnapshot().restoreArmed).toBe(false)
+  })
+})
+
+// ── 评审修复 r1（G2 组：MF-1-4 保存链路异常捕获 / MF-1-18 目录失败显形）──────────────
+
+describe('保存链路异常捕获（MF-1-4：saving 不因未捕获异常永久卡 true）', () => {
+  /** 可脚本化 mutate 的 remote（编辑流零 diff 时 ops 为空数组，回执 providers.yanshi 供回读）。 */
+  function editableRemote() {
+    const remote = fakeRemote()
+    const profile = { displayName: 'Yanshi', api: 'openai-completions', baseURL: 'http://y/v1', models: [{ id: 'a', name: 'A', input: ['text'], reasoningEfforts: false }] }
+    remote.settings.describe = async () => ({ ok: true, value: { writable: true, namespaces: [{ ns: 'llm-pi-ai', value: { providers: { yanshi: profile } }, revision: 2 }] } })
+    remote.settings.mutate = async () => ({ ok: true, value: { ns: 'llm-pi-ai', value: { providers: { yanshi: profile } }, revision: 3 } })
+    return { remote, profile }
+  }
+
+  it('mutate 传输层 reject：saving 复位、错误条带可重试指引（按钮不再永久禁用）', async () => {
+    const { remote } = editableRemote()
+    remote.settings.mutate = () => Promise.reject(new Error('transport down'))
+    const model = makeModel([{ id: 'a', name: 'A', input: ['text'], reasoningEfforts: false }], { remote })
+    await model.save()
+    const snapshot = model.getSnapshot()
+    expect(snapshot.saving).toBe(false)
+    expect(snapshot.error).toBe('保存失败（transport down），请重试')
+
+    // 通道恢复后再次保存可成功（saving 未卡死的回归证明）。
+    remote.settings.mutate = async () => ({ ok: true, value: { ns: 'llm-pi-ai', value: { providers: { yanshi: { displayName: 'Yanshi', models: [] } } }, revision: 4 } })
+    await model.save()
+    const recovered = model.getSnapshot()
+    expect(recovered.saving).toBe(false)
+    expect(recovered.error).toBeUndefined()
+  })
+
+  it('新建全表单的 route 预检 unwrapRemote throw 同样被捕获（saving 复位）', async () => {
+    const remote = editableRemote().remote
+    remote.llm.listProviders = () => Promise.reject(new Error('llm remote down'))
+    const model = makeModel([], {
+      remote,
+      target: { key: '', isNew: true, customOnly: true, narrow: false },
+      existing: undefined,
+    })
+    model.addModel() // 自定义新建至少一条模型（保存前置）
+    model.setDisplayName('New Provider') // 派生 key 进入预检链路
+    await model.save()
+    const snapshot = model.getSnapshot()
+    expect(snapshot.saving).toBe(false)
+    expect(snapshot.error).toBe('保存失败（llm remote down），请重试')
+  })
+})
+
+describe('目录模型读取失败显形（MF-1-18：不再静默降级为空清单）', () => {
+  it('目录默认态构造期探测失败 → directoryError 携带恢复动作，目录行区渲染错误提示行', async () => {
+    const remote = fakeRemote()
+    remote.llm.discoverModels = async () => ({ ok: false, error: { code: 'llm/discovery', message: 'no model listing available', details: {} } })
+    const model = makeModel([], { remote, catalogProviderKeys: new Set(['yanshi']) })
+    await new Promise((resolve) => setTimeout(resolve, 0)) // 构造期 void loadDirectoryModels 落地
+    const snapshot = model.getSnapshot()
+    expect(snapshot.directoryError).toContain(modelServiceZh['models.directoryLoadFailed'])
+    expect(snapshot.directoryError).toContain('请手动添加模型') // recovery 文案在场（可行动）
+    expect(snapshot.directoryModels).toEqual([])
+    // 渲染面：目录默认态提示行（ms-note-err）在场，区分「目录无模型」与「读取失败」。
+    const props: ProviderEditBodyProps = { t, model, focusModel: undefined, onCancel: () => {} }
+    const tree = bodyModule.ProviderEditBody(props) as Parameters<typeof collectElements>[0]
+    const texts = elementsOf(tree).map(textOf).join('\n')
+    expect(texts).toContain(snapshot.directoryError ?? '')
+  })
+
+  it('探测成功 → directoryError 复位为 undefined（失败提示不残留）', async () => {
+    const remote = fakeRemote()
+    remote.llm.discoverModels = async () => ({ ok: true, value: [{ id: 'd1', name: 'D1' }] })
+    const model = makeModel([], { remote, catalogProviderKeys: new Set(['yanshi']) })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const snapshot = model.getSnapshot()
+    expect(snapshot.directoryError).toBeUndefined()
+    expect(snapshot.directoryModels).toEqual([{ id: 'd1', name: 'D1' }])
+  })
+})
+
+describe('新建撞他端接入（MF-1-12：refused-existing 分支给刷新指引）', () => {
+  it('窄表单新建冲突重读见 key 已存在 → notice 给「已在其他窗口接入」指引，saving 复位', async () => {
+    const remote = fakeRemote()
+    // 首发被拒（他端接入推进 revision）；重读显示 zai 已存在（apiKeyEnv 为他端写入）。
+    remote.settings.mutate = async () => ({ ok: false, error: { code: 'settings/conflict', message: 'stale revision', details: {} } })
+    remote.settings.describe = async () => ({ ok: true, value: { writable: true, namespaces: [{ ns: 'llm-pi-ai', value: { providers: { zai: { apiKeyEnv: 'OTHER_WINDOW_KEY' } } }, revision: 9 }] } })
+    const model = makeModel([], {
+      remote,
+      target: { key: 'zai', isNew: true, customOnly: false, narrow: true, catalogName: 'Z.ai' },
+      existing: undefined,
+    })
+    model.setApiKeyValue('sk-x')
+    await model.save()
+    const snapshot = model.getSnapshot()
+    expect(snapshot.saving).toBe(false)
+    expect(snapshot.notice?.kind).toBe('err')
+    expect(snapshot.notice?.text).toBe(modelServiceZh['save.refTakenElsewhere'])
+    expect(snapshot.error).toBeUndefined()
   })
 })

@@ -562,6 +562,14 @@ export const modelServiceZh = {
   /** 路由成员引用警告（D3 删除流程：列出受影响路由，用户确认后继续删除）。 */
   'delete.routeReferences': '该供应商被路由引用（{routes}）；删除后对应成员将不可用（路由视图成员行标注「供应商已删」）。确认后继续删除。',
   'credential.pendingRetry': '已自动重试清理 {n} 个待清理凭据引用',
+  /** 保存链路异常的前缀（MF-1-4：saving 复位 + 可重试错误条）。 */
+  'save.writeFailed': '保存失败（{detail}），请重试',
+  /** 新建撞他端接入的拒绝提示（MF-1-12：不整条覆盖，刷新后编辑）。 */
+  'save.refTakenElsewhere': '该供应商已在其他窗口接入，本次未覆盖；请重新打开本分区后编辑该条目',
+  /** 删除链路异常的前缀（MF-1-4：confirmDelete 异常捕获）。 */
+  'delete.failed': '删除失败（{detail}），请重试',
+  /** 目录默认态目录模型读取失败的提示行前缀（MF-1-18：失败显形）。 */
+  'models.directoryLoadFailed': '目录模型读取失败',
 } satisfies LocaleDict
 
 /** 模型服务分区英文词典（与 modelServiceZh 同 key 集，相等性由 locale.test.ts 对账）。 */
@@ -793,6 +801,10 @@ export const modelServiceEn = {
   'delete.crossProfileConfirm': 'The credential ref {ref} of this provider is host-derived and may be shared by same-named providers in other profiles; deleting also clears that credential.',
   'delete.routeReferences': 'This provider is referenced by route(s) ({routes}); after deletion the affected members become unavailable (marked "provider deleted" in the routes view). Confirm to proceed.',
   'credential.pendingRetry': 'Retried clearing {n} pending credential refs',
+  'save.writeFailed': 'Save failed ({detail}); please retry',
+  'save.refTakenElsewhere': 'This provider was connected in another window and was not overwritten; reopen this section and edit it there',
+  'delete.failed': 'Delete failed ({detail}); please retry',
+  'models.directoryLoadFailed': 'Failed to read catalog models',
 } satisfies LocaleDict
 
 /** 模型服务分区文案 key 域（分区组件侧 `t` 的参数类型）。 */

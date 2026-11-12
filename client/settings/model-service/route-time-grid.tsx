@@ -75,6 +75,21 @@ function slotLabel(slot: number): string {
   return `${`${hour}`.padStart(2, '0')}:${minute}`
 }
 
+/**
+ * 特殊日期格点切换 + 冗余掩码归一（导出供单测锁定归一语义；受控纪律：不改入参，返回新条目）。
+ *
+ * 归一只发生在「mask 与无 mask 语义等价」时（isSlotCoveredAt 的特殊日期分支）：全 48 格
+ * true 对两种 mode 都等价无 mask——include 全命中 = 全天、exclude 全剔除 = 全天剔除。
+ * exclude 的 mask 全 **false**（无剔除格 = 该日按周表）与无 mask（全天剔除）语义相反，
+ * 必须保留 mask，不可归一。
+ */
+export function toggleSpecialMaskSlot(special: RouteSpecialDate, slot: number): RouteSpecialDate {
+  const source = [...(special.mask ?? Array.from({ length: SLOTS_PER_DAY }, () => special.mode === 'include'))]
+  source[slot] = !source[slot]
+  if (source.every((value) => value === true)) return { date: special.date, name: special.name, mode: special.mode }
+  return { ...special, mask: [...source] }
+}
+
 /** 三层视图 id。 */
 type GridLayer = 'matrix' | 'slots' | 'special'
 
@@ -348,17 +363,7 @@ function SpecialDatesLayer({ t, mask, onChange }: {
                         className={`ms-dayslot-cell${on ? ' ms-dayslot-on' : ''}${slot % 6 === 0 ? ' ms-dayslot-hour' : ''}`}
                         onClick={() => {
                           mutateSpecials((specials) => {
-                            const target = specials[index]
-                            const source = target.mask ?? Array.from({ length: SLOTS_PER_DAY }, () => target.mode === 'include')
-                            source[slot] = !source[slot]
-                            target.mask = [...source]
-                            if (target.mode === 'include') {
-                              // include 的全 48 格 = 全天（等价于无 mask）：归一去掉冗余掩码。
-                              if (source.every((value) => value === true)) delete target.mask
-                            } else if (source.every((value) => value === false)) {
-                              // exclude 的全 48 格 = 全天剔除：同样去掉冗余掩码。
-                              delete target.mask
-                            }
+                            specials[index] = toggleSpecialMaskSlot(specials[index], slot)
                           })
                         }}
                       />
