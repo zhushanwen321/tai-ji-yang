@@ -30,6 +30,9 @@
  *    对账（comment-loop·RL6 消费侧，agents 双打控分流结果）、.resolve 零投递、状态机表外映射 409。
  * 10. 拾取脚本伺服注入（opendesign-comment-anchor D4 / RL3 四用例 + 注入幂等并入磁盘对比）与
  *     内容版本 ETag（D8(c)：同文件多请求一致、写盘后必变），谓词/注入函数直驱锁定三条件边界。
+ * 11. 锚点生成层锁值（opendesign-comment-anchor D1 三级降序 + V2 data-screen-label 空格形态）：
+ *     PICK_SCRIPT_SOURCE 生成段源码串切片求值（new Function）直驱 buildAnchor——锁空格值不降级、
+ *     引号/反斜杠落 path、锚属性序与三级降序（V2 判据委托的「U3 锚点生成单测」即本段）。
  * 编号口径：本文件编号默认属 V1 设计包（opendesign-design-mode impl-plan）；其他设计包域编号带包名前缀（opendesign-assets-quality / p1-shell-identity / opendesign-comment-loop / opendesign-comment-anchor）。
  */
 
@@ -514,6 +517,19 @@ describe('拾取脚本伺服注入（RL3：磁盘字节不变 + 注入幂等 + �
     const artifact = await request(mounted.route, artifactUrl('index.html'))
     expect(artifact.body?.toString('utf8')).toContain('<script data-od-pick="1">')
   })
+
+  it('非 UTF-8 字节 HTML 放弃注入：响应与磁盘字节逐字节一致（D4 的 UTF-8 无损防线——注入谓词命中但解码有损即原字节返回，deliberate 行为非缺陷）', async () => {
+    // Latin-1 字节串：0xE9 单字节在 UTF-8 解码下是非法序列首字节 → 替换为 U+FFFD（3 字节），
+    // decode→encode 逐字校验必失败——实现若照注会改写注入段之外的响应字节（违反 RL3 精神）。
+    const raw = Buffer.from('<html><body><p>caf\xe9 latin-1 body</p></body></html>', 'latin1')
+    const nonUtf8Path = join(root, 'non-utf8.html')
+    await writeFile(nonUtf8Path, raw)
+    const res = await request(mounted.route, artifactUrl('non-utf8.html'))
+    expect(res.statusCode).toBe(200)
+    // 自证前提：该响应满足注入谓词（GET × text/html × 非设备壳）——否则断言不构成防线证据。
+    expect(res.header('content-type')).toBe('text/html; charset=utf-8')
+    expect(res.body?.equals(raw)).toBe(true)
+  })
 })
 
 describe('内容版本 ETag（D8c：mtime+size 摘要）', () => {
@@ -568,6 +584,231 @@ describe('注入谓词与注入函数直驱（D4 谓词三条件 + 尾部拼接�
     expect(etagFor(1e12, 100)).not.toBe(etagFor(1e12 + 1, 100))
     expect(etagFor(1e12, 100)).not.toBe(etagFor(1e12, 101))
     expect(etagFor(1e12, 100)).toMatch(/^W\//)
+  })
+})
+
+// ── 锚点生成层锁值（opendesign-comment-anchor D1 降级序 + V2 data-screen-label 空格形态）──────
+
+/** 生成层求值的最小元素桩：真实 DOM 交互只用到 nodeType/tagName/getAttribute/parentNode/previousElementSibling。 */
+interface PickElementStub {
+  nodeType: 1
+  tagName: string
+  getAttribute(name: string): string | null
+  parentNode: PickElementStub | null
+  previousElementSibling: PickElementStub | null
+}
+
+interface PickAnchor {
+  level: 'id' | 'data' | 'path'
+  sel: string
+}
+
+/** 构造最小元素桩：attrs = 在场属性表（空串值 = 属性在场但值为空），parent = 祖先链上一环。 */
+function pickElement(attrs: Record<string, string>, parent: PickElementStub | null = null, tag = 'div'): PickElementStub {
+  return {
+    nodeType: 1,
+    tagName: tag.toUpperCase(),
+    getAttribute: (name: string) => (Object.prototype.hasOwnProperty.call(attrs, name) ? attrs[name] : null),
+    parentNode: parent,
+    previousElementSibling: null,
+  }
+}
+
+/**
+ * 生成层直驱入口：拾取脚本以 IIFE 源码串常量交付（PICK_SCRIPT_SOURCE，内部函数不导出，
+ * import 直驱不可达），按固定代码锚点切片后 new Function 求值——被求值的字节就是注入
+ * 即送达的同一源串，生成逻辑漂移直接改变锁值行为；切片锚点漂移（函数更名/移位）求值
+ * 即失败，同属锁值语义。切片范围 = ANCHOR_ATTRIBUTES 常量定义起、overlay 段首函数
+ * describeElement 止：覆盖三级降序全部生成函数（idSelectorFor/dataSelectorFor/
+ * pathSelectorFor/buildAnchor）及其依赖常量（段内其余为桥收发函数声明，求值不执行）。
+ */
+function evalPickScriptGeneration(): { buildAnchor: (element: PickElementStub) => PickAnchor } {
+  const from = PICK_SCRIPT_SOURCE.indexOf('var ANCHOR_ATTRIBUTES')
+  const to = PICK_SCRIPT_SOURCE.indexOf('function describeElement')
+  expect(from, '切片起点锚点（ANCHOR_ATTRIBUTES 定义）不在源串中——脚本结构漂移，锁值需随动').toBeGreaterThan(-1)
+  expect(to, '切片终点锚点（describeElement 定义）不在源串中——脚本结构漂移，锁值需随动').toBeGreaterThan(from)
+  const harness = new Function(
+    'document',
+    `${PICK_SCRIPT_SOURCE.slice(from, to)}\nreturn { idSelectorFor, dataSelectorFor, pathSelectorFor, buildAnchor }`,
+  ) as (document: unknown) => { buildAnchor: (element: PickElementStub) => PickAnchor }
+  return harness({ documentElement: null })
+}
+
+describe('锚点生成层锁值（opendesign-comment-anchor D1 三级降序 + V2 data-screen-label：源码串求值直驱）', () => {
+  let buildAnchor: (element: PickElementStub) => PickAnchor
+
+  beforeAll(() => {
+    buildAnchor = evalPickScriptGeneration().buildAnchor
+  })
+
+  it('V2 锁值：deck 形态祖先 section 的 data-screen-label 值带空格不降级——内部元素命中最近祖先，sel 逐字 = [data-screen-label="01 Title"]', () => {
+    const section = pickElement({ 'data-screen-label': '01 Title' }, null, 'section')
+    const inner = pickElement({}, section, 'p')
+    expect(buildAnchor(inner)).toEqual({ level: 'data', sel: '[data-screen-label="01 Title"]' })
+  })
+
+  it('自身带锚属性同形态命中：data-screen-label 空格值直接生成 data 级', () => {
+    expect(buildAnchor(pickElement({ 'data-screen-label': '01 Title' }))).toEqual({
+      level: 'data',
+      sel: '[data-screen-label="01 Title"]',
+    })
+  })
+
+  it('D1 选择器安全检查：值含引号 / 反斜杠的锚属性该级不可用，落 path 级（tag:nth-of-type 链）', () => {
+    expect(buildAnchor(pickElement({ 'data-od-id': 'a"b' }))).toEqual({ level: 'path', sel: 'div:nth-of-type(1)' })
+    expect(buildAnchor(pickElement({ 'data-screen-label': 'a\\b' }))).toEqual({ level: 'path', sel: 'div:nth-of-type(1)' })
+  })
+
+  it('锚属性序与空值锁：同元素双锚属性取词表首位 data-od-id；值空串的属性跳过不降级', () => {
+    expect(buildAnchor(pickElement({ 'data-od-id': 'hero', 'data-screen-label': '01 Title' }))).toEqual({
+      level: 'data',
+      sel: '[data-od-id="hero"]',
+    })
+    expect(buildAnchor(pickElement({ 'data-od-id': '', 'data-screen-label': '02 Slide' }))).toEqual({
+      level: 'data',
+      sel: '[data-screen-label="02 Slide"]',
+    })
+  })
+
+  it('三级降序锁：id 级优先于 data 级；无 id 无锚属性落 path 级', () => {
+    expect(buildAnchor(pickElement({ id: 'main', 'data-screen-label': '01 Title' }))).toEqual({ level: 'id', sel: '#main' })
+    expect(buildAnchor(pickElement({}))).toEqual({ level: 'path', sel: 'div:nth-of-type(1)' })
+  })
+
+  it('祖先链最近命中序：更近祖先的锚属性优先于更远祖先（D1 最近祖先命中语义）', () => {
+    const outer = pickElement({ 'data-od-id': 'outer' }, null, 'section')
+    const middle = pickElement({ 'data-screen-label': 'middle label' }, outer, 'div')
+    const leaf = pickElement({}, middle, 'span')
+    expect(buildAnchor(leaf)).toEqual({ level: 'data', sel: '[data-screen-label="middle label"]' })
+  })
+
+  it('path 级超长截断锁值：sel 超 500 从根侧截段保尾——≤500、最深段保留、不再从产物根可达（D1 生成侧语义，唯一性损失计入 path 级已接受代价）', () => {
+    let node: PickElementStub | null = null
+    for (let depth = 0; depth < 60; depth++) node = pickElement({}, node, 'div')
+    const anchor = buildAnchor(node as PickElementStub)
+    expect(anchor.level).toBe('path')
+    expect(anchor.sel.length).toBeLessThanOrEqual(500)
+    expect(anchor.sel.endsWith('div:nth-of-type(1)')).toBe(true)
+    expect(anchor.sel.startsWith('html')).toBe(false)
+  })
+})
+
+// ── 拾取脚本整串求值直驱（opendesign-comment-anchor RL5：脚本侧桥负路径——U3 半区）────
+// 面板侧负路径在 tests/comments/api.test.ts（parseInboundPickMessage 直驱）；脚本侧
+// isFromPanel/parseInbound 是 IIFE 私有且只能整串求值——本段 stub 最小 window/document
+// 后求值整串，经注册的 message 监听直喂伪造事件断言零动作（RL5「U3/U4 单测负路径用例」
+// 的 U3 半区；e2e 无法伪造 event.source——浏览器赋值不可构造，RL5 自声明）。
+
+/** 整串求值的最小宿主环境：出站记录 + message 监听登记 + 交互监听登记（零动作断言的观测点）。 */
+interface PickScriptEnv {
+  /** 脚本出站 postMessage 记录（ready 握手 / anchors-status 回报都经 window.parent.postMessage）。 */
+  outbound: Array<{ v: number; type: string; payload: unknown }>
+  /** 脚本注册的 window message 监听（伪造事件经它直喂）。 */
+  windowMessageHandlers: Array<(event: unknown) => void>
+  /** document 交互监听登记（attachInteraction 挂载 = 有动作；零动作 = 该清单不变）。 */
+  documentListeners: string[]
+  /** stub 的父窗口（合法 source = 它；伪造 source 与它不同对象）。 */
+  parentWindow: unknown
+}
+
+function evalPickScriptWhole({ parentSameAsWindow = false }: { parentSameAsWindow?: boolean } = {}): PickScriptEnv {
+  const outbound: PickScriptEnv['outbound'] = []
+  const windowMessageHandlers: Array<(event: unknown) => void> = []
+  const windowListenersByType = new Map<string, Array<(event: unknown) => void>>()
+  const documentListeners: string[] = []
+  const record = (message: unknown): void => {
+    outbound.push(message as { v: number; type: string; payload: unknown })
+  }
+  const parentWindow: Record<string, unknown> = { postMessage: record }
+  const elementStub = (): Record<string, unknown> => ({
+    style: {},
+    className: '',
+    id: '',
+    textContent: '',
+    isConnected: true,
+    appendChild(): undefined {},
+    addEventListener(): undefined {},
+    removeEventListener(): undefined {},
+  })
+  const documentStub = {
+    documentElement: pickElement({}, null, 'html'),
+    addEventListener(type: string): void {
+      documentListeners.push(type)
+    },
+    removeEventListener(type: string): void {
+      const at = documentListeners.indexOf(type)
+      if (at > -1) documentListeners.splice(at, 1)
+    },
+    getElementById(): unknown {
+      return null
+    },
+    createElement(): unknown {
+      return elementStub()
+    },
+    head: { appendChild(): undefined {} },
+    body: { appendChild(): undefined {} },
+    querySelector(): unknown {
+      return null
+    },
+  }
+  const win: Record<string, unknown> = {
+    addEventListener(type: string, handler: (event: unknown) => void): void {
+      const list = windowListenersByType.get(type) ?? []
+      list.push(handler)
+      windowListenersByType.set(type, list)
+      if (type === 'message') windowMessageHandlers.push(handler)
+    },
+    removeEventListener(): undefined {},
+    postMessage: record,
+    Map,
+    setTimeout,
+    scrollX: 0,
+    scrollY: 0,
+    innerWidth: 1024,
+    innerHeight: 768,
+  }
+  win.parent = parentSameAsWindow ? win : parentWindow
+  // 被求值的字节 = 注入即送达的同一源串（与上方生成层切片求值同一锁值语义——整串版）。
+  new Function('window', 'document', PICK_SCRIPT_SOURCE)(win, documentStub)
+  return { outbound, windowMessageHandlers, documentListeners, parentWindow }
+}
+
+describe('拾取脚本整串求值直驱（opendesign-comment-anchor RL5：脚本侧桥负路径）', () => {
+  it('顶层直开（parent === window）：不发 ready、不注册 message 与交互监听、零出站（G1/SI2/V7 步④）', () => {
+    const env = evalPickScriptWhole({ parentSameAsWindow: true })
+    expect(env.outbound).toEqual([])
+    expect(env.windowMessageHandlers).toHaveLength(0)
+    expect(env.documentListeners).toEqual([])
+  })
+
+  it('合法 source 对照组：加载即 ready 握手；合法 pick-mode 报文驱动交互监听挂载（harness 有效性自证）', () => {
+    const env = evalPickScriptWhole()
+    expect(env.outbound).toEqual([{ v: 1, type: 'odp-pick:ready', payload: {} }])
+    expect(env.windowMessageHandlers).toHaveLength(1)
+    env.windowMessageHandlers[0]({
+      source: env.parentWindow,
+      data: { v: 1, type: 'odp-pick:pick-mode', payload: { enabled: true } },
+    })
+    expect(env.documentListeners).toContain('click')
+  })
+
+  it('伪造 source（非 parent 引用 / null / undefined）与错 v / 错前缀：零动作——零出站、交互监听不挂（RL5 脚本侧负路径，isFromPanel+parseInbound 承载）', () => {
+    const env = evalPickScriptWhole()
+    const handler = env.windowMessageHandlers[0]
+    expect(handler).toBeDefined()
+    const outboundAfterHandshake = env.outbound.length
+    const listenersAfterLoad = env.documentListeners.length
+    const cases: Array<{ source: unknown; data: { v: number; type: string; payload: unknown } }> = [
+      { source: { forged: true }, data: { v: 1, type: 'odp-pick:pick-mode', payload: { enabled: true } } },
+      { source: null, data: { v: 1, type: 'odp-pick:pick-mode', payload: { enabled: true } } },
+      { source: undefined, data: { v: 1, type: 'odp-pick:pick-mode', payload: { enabled: true } } },
+      { source: env.parentWindow, data: { v: 2, type: 'odp-pick:pick-mode', payload: { enabled: true } } },
+      { source: env.parentWindow, data: { v: 1, type: 'odp-pickx:pick-mode', payload: { enabled: true } } },
+    ]
+    for (const item of cases) handler(item)
+    expect(env.outbound).toHaveLength(outboundAfterHandshake)
+    expect(env.documentListeners).toHaveLength(listenersAfterLoad)
+    expect(env.documentListeners).not.toContain('click')
   })
 })
 
@@ -831,6 +1072,27 @@ describe('评论写通道路由族（connection.fetch 注册，opendesign-commen
       )
       expect(res.status).toBe(400)
       expect(((await res.json()) as { code: string }).code).toBe('invalid-payload')
+      await expectNoCommentsData(rejectRoot)
+    })
+
+    it('非法 anchor 400 invalid-payload，零落盘（.create 载荷 anchor 分支直驱——level 词表外与 sel 超限两代表形态，opendesign-comment-anchor D1/UD2）', async () => {
+      const m = mountComments({ root: rejectRoot })
+      const route = commentRouteByPath(m.commentRoutes, COMMENTS_API_BASE_PATH + '.create')
+      const badLevel = await callCommentsRoute(
+        route,
+        COMMENTS_API_BASE_PATH + '.create',
+        { body: { sessionId: COMMENTS_SESSION_ID, artifactPath: 'index.html', text: 'x', anchor: { level: 'class', sel: '#x' } } },
+      )
+      expect(badLevel.status).toBe(400)
+      expect(((await badLevel.json()) as { code: string }).code).toBe('invalid-payload')
+      await expectNoCommentsData(rejectRoot)
+      const overlongSel = await callCommentsRoute(
+        route,
+        COMMENTS_API_BASE_PATH + '.create',
+        { body: { sessionId: COMMENTS_SESSION_ID, artifactPath: 'index.html', text: 'x', anchor: { level: 'path', sel: 'x'.repeat(501) } } },
+      )
+      expect(overlongSel.status).toBe(400)
+      expect(((await overlongSel.json()) as { code: string }).code).toBe('invalid-payload')
       await expectNoCommentsData(rejectRoot)
     })
 
