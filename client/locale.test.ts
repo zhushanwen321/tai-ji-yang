@@ -109,7 +109,7 @@ describe('installLocale 装配', () => {
   })
 })
 
-describe('模型服务分区双语字典（u-foundation 骨架 + M1 填充，键集完整性）', () => {
+describe('模型服务分区双语字典（u-foundation 骨架 + M1 填充 + M2 增键，键集完整性）', () => {
   it('modelServiceZh 与 modelServiceEn 的 key 集相等（zh/en 同 key 集纪律）', () => {
     expect(Object.keys(modelServiceZh).sort()).toEqual(Object.keys(modelServiceEn).sort())
   })
@@ -133,8 +133,6 @@ describe('模型服务分区双语字典（u-foundation 骨架 + M1 填充，键
     expect(modelServiceZh['models.directoryMode']).toBe('保持目录默认')
     expect(modelServiceZh['models.directoryReplaced']).toBe('目录默认已被替换')
     expect(modelServiceZh['models.restoreDirectory']).toBe('恢复目录默认')
-    expect(modelServiceZh['routes.emptyM1']).toBe('路由能力将在下个版本提供')
-    expect(modelServiceEn['routes.emptyM1']).toBe('Routing will arrive in a future version')
   })
 
   it('M1 填充的关键键在位（D6 compat / D7 查重两支 / D11 来源态 / 空态矩阵）', () => {

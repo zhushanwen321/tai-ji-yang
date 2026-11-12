@@ -102,7 +102,7 @@ node scripts/verify/doctor.mjs --url "<测试URL>" --json     # 机读
 - `assertions.jsonl` —— 每断言一行（期望 vs 实际）。
 - `report.md` + 截图 + `console.txt` + 子命令输出附件。
 
-镜像（dev-flow D3 wrapper 消费契约）：`verdict.json` 与 `summary.jsonl` 同时落 **artifacts-dir 根**（引擎事实依据只读根）；多场景时根上 verdict 为聚合（任一 fail = fail；无 fail 有 degraded = degraded）。退出码：**fail=1、degraded=0（`--strict` 时 2）、pass=0**；参数错误 2。
+镜像（dev-flow D3 wrapper 消费契约）：`verdict.json` 与 `summary.jsonl` 同时落 **artifacts-dir 根**（引擎事实依据只读根）；多场景时根上 verdict 为聚合（任一 fail = fail；无 fail 有 degraded = degraded）。**notProvable 的影响（与 evidence.mjs judge 同规，不许假 pass）**：场景断言全绿但存在 notProvable 登记时，verdict 至多 degraded、不判 pass（缺省退出码 0，`--strict` 时 2）——model-service 等含 notProvable 登记的场景 verdict 恒为 degraded 属预期形态，不是失败。退出码：**fail=1、degraded=0（`--strict` 时 2）、pass=0**；参数错误 2。
 
 dev-flow D3 wrapper 的调用形态（引擎与 runner 之间只有 script 路径一个通道，wrapper 由 D0 生成）：
 

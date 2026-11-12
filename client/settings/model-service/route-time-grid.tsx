@@ -18,6 +18,7 @@ import { useRef, useState } from 'react'
 import {
   DAYS_PER_WEEK,
   SLOTS_PER_DAY,
+  isValidSpecialDateShape,
   type RouteSpecialDate,
   type RouteWindowMask,
 } from '../../model-service/route-evaluate'
@@ -260,7 +261,9 @@ function SpecialDatesLayer({ t, mask, onChange }: {
 
   const addSpecial = (): void => {
     const date = draftDate.current
-    if (!/^\d{2}-\d{2}$/.test(date) && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return
+    // 与 sanitize 侧同一判定（route-evaluate.isValidSpecialDateShape）：越界日期（如 13-45）
+    // 不再「添加成功、下次读回被丢弃」——添加入口直接拒绝（终态同步 F1-28）。
+    if (!isValidSpecialDateShape(date)) return
     mutateSpecials((specials) => {
       specials.push({
         date,

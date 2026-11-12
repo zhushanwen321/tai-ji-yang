@@ -150,6 +150,9 @@ export class ProvidersListModel {
       revision: this.snapshot.revision,
       existing: row.profile,
       providers: this.snapshot.providers,
+      // 目录型 key 集合（declared=false）：探测请求归一判据（目录型宿主短路不看 baseURL，
+      // 见 discovery.discoverProviderModels 第三参说明）。
+      catalogProviderKeys: new Set(this.state.rows.filter((candidate) => candidate.catalogType).map((candidate) => candidate.key)),
       onSaved: () => { void this.reloadKeepingEditing(editing) },
     })
     this.focusModelId = focusModel

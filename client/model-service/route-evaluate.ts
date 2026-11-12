@@ -174,8 +174,10 @@ function sanitizeSpecialDate(raw: unknown): RouteSpecialDate | undefined {
   return { date, name, mode, mask }
 }
 
-/** 特殊日期形态判定：MM-DD（01-01 … 12-31）或 YYYY-MM-DD（年份四位数字）。 */
-function isValidSpecialDateShape(date: string): boolean {
+/** 特殊日期形态判定：MM-DD（01-01 … 12-31）或 YYYY-MM-DD（年份四位数字）。导出供 UI 侧
+ * 添加入口复用（route-time-grid 的 addSpecial）——UI 校验与 sanitize 同一判定，避免
+ * 「界面放过、读回丢弃」的静默消失（终态同步 F1-28）。 */
+export function isValidSpecialDateShape(date: string): boolean {
   const monthDay = /^(\d{2})-(\d{2})$/.exec(date)
   if (monthDay !== null) {
     const month = Number(monthDay[1])

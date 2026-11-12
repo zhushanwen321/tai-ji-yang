@@ -11,9 +11,9 @@ import type { ModelServiceSectionInjected } from './section'
  *     太极 12 之前——D8 前移序列）、label thunk、locale 命名空间、组件同一性；
  *   · 注册即撤除（AX7）：inject 回调返回 register 的 disposer（宿主自挂 ctx.effect）；
  *   · 挂载 wiring：视图模型构造（加载态文案）+ 三视图切换条齐备。
- * 三视图内容与交互的深断言：视图模型（ProvidersListModel / ModelsListModel /
- * ProviderEditModel / RoutesListModel）单测未建，目前由 verify 场景（scripts/verify/
- * scenarios/model-service.mjs，真实宿主 L3）承载。
+ * 三视图内容与交互的深断言：ProvidersListModel / ModelsListModel 单测未建（verify 场景
+ * scripts/verify/scenarios/model-service.mjs，真实宿主 L3，承载）；ProviderEditModel 见
+ * provider-edit-body.test.ts、RoutesListModel 见 client/model-service/route-store.test.ts。
  */
 
 const SECTION_PATH = fileURLToPath(new URL('./section.tsx', import.meta.url))
@@ -46,9 +46,13 @@ function fakeSectionHost() {
   return {
     host,
     registrations,
-    declare(key: string) {
-      for (const callback of pending.get(key) ?? []) callback()
+    /** 依次执行登记的 inject 回调并返回最后一个回调的返回值（「注册即撤除」用例据此断言
+     * inject 回调 return 的正是 register 的 disposer——引用一致，改坏 return 值即红灯）。 */
+    declare(key: string): (() => void) | undefined {
+      let returned: (() => void) | undefined
+      for (const callback of pending.get(key) ?? []) returned = callback()
       pending.delete(key)
+      return returned
     },
   }
 }
@@ -101,9 +105,9 @@ describe('installModelServiceSection 注册契约（D2 追加形态）', () => {
   function assemble() {
     const fake = fakeSectionHost()
     sectionModule.installModelServiceSection(fake.host, fakeDeps())
-    fake.declare('settings.section')
+    const injected = fake.declare('settings.section')
     expect(fake.registrations).toHaveLength(1)
-    return { fake, registration: fake.registrations[0] }
+    return { fake, registration: fake.registrations[0], injected: injected as unknown }
   }
 
   it('注册进 settings.section：唯一 id model-services、order 11、label thunk、locale 命名空间、组件同一性', () => {
@@ -121,9 +125,11 @@ describe('installModelServiceSection 注册契约（D2 追加形态）', () => {
     expect(registration.component).toBe(sectionModule.ModelServiceSection)
   })
 
-  it('注册即撤除（AX7）：register 的 disposer 可用（宿主自挂 ctx.effect，卸载即撤条目）', () => {
-    const { fake } = assemble()
-    // register 返回的 disposer 就是撤除通道（宿主 register 自挂 effect，契约见 TaijiSectionHost）。
+  it('注册即撤除（AX7）：inject 回调返回的就是 register 的 disposer（引用一致；宿主自挂 ctx.effect，卸载即撤条目）', () => {
+    const { fake, injected } = assemble()
+    // 引用一致断言：inject 回调 return 的是 register 返回的同一个 disposer——宿主据此把
+    // 撤除通道挂上 ctx.effect；inject 丢掉 return（或 return 了别的值）时此断言红灯。
+    expect(injected).toBe(fake.registrations[0].dispose)
     expect(typeof fake.registrations[0].dispose).toBe('function')
     expect(() => fake.registrations[0].dispose()).not.toThrow()
   })

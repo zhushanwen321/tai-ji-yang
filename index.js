@@ -464,7 +464,8 @@ export function routeIdFromProvider(provider) {
     : undefined
 }
 
-/** G13 判定（单测与注册前自检共用）：id 满足 taiji-route-<kebab> 形态。 */
+/** G13 判定（单测断言共用；生产注册路径不设形态自检——防线 = 单测断言 + 宿主
+ * DUPLICATE_ADAPTER/INVALID_ADAPTER 整批拒绝，设计 G13 只要求这两层）。 */
 export function isRouteProviderIdShape(provider) {
   return ROUTE_PROVIDER_SHAPE_RE.test(provider)
 }

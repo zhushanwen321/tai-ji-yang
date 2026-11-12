@@ -1,6 +1,6 @@
 /**
- * model-service 场景（M1 段）：模型服务接入 / 追加分区与撤除 / 密钥零泄漏与保存链路
- * （dsh-model-service V1/V2/V3/V4/V9 的可自动化断言子集；真机全量在 D3 验收）。
+ * model-service 场景：模型服务接入 / 追加分区与撤除 / 密钥零泄漏与保存链路
+ * （dsh-model-service V1/V2/V3/V4/V5/V6/V9 的可自动化断言子集；真机全量在 D3 验收）。
  *
  * 前置：只能对隔离 profile 跑（需要 --dsh-bin + --dsh-home 自启模式）——场景要读隔离
  * DSH_HOME 的设置文档（cordis.patch.yml）与凭据文件（.credentials.yaml）并对其做零泄漏
@@ -48,8 +48,8 @@ import { bootInto } from '../lib/browser.mjs'
 
 export const meta = {
   id: 'model-service',
-  title: '模型服务接入（M1）',
-  description: '分区并存无串页 / 接入全流程与热重算 / 冲突重读重试双方保留 / 密钥零泄漏与保存链路 / 清单来源态与空态',
+  title: '模型服务接入与路由',
+  description: '分区并存无串页 / 接入全流程与热重算 / 冲突重读重试双方保留 / 密钥零泄漏与保存链路 / 清单来源态与空态 / 路由创建与派生 id、成员落盘、白名单启停与悬挂清理',
 }
 
 /**

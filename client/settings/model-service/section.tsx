@@ -6,10 +6,11 @@
  * 各自渲染（宿主导航由槽位条目全量映射生成、无同 id 去重——遮蔽形态不可达，AS9 已核实）；
  * 不遮蔽、不替换，注册与撤除两动作（register 自挂 ctx.effect，卸载即撤除）。
  *
- * 结构：三个平级视图——供应商（接入与凭据）/ 模型清单（跨供应商汇总）/ 模型路由（M1 期
- * 空态引导）。视图切换与跳转态（模型清单 → 供应商展开体定位）由本组件的状态承载（设计
- * U1：跳转态 = 目标 provider/model + 返回路径，分区组件内状态承载）。打开分区时做一次
- * 待清理凭据重试（D7/AX9：下次启动或打开分区时重试；启动路径随 M2 的 Node 半场接管）。
+ * 结构：三个平级视图——供应商（接入与凭据）/ 模型清单（跨供应商汇总）/ 模型路由（M2
+ * 已挂真实 RoutesView）。视图切换与跳转态（模型清单 → 供应商展开体定位）由本组件的状态
+ * 承载（设计 U1：跳转态 = 目标 provider/model + 返回路径，分区组件内状态承载）。打开分区
+ * 时做一次待清理凭据重试（D7/AX9「下次启动或打开分区时重试」取后者：重试在打开分区时
+ * 执行，插件装载（启动）路径的重试未实现——取舍登记见设计包 D7 采用段）。
  *
  * 交互状态纪律（与 taiji-section.tsx 同款）：真相放 useRef + 重渲染扳机（useState 只当
  * 扳机）——本包测试夹具的 useState 桩不触发重渲染，真相在 ref 才能被同一渲染树上的后续
@@ -101,8 +102,9 @@ export interface JumpTarget {
  * 视图模型在挂载时构造（ProvidersListModel / ModelsListModel：目录与快照的异步首读由模型
  * 自己启动，就绪后经订阅通知驱动重渲染；真实 React 下 effect 后置执行 + rerender 扳机，
  * 测试夹具下 effect 同步执行、首棵树即含模型（loading 态））。挂载同时做一次待清理凭据
- * 重试（D7/AX9「打开分区时重试」）：成功清理数 > 0 时给一条提示；Config 未被服务（skipped）
- * 静默跳过——清单通道缺失不是本分区的事，不制造噪音。
+ * 重试（D7/AX9「下次启动或打开分区时重试」的打开分区路径；unset 失败后不再打开分区的
+ * 用户其孤儿 ref 不重试，取舍登记见设计包 D7 采用段）：成功清理数 > 0 时给一条提示；
+ * Config 未被服务（skipped）静默跳过——清单通道缺失不是本分区的事，不制造噪音。
  */
 export function ModelServiceSection({ t, close, remote, configForm }: ModelServiceSectionProps) {
   const activeView = useRef<ViewId>('providers')
@@ -193,7 +195,12 @@ export function ModelServiceSection({ t, close, remote, configForm }: ModelServi
       )}
       {view === 'models' && (
         modelsModel.current !== undefined && (
-          <ModelsView t={t} model={modelsModel.current} onJump={jumpToProvider} />
+          <ModelsView
+            t={t}
+            model={modelsModel.current}
+            onJump={jumpToProvider}
+            onGoToProviders={() => { switchView('providers') }}
+          />
         )
       )}
       {view === 'routes' && (

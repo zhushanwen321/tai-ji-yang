@@ -175,6 +175,9 @@ export interface ProviderEditModelDeps {
   existing: HostProviderProfile | undefined
   /** 本 profile 的 providers 段（凭据查重的 apiKeyEnv 枚举源）。 */
   providers: Record<string, HostProviderProfile>
+  /** 已知目录型 provider key 集合（listConfigurableProviders 的 declared=false 行；探测
+   * 请求归一的判据——目录型宿主短路不看 baseURL，见 discovery.discoverProviderModels）。 */
+  catalogProviderKeys?: ReadonlySet<string>
   /** 保存成功回调（父级刷新列表；本模型不回写父状态）。 */
   onSaved: () => void
 }
@@ -346,7 +349,11 @@ export class ProviderEditModel {
 
   /** 目录默认态的目录模型只读清单（挂载时经目录分支拉取，零网络）。 */
   private async loadDirectoryModels(): Promise<void> {
-    const outcome = await discoverProviderModels(this.deps.remote.llm, { provider: this.target.key })
+    const outcome = await discoverProviderModels(
+      this.deps.remote.llm,
+      { provider: this.target.key },
+      this.deps.catalogProviderKeys,
+    )
     if (outcome.kind === 'catalog' || outcome.kind === 'endpoint') {
       this.directoryModels = outcome.models
       this.state = { ...this.state, directoryModels: outcome.models }
@@ -358,7 +365,9 @@ export class ProviderEditModel {
 
   /**
    * 测试连接 / 发现模型（同一通道，AS7）：草稿端点+协议+密钥（新输入才随请求过线）探测。
-   * 既有 route 带 provider（目录命中时宿主零网络短路返回目录模型）。
+   * 既有目录型 provider（catalogProviderKeys 命中）宿主零网络短路返回目录模型——请求由
+   * discovery 归一为 {provider} 形态（端点草稿不参与），结果按「目录自有模型」呈现且不
+   * 声称端点连通性已验证；自定义 / 新建 provider 带端点草稿做真实端点探测。
    */
   async discover(): Promise<void> {
     if (this.state.discovery.running) return
@@ -366,7 +375,7 @@ export class ProviderEditModel {
     if (baseURL === '' && this.directoryModels.length === 0) {
       this.state = {
         ...this.state,
-        discovery: { running: false, outcome: undefined, selected: [], error: this.deps.t('discovery.failed') + '：' + '请先填写 API 端点。' },
+        discovery: { running: false, outcome: undefined, selected: [], error: `${this.deps.t('discovery.failed')}：${this.deps.t('discovery.requireEndpoint')}` },
       }
       this.notify()
       return
@@ -374,12 +383,16 @@ export class ProviderEditModel {
     this.state = { ...this.state, discovery: { running: true, outcome: undefined, selected: [], error: undefined } }
     this.notify()
     const draftKey = this.target.key !== '' ? this.target.key : undefined
-    const outcome = await discoverProviderModels(this.deps.remote.llm, {
-      ...(draftKey !== undefined ? { provider: draftKey } : {}),
-      ...(baseURL !== '' ? { baseURL } : {}),
-      api: this.state.api,
-      ...(this.state.apiKeyValue.trim() !== '' ? { apiKey: this.state.apiKeyValue.trim() } : {}),
-    })
+    const outcome = await discoverProviderModels(
+      this.deps.remote.llm,
+      {
+        ...(draftKey !== undefined ? { provider: draftKey } : {}),
+        ...(baseURL !== '' ? { baseURL } : {}),
+        api: this.state.api,
+        ...(this.state.apiKeyValue.trim() !== '' ? { apiKey: this.state.apiKeyValue.trim() } : {}),
+      },
+      this.deps.catalogProviderKeys,
+    )
     const error = outcome.kind === 'failed' ? `${this.deps.t('discovery.failed')}：${outcome.recovery}（${outcome.message}）` : undefined
     this.state = {
       ...this.state,
@@ -696,6 +709,10 @@ export function ProviderEditBody({ t, model, focusModel, onCancel }: ProviderEdi
               ? t('discovery.catalog', { n: state.discovery.outcome.models.length })
               : t('discovery.endpointOk', { n: state.discovery.outcome.models.length })}
           </div>
+          {state.discovery.outcome.kind === 'catalog' && (
+            /* 目录短路的替代指引（AS7）：catalog 结果 = 端点连通性未被验证，就地说明替代路径 */
+            <div className="ms-note">{t('discovery.catalogNoEndpointTest')}</div>
+          )}
           {state.discovery.outcome.models.length === 0 && <div className="ms-note">{t('discovery.none')}</div>}
           {state.discovery.outcome.models.map((candidate, index) => (
             <label key={`${candidate.id}:${index}`} className="ms-check ms-discovery-row">

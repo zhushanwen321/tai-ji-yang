@@ -39,6 +39,7 @@ P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工
 | 持久（插件 Config volatile） | reload 后仍所选色 | covered |
 | 恢复默认（场景收尾不污染实例） | brand-primary 回基线 | covered |
 | 六色齐备 | swatch 数量 = 6 | covered（经外观行/chip 渲染核验） |
+| 三入口同步（V8 步骤 6-8，D-3 护栏） | 太极分区配色行 swatch 点选 → brand-primary 变化 → 外观行/chip 选中态同步（同一 controller，无双写） | covered（theme 场景第三入口支；点选立即生效与互相同步逐断言） |
 | 明暗模式跟随宿主（本包不写偏好） | 切换配色不改宿主明暗 | uncovered（需宿主偏好驱动；属宿主域，登记不属本包验收范围） |
 | 字体复合简写（字重/行高落地） | 正文 computed font-weight/line-height | uncovered（head 的激活字重 600 已覆盖一处消费点；全量对账归 pnpm check 的静态断言） |
 
@@ -82,6 +83,7 @@ P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工
 | 并发冲突重读重试（V1 步骤 11，RL3） | 第二写者保存成功 → 首写者保存自动重试 → 双方改动均保留 | covered（构造偏差登记：第二写者 = 同宿主的第二个 web 连接，宿主「模型」分区写者因面板互斥不可自动构造；机制断言等价，真机 D3 可另复验） |
 | 密钥零泄漏（V4，RL7 真机面） | 设置文档无 sk- 明文（凭据文件持密钥是权威语义） | covered |
 | provider key 撞已注册 route（V4 步骤 9 b 支的 route 侧） | 预检拒绝 + 设置文档零写入 | covered |
+| provider key 中文回落（V4 步骤 1） | 名称含中文时 provider key 回落 ASCII 标识（deriveProviderKey 序号回落） | notProvable（派生规则由 provider-key 单测承载（u-foundation 验收），场景供应商名用英文构造，真机形态随 V1 接入链核验） |
 | 凭据 ref 撞名 b 支文案（V4 步骤 9，RL10） | 直改凭据文件写入无引用者 ref 后保存被拒 + 「其他 profile」占用提示 + 设置文档零写入 + 改名重试成功 | covered（场景 V4 步骤 9 b 支：直改凭据文件是决策 7 已登记的同型入口，判定只看凭据文件存在性与本 profile apiKeyEnv 枚举） |
 | 凭据 ref 撞名 a 支文案（V4 步骤 9） | 宿主分区派生 TAIJI_ 前缀 ref 的占用提示 | notProvable（需宿主「模型」分区写 taiji-* 路由供应商的表单自动化，超出场景通道；credentials-client 单测覆盖） |
 | 待清理清单重试（V4 步骤 6，AX9） | unset 失败登记 → 重试成功移除 | notProvable（需让凭据服务在删除动作时不可用，超出场景通道；credentials-client 单测覆盖） |

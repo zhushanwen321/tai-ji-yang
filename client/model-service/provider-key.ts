@@ -31,7 +31,8 @@
  */
 const PROVIDER_KEY_SHAPE_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
-/** 宿主凭据 ref 的合法形态（dsh-api-settings-controller 的 schema 正则，AX4 前提）。 */
+/** 宿主凭据 ref 的合法形态（AS4/D7 依据：dsh-api-settings-controller CredentialsController
+ * schema 正则，逐字同源；AX4 是适配器暴露白名单不变量，与 ref 形态无关）。 */
 const HOST_REF_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /** 归一失败时的序号回落前缀（p = provider；序号来自显示名自带的数字段，缺省 1）。 */

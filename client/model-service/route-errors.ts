@@ -3,14 +3,19 @@
  * （dsh-model-service D4/G18，错误码词表三条）。
  *
  * 词表三条（D4 采用段）：ROUTE_NO_ACTIVE_MEMBER / ROUTE_MEMBER_UNAVAILABLE /
- * ROUTE_REGISTRATION_FAILED。权威定义在 Node 半场（index.js 抛错侧），本模块是**界面侧**
- * 映射：路由视图的注册冲突状态条（V7 步骤 6）与成员可用性标注（G18）按码取文案。
+ * ROUTE_REGISTRATION_FAILED。权威定义在 Node 半场（index.js 抛错侧）。
+ *
+ * 生产消费面（grep 核实，终态同步登记）：memberAvailabilityLocaleKeys——routes-view.tsx
+ * 的成员行可用性标注（G18）经它取 locale 键。注意两点口径：
+ *   · 路由视图的注册冲突状态条（V7 步骤 6）不经本模块——route-store 以列表差集探测触发、
+ *     routes-view 直取 locale 键 route.registrationFailed / registrationFailedNext；
+ *   · parseMemberUnavailableMessage / noActiveMemberLocaleKey / isRouteErrorCode / 词表常量
+ *     当前由 index.test.ts 锁定（契约保活），生产链路暂无调用点；RegistrationFailureCopy
+ *     接口暂无消费方（保留为「状态条若改走码→文案映射」的预留形态）。
  *
  * Node 半场抛错消息格式（本模块解析的契约，index.js 侧同字面构造）：
  *   ROUTE_NO_ACTIVE_MEMBER  `route "<id>" has no active member: <原因>`
  *   ROUTE_MEMBER_UNAVAILABLE `route "<id>" member "<provider>/<model>" is unavailable: <原因>`
- * 解析只用于辅助标注（拿成员归属），失败形态本身已带 code——路由视图对「注册冲突」的判定
- * 走列表探测（期望 provider 集合 vs listProviders 实际集合，见 route-store），不解析消息。
  *
  * 界面文案一律经 locale 字典（双语对账由 locale.test 保证）；本模块持有码 → locale 键的
  * 映射与参数提取，不持文案字面（禁在 TS 里写用户可见文案——本包 locale 双语纪律）。

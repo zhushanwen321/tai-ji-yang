@@ -62,6 +62,8 @@ export function RoutesView({ t, model }: RoutesViewProps) {
       <NewRouteForm
         t={t}
         draftName={newDraftName.current}
+        routes={state.routes}
+        whitelist={state.whitelist}
         onNameInput={(value) => { newDraftName.current = value; rerender((count) => count + 1) }}
         onCreate={() => { void createRoute() }}
       />
@@ -87,14 +89,17 @@ function RegistrationFailureBanner({ t, state }: { t: Translate; state: RoutesSn
   )
 }
 
-/** 新建路由表单（名称 + 派生 id 预览——AX11 显示名与标识解耦的可见化）。 */
-function NewRouteForm({ t, draftName, onNameInput, onCreate }: {
+/** 新建路由表单（名称 + 派生 id 预览——AX11 显示名与标识解耦的可见化；预览与保存侧同款
+ * 查重输入（routes + 白名单含悬挂），同名时预览即加序号后的落盘 id——终态同步 F1-27）。 */
+function NewRouteForm({ t, draftName, routes, whitelist, onNameInput, onCreate }: {
   t: Translate
   draftName: string
+  routes: RouteEntry[]
+  whitelist: string[]
   onNameInput: (value: string) => void
   onCreate: () => void
 }) {
-  const preview = draftName.trim() === '' ? undefined : deriveRouteId(draftName, [], [])
+  const preview = draftName.trim() === '' ? undefined : deriveRouteId(draftName, routes, whitelist)
   return (
     <div className="ms-routes-add">
       <input

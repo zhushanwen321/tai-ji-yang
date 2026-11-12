@@ -8,9 +8,10 @@ import { deleteProvider, type SettingsOp } from '../client/model-service/setting
 import type { PendingUnsetRegistration } from '../client/model-service/credentials-client'
 
 /**
- * 卸载清洁度单测（设计 RL4/RL6 的机器化通道 + 验收 V5 的可机器判部分）。
+ * 卸载清洁度单测（设计 RL4/RL6 的机器化通道 + 验收 V5（p1 设计包卸载场景编号，非本包
+ * V5 路由求值场景）的可机器判部分）。
  *
- * V5 要求三处痕迹在卸载后全部消失，且「不依赖页面重载以外的用户操作」：
+ * 该 V5 要求三处痕迹在卸载后全部消失，且「不依赖页面重载以外的用户操作」：
  *   ① 覆盖层撤除 —— `theme.overrideTokens` 返回的 disposer 是普通闭包、无 fiber 绑定（AS10），
  *      只有经 `ctx.effect` 托管才会随插件卸载执行；不托管就永久留在宿主的 token 层里。
  *   ② 槽位贡献撤销 —— 品牌三槽与外观行的 register disposer 同样只在 effect 托管下撤销。
@@ -30,7 +31,7 @@ import type { PendingUnsetRegistration } from '../client/model-service/credentia
  *      引用。唯一例外 = 卸载前已登记且未重试成功的 ref（unset 失败登记进待清理清单，
  *      V3 已知代价句覆盖、不判失败）；失败路径残留不进本 spec 的判定。
  *
- * 真实宿主行为（截图对比 / 变量值对比 / `html` 残留检查）归 V5 的 L3 场景；本层只锁机器可判部分。
+ * 真实宿主行为（截图对比 / 变量值对比 / `html` 残留检查）归该卸载验收场景（V5）的 L3 场景；本层只锁机器可判部分。
  */
 
 const APPLY_PATH = fileURLToPath(new URL('../client/apply.ts', import.meta.url))
@@ -72,7 +73,7 @@ function findStorageUsages(source: string): string[] {
     .map(({ line, text }) => `第 ${line} 行: ${text.trim()}`)
 }
 
-describe('V5 卸载清洁度', () => {
+describe('卸载清洁度（V5 = p1 设计包卸载验收场景）', () => {
   it('① 覆盖层撤除：主题层与结构层的 disposer 都经 ctx.effect 托管，卸载即执行', () => {
     const removed: string[] = []
     const effects: (() => void)[] = []

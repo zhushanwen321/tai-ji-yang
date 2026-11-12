@@ -25,6 +25,10 @@ import {
 } from './tokens'
 import { paletteTokensFor } from './palette'
 
+// ThemeId 的消费入口收敛到本模块（persist.ts / appearance-row / taiji-section 经此导入类型）：
+// 定义权威仍在 ./tokens，这里只 re-export——分区的持久层与界面层不直接依赖求值模块的内部表。
+export type { ThemeId }
+
 /** 判定任意值（典型来源 = 插件 Config 的 appearance 字段）是否是合法配色 id。 */
 export function isThemeId(value: unknown): value is ThemeId {
   return typeof value === 'string' && (THEME_IDS as readonly string[]).includes(value)

@@ -51,20 +51,41 @@ export type DiscoveryOutcome =
  * @param llm - 宿主 llm remote。
  * @param input - 探测输入：草稿端点/协议/密钥 + 目录短路的 provider key（既有目录型
  *   provider 省略 baseURL 探测目录清单时传 key）。
+ * @param catalogKeys - 已知目录型 provider key 集合（调用方从 listConfigurableProviders 行
+ *   的 declared=false 派生，providers-view/buildRows 同款判据）。目录型 provider 宿主**不看
+ *   baseURL**：只要 key 命中安装目录就零网络短路返回目录模型（dsh-llm-pi-ai/lib/index.js
+ *   :2282-2295 亲读）——带 baseURL 草稿请求目录型 provider 时端点连通性并没有被验证，本
+ *   函数把这类请求归一为 {provider} 形态（与目录分支读目录的调用形态一致），保证 outcome
+ *   判定（catalog）与宿主实际路径（短路）一致；不传集合时按现状判据（provider 无 baseURL
+ *   → catalog）。
  */
-export async function discoverProviderModels(llm: DiscoveryRemoteLike, input: DiscoveryRequest): Promise<DiscoveryOutcome> {
+export async function discoverProviderModels(
+  llm: DiscoveryRemoteLike,
+  input: DiscoveryRequest,
+  catalogKeys?: ReadonlySet<string>,
+): Promise<DiscoveryOutcome> {
+  // 目录型 provider 的请求归一：宿主短路不看 baseURL，带端点草稿只会造成「端点探测成功」
+  // 的假象（AS7 偏差，终态同步修复 F1-19）——strip 掉 baseURL 让短路成为唯一路径。
+  const request: DiscoveryRequest =
+    input.provider !== undefined && catalogKeys?.has(input.provider)
+      ? {
+          provider: input.provider,
+          ...(input.api !== undefined ? { api: input.api } : {}),
+          ...(input.apiKey !== undefined ? { apiKey: input.apiKey } : {}),
+        }
+      : input
   let models: DiscoveredModel[]
   try {
     // Result 解包后失败转 rejection，由下方 catch 接管失败分类（宿主 LlmError 的 message
     // 原文经 unwrapRemote 保留，401/403 与「no model listing」文本判据照常工作）。
-    models = unwrapRemote(await llm.discoverModels(LLM_PI_AI_NS, { ...input }))
+    models = unwrapRemote(await llm.discoverModels(LLM_PI_AI_NS, { ...request }))
   } catch (error) {
     return failureOf(error)
   }
-  // 目录短路判定（AS7）：带 provider 探测且请求未提供 baseURL 时，宿主只可能走目录分支——
-  // 端点探测必须带 baseURL（无 baseURL 的 provider 探测宿主直接抛错），见 failureOf 的
-  // protocol 分支来源。
-  if (input.provider !== undefined && (input.baseURL === undefined || input.baseURL.length === 0)) {
+  // 目录短路判定（AS7）：归一后仍以「provider 探测且未提供 baseURL」为判据——目录型请求
+  // 已被上方 strip 成该形态；非目录型 provider 的端点探测必须带 baseURL（无 baseURL 的
+  // 未知 provider 探测宿主直接抛错），见 failureOf 的 protocol 分支来源。
+  if (request.provider !== undefined && (request.baseURL === undefined || request.baseURL.length === 0)) {
     return { kind: 'catalog', models }
   }
   return { kind: 'endpoint', models }

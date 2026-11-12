@@ -61,6 +61,45 @@ function makeModel(existingModels: Record<string, unknown>[], overrides: Partial
 
 const FULL_LEVELS = { off: 'off', minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' }
 
+describe('既有目录型 provider 的测试连接（终态同步 F1-19，AS7 短路归一）', () => {
+  /** 捕获 discoverModels 请求的假 remote（宿主 typert 网关真实形态包 RemoteResult）。 */
+  function capturingRemote() {
+    const remote = fakeRemote()
+    const seen: Record<string, unknown>[] = []
+    remote.llm.discoverModels = async (_ns: string, request: Record<string, unknown>) => {
+      seen.push(request)
+      return { ok: true as const, value: [{ id: 'dir-model-1', name: 'Directory Model' }] }
+    }
+    return { remote, seen }
+  }
+
+  it('目录型 provider（集合命中）带 baseURL 草稿探测：请求归一为 {provider} 无 baseURL，outcome 判 catalog 而非 endpoint', async () => {
+    const { remote, seen } = capturingRemote()
+    const model = makeModel([], { remote, catalogProviderKeys: new Set(['yanshi']) })
+    await model.pending // 构造时的 loadDirectoryModels 先落地（第一次请求）
+    await model.discover() // 第二次请求：测试连接（草稿 baseURL='http://y/v1' 非空）
+    expect(model.getSnapshot().discovery.outcome).toEqual({ kind: 'catalog', models: [{ id: 'dir-model-1', name: 'Directory Model' }] })
+    expect(seen).toHaveLength(2)
+    // 宿主短路不看 baseURL：构造首读与测试连接两次请求归一后端点草稿都不参与
+    // （outcome=catalog 与宿主实际路径一致）；api 仅测试连接随草稿过线。
+    expect(seen[0]).toEqual({ provider: 'yanshi' })
+    expect(seen[1]).toEqual({ provider: 'yanshi', api: 'openai-completions' })
+  })
+
+  it('自定义 provider（customOnly，不在目录集合）同场景走真实端点探测：请求带 baseURL，outcome 判 endpoint', async () => {
+    const { remote, seen } = capturingRemote()
+    const model = makeModel([{ id: 'a', name: 'A', input: ['text'] }], {
+      remote,
+      target: { key: 'yanshi', isNew: false, customOnly: true },
+    })
+    await model.pending
+    await model.discover()
+    expect(model.getSnapshot().discovery.outcome).toEqual({ kind: 'endpoint', models: [{ id: 'dir-model-1', name: 'Directory Model' }] })
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toEqual({ provider: 'yanshi', baseURL: 'http://y/v1', api: 'openai-completions' })
+  })
+})
+
 describe('存量 models[] 读入草案：reasoningEfforts 无损归档（U10，D3 读改写保真）', () => {
   it('三档形态精确匹配才归档：全集七档 = all / {off,high} = on-off / {off,high,max:xhigh} = high-max', () => {
     const model = makeModel([

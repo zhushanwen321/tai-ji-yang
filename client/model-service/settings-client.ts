@@ -27,8 +27,9 @@
  *     成功 resolve {ok:true,value}，rpcFailure 失败 resolve {ok:false,error:{code,message,details}}）
  *     ——业务失败不 reject，消费方按 ok 分支判定，throw/catch 判失败对 resolve 型失败永不命中。
  *   · 先例同构：宿主「模型」分区自身也按「表单打开时的 revision 提交 + 保存回执刷新」工作
- *     （.tmp/dsh-client-ui-settings-models.client.js :1724-1744 createOnce / :2053-2059 applyOnce），
- *     D3 的 revision 约定与宿主自身行为一致。
+ *     （宿主全局安装目录内 @deepseek-ai/dsh-client-ui-settings-models 包产物 client.js 的
+ *     createOnce / applyOnce 两段；宿主升级随动——以其当时实现为准），D3 的 revision 约定
+ *     与宿主自身行为一致（D3 evidence 有独立留档）。
  *
  * 风格：无 any、无 lint 禁用注释；不 import 任何 dsh-client 包（D3 纪律，宿主面用最小
  * 结构类型声明）。
@@ -429,7 +430,10 @@ export interface DeleteProviderParams {
  * 删除供应商（D3 删除流程 + D7 删除侧）：
  *   ① 路由成员引用警告由 UI 在两段确认里完成（routeReferencesOf 是警告数据源——被引用时
  *      列出受影响路由，用户确认后继续删除，D3 原文；本函数不再硬拒绝）；
- *   ② settings.mutate unset providers.<key>（冲突同保存：重读一次重发一次）；
+ *   ② settings.mutate unset providers.<key>（无条件写：revision 传 undefined，宿主契约
+ *      「undefined writes unconditionally」不触发 settings/conflict；下方 conflict 分支是
+ *      防御性保留，按宿主契约不可达——D3 的 revision 快照约定只锚定保存提交，删除的
+ *      path unset 按存储视图解析、他写者改动按路径保留，不违反设计）；
  *   ③ 凭据处置：TAIJI_ 前缀（自建）直接 unset，失败登记 pendingCredentialUnsets（登记
  *      本身失败 → unsetMessage 降级为宿主凭据界面人工清理指引，不静默）；
  *      非 TAIJI_ 前缀（宿主侧派生）在 crossProfileConfirmed=true 下同通道 unset（确认

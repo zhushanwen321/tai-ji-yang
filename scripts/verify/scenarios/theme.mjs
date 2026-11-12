@@ -4,11 +4,14 @@
  * 路径：composer 快速配色 chip（client/input/appearance-chip.tsx）优先——boot 后空会话
  * 即可见，不需要导航设置页；chip 不可达时尝试设置页外观行
  * （client/settings/appearance-row.tsx），再不可达 = 显式 degrade + 恢复动作。
+ * 主流程后另有第三入口支：设置页太极分区配色行（client/settings/taiji-section.tsx）点选
+ * 即生效 + 三入口选中态互相同步（V8 步骤 6-8，D-3 护栏：三入口共用同一 controller）。
  *
  * 断言范围：
  *  - 按当前解析支选同族非当前色 → --dsw-alias-brand-primary 解析值变化（覆盖层真换表）
  *  - reload 后仍所选色（持久通道 = 插件 Config volatile，跨会话事实）
  *  - 恢复进入前选中态（测试不把复用实例留在目标色，也不覆盖用户原选色）
+ *  - 第三入口点选生效 → 太极分区当前色名 / chip 选中态同步 → 恢复原色
  *
  * 不写宿主主题偏好、不触发明暗模式（领域边界：明暗归宿主）。不发模型请求。
  */
@@ -17,7 +20,7 @@ import { bootInto, collectAppearance } from '../lib/browser.mjs'
 export const meta = {
   id: 'theme',
   title: '配色切换与持久',
-  description: 'chip/外观行切换配色 → token 换表 → reload 后持久 → 恢复默认',
+  description: 'chip/外观行切换配色 → token 换表 → reload 后持久 → 恢复默认；第三入口（太极分区配色行）点选生效 + 三入口选中态同步（V8 步骤 6-8）',
 }
 
 /** 默认色与各明暗支的候选目标：只选与当前解析支不同列的族内目标，防跨族回落造成假红。 */
@@ -131,7 +134,160 @@ export async function run(ctx) {
     })
   }
 
+  await thirdEntrypoint(ctx, page, ev, log, before, scheme)
+
   await ev.shot(page, 'theme')
   ev.attach('console.txt', recorder.text())
   log('theme 场景完成')
+}
+
+/** 打开宿主设置面板（触发钮 aria-label 候选依次试；model-service 场景同款候选清单）。 */
+async function openSettingsPanel(page) {
+  const candidates = ['设置', 'Settings', '偏好设置', 'Preferences']
+  for (const label of candidates) {
+    const trigger = page.locator(`[aria-haspopup="dialog"][aria-label="${label}"]`).first()
+    if (await trigger.isVisible().catch(() => false)) {
+      await trigger.click()
+      await page.locator('[data-shortcut-modal="settings"]').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
+      return page.locator('[data-shortcut-modal="settings"]').isVisible().catch(() => false)
+    }
+  }
+  return false
+}
+
+/** 关闭设置面板（Escape；面板未开时幂等返回 true）。 */
+async function closeSettingsPanel(page) {
+  await page.keyboard.press('Escape').catch(() => {})
+  await page.waitForTimeout(300)
+  const stillOpen = await page.locator('[data-shortcut-modal="settings"]').isVisible().catch(() => false)
+  return !stillOpen
+}
+
+/** 点设置导航条目（按可见文本候选依次试），返回是否点到。 */
+async function clickNavEntry(page, labels) {
+  for (const label of [labels].flat()) {
+    const cell = page.locator('[data-shortcut-modal="settings"] nav button', { hasText: label }).first()
+    if (await cell.isVisible().catch(() => false)) {
+      await cell.click()
+      await page.waitForTimeout(400)
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * 第三入口支（V8 步骤 6-8 + D-3 护栏）：设置页太极分区配色行点选 → brand-primary 变化 →
+ * 太极分区当前色名与 chip 选中态同步（三入口共用同一 ThemeSelectionController，无双写分裂
+ * ——外观行与 chip/太极分区读同一持久字段，选中态跟着变）→ 恢复原色。
+ */
+async function thirdEntrypoint(ctx, page, ev, log, baselineBrandPrimary, scheme) {
+  if (!(await openSettingsPanel(page))) {
+    ev.degrade('第三入口支跳过：设置面板打不开（触发钮候选未命中）',
+      '核对宿主设置触发钮的 aria-label，把候选补进 openSettingsPanel（候选清单与 model-service 场景同源）')
+    return
+  }
+  if (!(await clickNavEntry(page, ['太极', 'TaiJi']))) {
+    ev.degrade('第三入口支跳过：设置导航无「太极」条目（分区未注册或导航文案变化）',
+      '确认插件分区注册（installTaijiSection）后核对导航 label 的 locale 文案，补 clickNavEntry 候选')
+    await closeSettingsPanel(page)
+    return
+  }
+  const section = page.locator('.taiji-section').first()
+  if (!(await section.isVisible().catch(() => false))) {
+    ev.degrade('第三入口支跳过：「太极」分区页未渲染（.taiji-section 缺席）',
+      '核对宿主分区渲染链路；或人工进入太极分区后用 --url 模式重跑')
+    await closeSettingsPanel(page)
+    return
+  }
+  ev.step({ step: 'theme.third.open' })
+
+  // 展开配色行六色色板（D9 就地展开）
+  const toggle = section.locator('.taiji-section-palette-toggle').first()
+  const expanded = await toggle.getAttribute('aria-expanded').catch(() => null)
+  if (expanded !== 'true') {
+    await toggle.click().catch(() => {})
+    await page.waitForTimeout(300)
+  }
+  const swatches = section.locator('.taiji-section-swatch')
+  const swatchCount = await swatches.count()
+  ev.assert('V8/三入口：太极分区配色行六色齐备', swatchCount === 6, { expected: '6', actual: String(swatchCount) })
+  if (swatchCount !== 6) {
+    await closeSettingsPanel(page)
+    return
+  }
+
+  const activeName = (await swatches.locator('[aria-pressed="true"]').first().getAttribute('aria-label').catch(() => null)) ?? '玄'
+  const targetName = TARGET_CANDIDATES[scheme].find((name) => name !== activeName) ?? TARGET_CANDIDATES[scheme][0]
+  const restoreName = activeName
+  ev.step({ step: 'theme.third.target', stats: { activeName, targetName } })
+
+  let thirdClicked = false
+  try {
+    thirdClicked = await swatches.locator(`[aria-label="${targetName}"]`).first().click().catch(() => false) !== false
+    if (!thirdClicked) {
+      ev.degrade(`第三入口点选「${targetName}」失败（swatch 结构变化？）`,
+        '核对 taiji-section.tsx 的 swatch aria-label 与实际渲染；必要时人工驱动')
+      return
+    }
+    await page.waitForTimeout(500)
+    const afterSwitch = await collectAppearance(page)
+    ev.step({ step: 'theme.third.switch', stats: { brandPrimary: afterSwitch.brandPrimaryResolved } })
+    ev.assert('V8/三入口：太极分区配色行点选立即生效（brand-primary 解析值变化）',
+      afterSwitch.brandPrimaryResolved !== baselineBrandPrimary, {
+        expected: `≠ ${baselineBrandPrimary}`,
+        actual: String(afterSwitch.brandPrimaryResolved),
+      })
+    // 入口自身选中态跟随：当前色名行（活变量色点 + 名称）显示刚点的色。
+    const currentName = await section.locator('.taiji-section-current-name').first().textContent().catch(() => null)
+    ev.assert('V8/三入口：太极分区当前色名跟随点选', currentName === targetName, {
+      expected: targetName,
+      actual: String(currentName),
+    })
+
+    // 跨入口同步①：关设置面板回到 composer，chip 色卡选中态 = 同一色（同一 controller 的可见事实）。
+    if (!(await closeSettingsPanel(page))) {
+      ev.degrade('设置面板未按 Escape 关闭（宿主面板行为变化？）', '核对宿主设置面板关闭交互后重跑')
+      return
+    }
+    const chip = page.locator('.taiji-appearance-chip').first()
+    if (await chip.isVisible().catch(() => false)) {
+      await chip.click().catch(() => {})
+      await page.waitForTimeout(300)
+      const chipActive = await page.locator('.taiji-appearance-chip-swatch[aria-pressed="true"]').first()
+        .getAttribute('aria-label').catch(() => null)
+      ev.assert('V8/三入口：chip 选中态与第三入口点选同步（同一 controller，无双写）', chipActive === targetName, {
+        expected: targetName,
+        actual: String(chipActive),
+      })
+    } else {
+      ev.degrade('chip 不可见，跨入口同步只断言太极分区自身选中态',
+        '确认页面处于空会话态（chip 在 composer 工具行）后重跑可补全 chip 同步断言')
+    }
+  } finally {
+    if (thirdClicked) {
+      // 恢复原色：重开设置 → 太极分区 → 点回进入前色（失败路径也恢复，不覆盖实例原选色）。
+      let restoredThird = false
+      if (await openSettingsPanel(page) && await clickNavEntry(page, ['太极', 'TaiJi'])) {
+        const sectionAgain = page.locator('.taiji-section').first()
+        const toggleAgain = sectionAgain.locator('.taiji-section-palette-toggle').first()
+        if ((await toggleAgain.getAttribute('aria-expanded').catch(() => null)) !== 'true') {
+          await toggleAgain.click().catch(() => {})
+          await page.waitForTimeout(300)
+        }
+        restoredThird = await sectionAgain.locator('.taiji-section-swatch', { hasText: restoreName }).first()
+          .click().catch(() => false) !== false
+      }
+      await page.waitForTimeout(500)
+      const restoredState = await collectAppearance(page)
+      ev.step({ step: 'theme.third.restore', exitCode: restoredThird ? 0 : 1, stats: { restoredThird, brandPrimary: restoredState.brandPrimaryResolved } })
+      ev.assert('V8/三入口：恢复进入前配色（第三入口支收尾不污染实例）',
+        restoredState.brandPrimaryResolved === baselineBrandPrimary, {
+          expected: String(baselineBrandPrimary),
+          actual: String(restoredState.brandPrimaryResolved),
+        })
+      await closeSettingsPanel(page)
+    }
+  }
+  log('theme 第三入口支完成')
 }

@@ -315,12 +315,36 @@ describe('注册生命周期（RL9：空路由不注册 / 首路由注册 / 全�
     expect(host.registeredIds()).toEqual(['taiji-route-conflict']) // 宿主原有注册原样
     expect(host.errors.join('\n')).toContain('ROUTE_REGISTRATION_FAILED')
     expect(host.errors.join('\n')).toContain('already registered') // 原始错误入日志
-    // 解决冲突后（宿主条目消失）再触发 volatile-update：幂等重试成功。
+    // 解决冲突的另一路径（routes 清空）：volatile-update 走「全删注销」分支（空集跳过注册），
+    // 失败日志不追加；同集合重试成功的路径由下一用例锁定（终态同步 F1-40）。
     host.releaseRoute('taiji-route-conflict')
     holder.state.routes = []
     host.fireVolatile()
     expect(host.errors.filter((message) => message.includes('ROUTE_REGISTRATION_FAILED'))).toHaveLength(1)
     dispose()
+  })
+
+  it('注册失败不前移 registeredFacts：routes 集合不变时 volatile-update 幂等重试成功（终态同步 F1-40）', () => {
+    const host = createFakeHostRegistry(['taiji-route-conflict'])
+    const holder = snapshotHolder([{ id: 'conflict', name: 'C', members: [] }], ['conflict'])
+    const adapter = createRouteAdapter({ readSnapshot: holder.readSnapshot, llm: host.llm, credentials: fakeCredentials(), readProviderProfiles: fakeProfiles({}), now: FIXED_NOW })
+    const dispose = ensureRouteRegistration(host.ctx, holder.readSnapshot, adapter)
+    // 初始注册失败（宿主占位同名 id）：降级日志恰好 1 条，facts 未前移。
+    expect(host.registeredIds()).toEqual(['taiji-route-conflict'])
+    expect(host.errors.filter((message) => message.includes('ROUTE_REGISTRATION_FAILED'))).toHaveLength(1)
+    // 宿主释放冲突 id，插件侧 routes 集合保持不变 → volatile-update：同集合幂等重试。
+    host.releaseRoute('taiji-route-conflict')
+    host.fireVolatile()
+    // 重试成功：注册表持有插件条目（此刻由插件注册），且不再追加失败日志。
+    expect(host.registeredIds()).toContain('taiji-route-conflict')
+    expect(host.errors.filter((message) => message.includes('ROUTE_REGISTRATION_FAILED'))).toHaveLength(1)
+    // facts 已前移：同集合再触发不重复注册（无新 commit / 无新日志）。
+    const commits = host.commitCount
+    host.fireVolatile()
+    expect(host.commitCount).toBe(commits)
+    expect(host.errors.filter((message) => message.includes('ROUTE_REGISTRATION_FAILED'))).toHaveLength(1)
+    dispose()
+    expect(host.registeredIds()).toEqual([]) // dispose 撤销重试成功的注册
   })
 })
 
@@ -549,6 +573,58 @@ describe('求值纯函数对拍（Node 复刻 ↔ client 权威源，禁双实�
     const rawWhitelist = ['a', 'b', 'a', '', 42]
     expect(JSON.stringify(nodeSanitizeRoutes(rawRoutes))).toBe(JSON.stringify(sanitizeRoutes(rawRoutes)))
     expect(nodeSanitizeWhitelist(rawWhitelist)).toEqual(sanitizeWhitelist(rawWhitelist))
+  })
+
+  it('特殊日期三形态求值双侧一致 + quota 条件折叠进 sanitize 差分（终态同步 F1-39：差分集补全）', () => {
+    // 三种此前不在差分集的求值分支：include+mask / include 无掩码（全天）/ exclude 无掩码
+    // （isSlotCoveredAt 的 special 分支两侧逐行同构，漂移必须红灯）。
+    const specials: RouteWindowMask = {
+      days: maskAt(0, 19).days,
+      specialDates: [
+        { date: '2026-01-05', name: '整日期剔除（无掩码）', mode: 'exclude' },
+        { date: '01-06', name: '启用带掩码', mode: 'include', mask: Array.from({ length: 48 }, (_, s) => s === 19) },
+        { date: '03-08', name: '启用全天（无掩码）', mode: 'include' },
+      ],
+    }
+    const route: RouteEntry = {
+      id: 'r',
+      name: 'R',
+      members: [
+        { provider: 'a', model: 'm', order: 1, condition: { type: 'window', window: specials } },
+        { provider: 'b', model: 'm', order: 2, condition: { type: 'none' } },
+      ],
+    }
+    // 期望值序列（防双侧共模漂移）：依次命中 exclude 无掩码 / include 掩码格 / include 掩码
+    // 非格 / include 全天 / 周表回落格。
+    const moments = [
+      { at: at(2026, 1, 5, 9, 30), expected: false }, // 2026-01-05 剔除无掩码 → false
+      { at: at(2026, 1, 6, 9, 30), expected: true }, // 01-06 include 掩码 slot19 → true
+      { at: at(2026, 1, 6, 10, 0), expected: false }, // 01-06 include 掩码 slot20 → false
+      { at: at(2026, 3, 8, 14, 0), expected: true }, // 03-08 include 无掩码 → true
+      { at: at(2026, 2, 2, 9, 30), expected: true }, // 无特殊命中 → 周一 slot19 周表 → true
+    ]
+    for (const item of moments) {
+      expect(nodeIsSlotCoveredAt(specials, item.at)).toBe(isSlotCoveredAt(specials, item.at))
+      expect(isSlotCoveredAt(specials, item.at)).toBe(item.expected)
+      expect(nodeEvaluateConditionAt({ type: 'window', window: specials }, item.at)).toBe(
+        evaluateConditionAt({ type: 'window', window: specials }, item.at),
+      )
+      expect(nodeEvaluateRouteAt(route, item.at)?.provider).toBe(evaluateRouteAt(route, item.at)?.provider)
+    }
+    // quota 型条件成员的 sanitize 差分：一期不求值按「永不命中」fail-closed——成员在
+    // sanitize 入口被折叠丢弃（两侧一致，且都真丢——防双侧同时漂移成保留）。
+    const rawQuota = [
+      {
+        id: 'q',
+        name: 'Q',
+        members: [
+          { provider: 'p', model: 'm', order: 1, condition: { type: 'quota' } },
+          { provider: 'p2', model: 'm2', order: 2, condition: { type: 'combo', members: ['x'] } },
+        ],
+      },
+    ]
+    expect(JSON.stringify(nodeSanitizeRoutes(rawQuota))).toBe(JSON.stringify(sanitizeRoutes(rawQuota)))
+    expect(sanitizeRoutes(rawQuota)).toEqual([{ id: 'q', name: 'Q', members: [] }])
   })
 
   it('ROUTE_PROVIDER_PREFIX 双侧同值', async () => {

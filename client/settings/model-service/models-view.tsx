@@ -11,8 +11,9 @@
  * 目录默认+覆盖（override，M1 只读）/ 宿主托管（managed，只读行）。跳转态（目标
  * provider/model + 返回路径）由分区组件承载（section.tsx），本视图只发起 onJump。
  *
- * 空态矩阵（V9 步骤 1/5）：目录无任何 provider → 「尚未接入供应商」；有 provider 无模型 →
- * 「供应商已接入，但还没有模型」；筛选无结果 → 「没有匹配「{q}」的模型」+ 清除动作。
+ * 空态矩阵（V9 步骤 1/5）：目录无任何 provider → 「尚未接入供应商」+ 接入引导（跳供应商
+ * 视图）；有 provider 无模型 → 「供应商已接入，但还没有模型」+ 同款接入引导；筛选无结果 →
+ * 「没有匹配「{q}」的模型」+ 清除动作。
  */
 import { useSyncExternalStore } from 'react'
 import {
@@ -170,10 +171,12 @@ export interface ModelsViewProps {
   model: ModelsListModel
   /** 跳转发起（目标 provider + 可选 model id；返回路径由分区组件承载）。 */
   onJump: (provider: string, model?: string) => void
+  /** 空态接入引导（V9 步骤 1：清单空态给下一步动作——切回供应商视图）。 */
+  onGoToProviders: () => void
 }
 
 /** 渲染模型清单视图（筛选行 + 行列表 + 空态矩阵）。 */
-export function ModelsView({ t, model, onJump }: ModelsViewProps) {
+export function ModelsView({ t, model, onJump, onGoToProviders }: ModelsViewProps) {
   const state = useSyncExternalStore(
     (listener) => model.subscribe(listener),
     () => model.getSnapshot(),
@@ -200,11 +203,18 @@ export function ModelsView({ t, model, onJump }: ModelsViewProps) {
       {state.rows.length === 0 && state.filter.trim() === '' && !state.providersExist && (
         <div className="ms-empty">
           <div className="ms-empty-title">{t('models.emptyNoProviders')}</div>
+          {/* 空态矩阵的下一步动作（V9 步骤 1「清单空态给接入引导」，与供应商视图空态引导卡同构） */}
+          <button type="button" className="ms-button ms-button-primary" onClick={onGoToProviders}>
+            {t('models.emptyGoProviders')}
+          </button>
         </div>
       )}
       {state.rows.length === 0 && state.filter.trim() === '' && state.providersExist && (
         <div className="ms-empty">
           <div className="ms-empty-title">{t('models.emptyNoModelsButProviders')}</div>
+          <button type="button" className="ms-button ms-button-primary" onClick={onGoToProviders}>
+            {t('models.emptyGoProviders')}
+          </button>
         </div>
       )}
       {state.rows.length > 0 && (

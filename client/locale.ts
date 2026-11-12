@@ -270,11 +270,14 @@ export function installLocale(host: LocaleInstallHost): void {
 export const TAIJI_MODEL_SERVICE_LOCALE_NS = 'taiji.model-service'
 
 /**
- * 模型服务分区简体中文字典（骨架期，u-foundation 定键集；M1 填充只允许增键不改骨架）。
+ * 模型服务分区简体中文字典（u-foundation 骨架 28 键 + M1 填充 + M2 增键，当前 168 键）。
  *
- * 键集按 M1 组件清单推导（七类）：分区名 / 三视图标题 / 供应商表单字段 / 凭据徽章 /
- * 模型区两来源态 / 空态文案 / 路由视图 M1 期空态引导。措辞来源：空态文案与两来源态
- * 抄设计包空态矩阵与 D11 的界面语义原文；字段名对齐宿主 provider schema 字段语义。
+ * 键集分段（与下方注释分段一致）：分区与三视图 / 供应商表单字段 / 凭据徽章 / 模型区
+ * 来源态 / 空态文案 / 路由视图与三层时间窗 / 通用动作 / 供应商视图 / 展开体表单与发现 /
+ * 保存与删除结果文案。措辞来源：空态文案与来源态抄设计包空态矩阵与 D11 的界面语义原文；
+ * 字段名对齐宿主 provider schema 字段语义。骨架键值不被后续填充改动，由 locale.test.ts
+ * 的骨架用例断言看守；M1 期占位词条 routes.emptyM1 / routes.emptyM1Next 已按设计 §3.1
+ * 增量项⑥的中间态声明在 M2 交付后清理移除（沿革 git 可追溯）。
  */
 export const modelServiceZh = {
   /* ── 分区与三视图 ── */
@@ -329,14 +332,12 @@ export const modelServiceZh = {
   'models.emptyNoMatch': '没有匹配「{q}」的模型',
   /** 筛选空态的清除动作。 */
   'models.clearFilter': '清除筛选',
+  /** 清单空态的下一步动作（V9 步骤 1：两个非筛选空态都给接入引导——跳供应商视图）。 */
+  'models.emptyGoProviders': '前往供应商视图接入',
   /** 清单视图的筛选输入占位/可访问名（G16）。 */
   'models.viewFilter': '筛选模型',
   /** 四层数据源中拿不到的字段标注（G16：上下文/输入类型/最大输出缺失）。 */
   'models.fieldMissing': '未提供',
-
-  /* ── 路由视图 M1 期空态引导（M2 交付路由能力后由 M2 增键扩展）── */
-  'routes.emptyM1': '路由能力将在下个版本提供',
-  'routes.emptyM1Next': '已接入的供应商与模型不受影响，对话流可正常使用。',
 
   /* ── 路由视图（M2：路由列表 / 白名单 / 悬挂 / 注册降级 / 空态矩阵）── */
   'routes.snapshotUnavailable': '插件配置未被服务（Config 命名空间不可用）；重新打开本分区或检查插件装载状态。',
@@ -474,8 +475,12 @@ export const modelServiceZh = {
   'input.image': '图像',
   'discovery.running': '正在探测端点…',
   'discovery.catalog': '目录自有模型：{n} 个（零网络读取）',
+  /** 目录型供应商的测试连接说明（AS7：宿主短路不看端点，端点连通性未被验证的替代指引）。 */
+  'discovery.catalogNoEndpointTest': '目录型供应商由安装目录解析：本动作读取目录模型，不验证端点连通性；端点连通性请在宿主「模型」分区验证。',
   'discovery.endpointOk': '端点可达，发现 {n} 个模型',
   'discovery.failed': '探测失败',
+  /** 端点缺失时的探测失败后半句（终态同步修复：原硬编码文案入双语字典）。 */
+  'discovery.requireEndpoint': '请先填写 API 端点。',
   'discovery.none': '端点可达，但没有返回模型',
 
   /* ── 保存与删除的结果文案 ── */
@@ -525,11 +530,9 @@ export const modelServiceEn = {
   'models.emptyNoProviders': 'No providers connected yet',
   'models.emptyNoMatch': 'No models matching "{q}"',
   'models.clearFilter': 'Clear filter',
+  'models.emptyGoProviders': 'Go to Providers',
   'models.viewFilter': 'Filter models',
   'models.fieldMissing': 'Not provided',
-
-  'routes.emptyM1': 'Routing will arrive in a future version',
-  'routes.emptyM1Next': 'Connected providers and models are unaffected and available in conversations.',
 
   /* ── Routes view (M2: list / whitelist / hanging / registration degraded / empty matrix) ── */
   'routes.snapshotUnavailable': 'Plugin config is not being served (namespace unavailable); reopen this section or check the plugin state.',
@@ -663,8 +666,10 @@ export const modelServiceEn = {
   'input.image': 'Image',
   'discovery.running': 'Probing endpoint…',
   'discovery.catalog': 'Catalog-owned models: {n} (read without network)',
+  'discovery.catalogNoEndpointTest': 'Catalog providers resolve from the install directory: this reads catalog models and does not verify the endpoint; verify endpoint reachability in the host Models section.',
   'discovery.endpointOk': 'Endpoint reachable, {n} models found',
   'discovery.failed': 'Discovery failed',
+  'discovery.requireEndpoint': 'Fill in the API endpoint first.',
   'discovery.none': 'Endpoint reachable, but no models returned',
 
   'save.saved': 'Saved',

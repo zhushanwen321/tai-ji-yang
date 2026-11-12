@@ -6,6 +6,11 @@ cd "$ROOT"
 
 node scripts/check-all.mjs --static
 
+# lib 产物新鲜度（FF16 防复发支）：改 client/ 或 index.js 未重 build 即拦截——
+# 判定与 doctor lib-fresh 同源（scripts/verify/lib/freshness.mjs），漏 build 的 commit
+# 不再拖到真机验收才红。恢复动作：先 pnpm build 再提交。
+node scripts/check-lib-fresh.mjs
+
 if git diff --cached --name-only | grep -q '^\.agents/workflows/'; then
   BUILDER=.agents/workflows/scripts/build-workflows.mjs
   if [ ! -f "$BUILDER" ]; then

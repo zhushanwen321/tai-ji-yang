@@ -24,7 +24,7 @@
  * 的 ref 幂等，dsh-credentials-local/lib/index.js:517-519），成功即从清单移除。
  */
 
-import { PLUGIN_ENTRY_ID, type ConfigFormLike } from '../persist'
+import { type ConfigFormLike } from '../persist'
 import { deriveCredentialRef } from './provider-key'
 import { unwrapRemote, type RemoteResult } from './remote-result'
 
@@ -138,7 +138,8 @@ export interface PendingUnsetRetry {
 }
 
 /**
- * 幂等重试待清理清单（打开分区时调用；「下次启动」路径由 M2 的 Node 半场凭据预检顺带接管）：
+ * 幂等重试待清理清单（打开分区时调用；D7/AX9「下次启动或打开分区时重试」的打开分区
+ * 路径——插件装载（启动）路径的重试未实现，取舍登记见设计包 D7 采用段）：
  * 逐个 unset，成功即移出清单，失败保留；清单有变化才整字段写回（无变化零写入）。
  * 写回失败不外抛（挂载效应 void…then 链无 catch，section.tsx）：清单原样保留（快照未变，
  * removed 并回 kept 如实反映清单持有态），下次打开分区重试自愈（宿主 unset 幂等）。
@@ -177,6 +178,3 @@ export async function retryPendingUnsets(form: PluginConfigFormLike, credentials
 export function credentialRefFor(key: string): string {
   return deriveCredentialRef(key)
 }
-
-/** 本模块归属日志前缀（与 persist.ts 的 PLUGIN_ENTRY_ID 同源）。 */
-export const CREDENTIALS_LOG_PREFIX = PLUGIN_ENTRY_ID
