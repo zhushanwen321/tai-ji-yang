@@ -270,14 +270,15 @@ export function installLocale(host: LocaleInstallHost): void {
 export const TAIJI_MODEL_SERVICE_LOCALE_NS = 'taiji.model-service'
 
 /**
- * 模型服务分区简体中文字典（u-foundation 骨架 28 键 + M1 填充 + M2 增键，当前 168 键）。
+ * 模型服务分区简体中文字典（u-foundation 骨架 30 键 + M1 填充 + M2 增键，当前 171 键）。
  *
  * 键集分段（与下方注释分段一致）：分区与三视图 / 供应商表单字段 / 凭据徽章 / 模型区
  * 来源态 / 空态文案 / 路由视图与三层时间窗 / 通用动作 / 供应商视图 / 展开体表单与发现 /
  * 保存与删除结果文案。措辞来源：空态文案与来源态抄设计包空态矩阵与 D11 的界面语义原文；
  * 字段名对齐宿主 provider schema 字段语义。骨架键值不被后续填充改动，由 locale.test.ts
- * 的骨架用例断言看守；M1 期占位词条 routes.emptyM1 / routes.emptyM1Next 已按设计 §3.1
- * 增量项⑥的中间态声明在 M2 交付后清理移除（沿革 git 可追溯）。
+ * 的骨架用例断言看守；骨架期占位词条 routes.emptyM1 与 M1 期占位词条 routes.emptyM1Next
+ * 已按设计 §3.1 增量项⑥的中间态声明在 M2 交付后清理移除（当前 171 键 = 骨架现存 29 +
+ * 增量键 142；沿革 git 可追溯）。
  */
 export const modelServiceZh = {
   /* ── 分区与三视图 ── */

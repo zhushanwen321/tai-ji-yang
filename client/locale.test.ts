@@ -125,7 +125,7 @@ describe('模型服务分区双语字典（u-foundation 骨架 + M1 填充 + M2 
     }
   })
 
-  it('骨架键不被 M1 填充改动（u-foundation 键集原样保留；M1 只增键）', () => {
+  it('骨架键不被后续填充改动（u-foundation 键集原样保留；M1/M2 只增键）', () => {
     expect(modelServiceZh['section.label']).toBe('模型服务')
     expect(modelServiceZh['view.providers']).toBe('供应商')
     expect(modelServiceZh['view.models']).toBe('模型清单')
