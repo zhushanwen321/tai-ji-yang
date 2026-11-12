@@ -537,7 +537,9 @@ export async function run(ctx) {
 
   // V9：模型清单视图——自定义条目来源态标注 + 上下文字段 + 筛选空态。
   await page.locator('.ms-section .ms-viewbar-button', { hasText: '模型清单' }).first().click()
-  await page.waitForTimeout(600)
+  // 视图就绪等待（四层拼装含宿主 IPC，冷启动首读偶发秒级抖动——固定 sleep 会把抖动放大成
+  // fill 硬超时；就绪锚点 = 过滤输入框，loading 态不渲染它）。
+  await page.waitForSelector('.ms-models-filter', { state: 'visible', timeout: 20000 })
   const customRow = await page.locator('.ms-model-list-row.ms-source-custom', { hasText: 'verify-model' }).first().isVisible().catch(() => false)
   ev.assert('V9/自定义条目行渲染且带来源态标注', customRow, {
     expected: 'ms-source-custom 行（verify-model）',
