@@ -77,7 +77,7 @@ P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工
 | 无串页 | 点宿主「模型」后 `.ms-section` 收起且高亮落宿主条目 | covered |
 | 三视图切换条 | `.ms-section .ms-viewbar-button` 数 = 3 | covered |
 | 空态矩阵（V9 步骤 1） | 全新实例供应商视图渲染内置目录列表（rowCount>0，空态分支宿主 web profile 不可达） | covered |
-| 供应商视图空态引导文案（V9 步骤 1） | 「尚无可编辑供应商」引导文案渲染 | notProvable（目录非空不可达，归 D3 真机或单测承接） |
+| 供应商视图空态引导文案（V9 步骤 1） | providers.empty（尚未接入任何供应商）/ providers.emptyManagedOnly（暂无可编辑供应商（现有供应商由宿主管理））两空态引导文案渲染 | notProvable（目录非空不可达，归 D3 真机或单测承接） |
 | 零模型保存前置（V1 步骤 4a） | 保存被拒 + models.saveBlockedEmpty 指引文案 | covered |
 | 保存链路两处落盘（V1 步骤 5/6） | 设置文档出现 providers.<key>（apiKeyEnv 为 ref 名）+ 凭据文件出现对应 ref | covered |
 | 热重算不重启（V1 步骤 7/9，RL2） | 宿主「模型」分区可见新供应商 + 页面无 reload（注入标记存活） | covered |
