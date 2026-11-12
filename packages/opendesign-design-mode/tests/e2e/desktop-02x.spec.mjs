@@ -178,6 +178,13 @@ function dirtyArtifactHtml(title) {
  * 拾取场景专用产物（V9 步②「拾取发评（id 级）」的载体；web spec pick-me.html 同构）：
  * #main-title（id 级）/ section 内部无 id 段落（data 级，最近祖先 data-od-id）/ footer 裸
  * 链接（path 级）。桌面半场只消费 id 级（V9 判据子集），三载体结构保持与 web 对账。
+ *
+ * 补写影响契约（anchor-backfill 设计 §4.3 e2e 影响面桌面行，U4 单元核对）：唯一 section
+ * 预置 data-od-id="hero-sec"——补写器 tagged 跳过，fixture 字节不变（亦在监听启动快照内 =
+ * unrecognized-existing 双重不触碰）；桌面拾取锚点级别断言（V8/V10 的 #main-title）均为
+ * id 级 = 非 path 级口径已符合，无升级点；检查环步的 report.jsonl 断言按 type/id/reason
+ * 过滤，补写器 no-op 行（landing.html 无 section → inserted=0）不影响。fixture 若日后
+ * 调整（新增无锚属性 section 或增删 footer），该安全前提失效需重审。
  */
 const PICK_ARTIFACT_NAME = 'pick-me.html'
 function pickArtifactHtml() {
@@ -318,9 +325,23 @@ let hostChild = null
  * 自启桌面宿主（app 内嵌 0.2.2）并从 stdout 解析认证 URL（不猜端口不猜 token）。
  * 首启与 comment-loop·V2 的重启形态共用同一函数（同 home 重启 = 会话与评论数据持久性载体）。
  */
+/**
+ * 套件无凭据隔离前提（web spec credentialIsolatedEnv 同款规则）：剥除宿主进程环境的
+ * provider 凭据变量（`*_API_KEY` 后缀形态）——环境泄漏可用 key 时回合变真实 LLM 调用
+ * （分钟级 + 模型真写盘），打破「无 API key 回合秒败收场」的编排前提与全部回合结算判据。
+ */
+function credentialIsolatedEnv(env) {
+  const isolated = {}
+  for (const [name, value] of Object.entries(env)) {
+    if (/_API_KEY$/.test(name)) continue
+    isolated[name] = value
+  }
+  return isolated
+}
+
 async function launchHost() {
   const child = spawn(DESKTOP_CLI, ['--patch', patchFile, '--profile', 'web', '--no-open', '--port', '0'], {
-    env: { ...process.env, DSH_HOME: home, OD_RESOURCE_ROOT: MINI_OD_ROOT },
+    env: credentialIsolatedEnv({ ...process.env, DSH_HOME: home, OD_RESOURCE_ROOT: MINI_OD_ROOT }),
     cwd: workspaceReal,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
@@ -524,6 +545,24 @@ function totalTurnStartCount() {
     .reduce((sum, count) => sum + count, 0)
 }
 
+/** 读取一份会话日志的 turn/end 终态记录（无凭据隔离环境常态 = reason.kind 'error' 的 provider 失败收场；web spec readSessionLog turnEnds 同款读法）。 */
+function readTurnEnds(file) {
+  const ends = []
+  for (const line of fs.readFileSync(file, 'utf8').trim().split('\n')) {
+    if (line === '') continue
+    const event = JSON.parse(line)
+    if (event.type === 'turn/end') ends.push({ turn: event.data?.turn ?? null, reasonKind: event.data?.reason?.kind ?? null })
+  }
+  return ends
+}
+
+/** 隔离 home 全部会话日志的 turn/end 事件计数（回合终态确定性在盘信号；web spec sendUserMessage 结算判据同通道）。 */
+function totalTurnEndCount() {
+  return collectSessionFiles()
+    .map((entry) => readTurnEnds(entry.file).length)
+    .reduce((sum, count) => sum + count, 0)
+}
+
 /**
  * 页面内同源 fetch（相对路径寻址——与面板 client/comments/api.ts 同一通道；返回
  * status / text / JSON body，非 JSON 响应 body = null）。
@@ -576,10 +615,16 @@ try {
     await composer.click()
     await page.keyboard.type('design a coffee brand landing page')
     await page.getByRole('button', { name: 'Send message' }).click()
-    await page.waitForFunction(
-      () => document.body.innerText.includes('MISSING_CREDENTIAL') || document.body.innerText.includes('This turn failed'),
-      undefined,
-      { timeout: 60000 },
+    // 回合结算信号走会话日志通道（turn/end 计数基线 +1；web spec sendUserMessage 同款改道）：
+    // UI 失败文案（MISSING_CREDENTIAL）呈现窗口不稳，且 model-service 注册失败宽限重查
+    // （client/model-service route-store 5s grace + 一次性重查定时器）落地后 UI 呈现时点漂移，
+    // turn/end 是回合终态的确定性在盘信号。
+    const turnEndBaseline = totalTurnEndCount()
+    const turnEndDeadline = Date.now() + 60000
+    while (Date.now() < turnEndDeadline && totalTurnEndCount() < turnEndBaseline + 1) await sleep(500)
+    assert(
+      totalTurnEndCount() >= turnEndBaseline + 1,
+      `回合应到达终态（turn/end 基线 ${turnEndBaseline}）——回合悬挂（model-service 注册宽限形态：注册失败被 grace 窗口吞掉且重查未落地）或日志 flush 滞后`,
     )
     await sleep(2000)
     const { messages } = await waitForSessionContent((list) => list.some((t) => t.includes(DESIGN_INJECTION_MARK)))

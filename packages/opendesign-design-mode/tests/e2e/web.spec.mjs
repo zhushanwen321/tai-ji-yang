@@ -90,6 +90,19 @@
  *      通道后可重发）；产物不可拾取（列表渲染后删产物 → 点击行 → 伺服 404 失败行 +
  *      评论模式开关禁用 + 既有线程追加照常）→ 恢复产物 Reload 后拾取可用可发首评。
  *
+ * 产物锚属性补写场景（opendesign-anchor-backfill 设计 §4.1；编号带 anchor-backfill· 域
+ * 前缀，任务书 U4 承载）：
+ *   B1 V1+V2+V3 —— 首写补写全链路：会话内新写 3-section 无锚属性产物 → 轮询防抖窗口后
+ *      磁盘断言每 section 起始标签带 data-od-id="od-sec-<hash8>"（G2 形态）→ 拾取第一
+ *      section 内主标题（无 id）落盘锚点非 path 级（data 级 sel = 磁盘实际补写值）→
+ *      report.jsonl {type:'anchor-backfill', inserted:3} 行 + 二轮 no-op 行 + 无
+ *      missing-section-anchor 发现；改稿保留属性（脚本重写、锚属性值原样）→ 补写器
+ *      no-op 行 + 探针重挂 ready 握手后锚点仍命中（徽章重建/定位高亮）；改稿丢弃属性
+ *      且内容已变 → 重补新值 ≠ 旧值 + 既有评论如实标注失效（Anchor missing + 定位
+ *      禁用 + 徽章零重建，不静默指错）。改稿可见性回归（本设计 V10）= 既有 P4 场景
+ *      承载（pick-me fixture 为 unrecognized-existing、补写不触碰其字节，重挂链路不受
+ *      补写影响——场景注册表 P4 行）。
+ *
  * 真实模型自纠行为（V2 的模型修复段）不在本套件（验收计划 A11：L4 归交付后行为观察）；
  * comment-loop·V1 的「agent 实际读产物改稿写盘（文件工具触达路径）」段同口径归 D3 真机
  * 验收（comment-loop U6 待验证检查点：A11 模式成本已知，交付后补验）；comment-anchor·V8④
@@ -375,6 +388,25 @@ function writeSessionLogPatch(home) {
 }
 
 /**
+ * 套件无凭据隔离前提（套件头注：无 API key 的隔离实例上发消息，回合以 MISSING_CREDENTIAL
+ * 失败收场）的强制执行：剥除宿主进程环境的 provider 凭据变量（`*_API_KEY` 后缀形态）。
+ *
+ * 引擎宿主环境可能携带可用 key（坐实于运行根 0q7iQa 会话日志：环境泄漏 key 时回合 17 步
+ * 真实 LLM 执行 19 次工具调用、workspace/changes 真写盘、分钟级才 turn/end completed）
+ * ——不剥则回合变真实调用，既打破全部回合结算判据的秒败前提，模型真写盘还会污染
+ * 「测试写产物」的场景编排。凭据服务读 DEEPSEEK_API_KEY 环境变量（回合失败文案实名
+ * 登记），`*_API_KEY` 后缀规则覆盖该名与常见 provider 同形变量。
+ */
+function credentialIsolatedEnv(env) {
+  const isolated = {}
+  for (const [name, value] of Object.entries(env)) {
+    if (/_API_KEY$/.test(name)) continue
+    isolated[name] = value
+  }
+  return isolated
+}
+
+/**
  * 自启隔离 dsh web（--patch + OD_RESOURCE_ROOT 覆盖）→ stdout 解析认证 URL → 探活 → 开页面。
  * 失败即按 PID 收场（不留孤儿）；stopInstance 按 PID 杀进程组。
  *
@@ -390,7 +422,7 @@ async function startInstance({ label, home, fixtureRoot, patchFile, cwd }) {
   const child = spawn(dshFile, [
     ...dshPrefix, '--patch', patchFile, '--profile', 'web', '--no-open', '--port', '0',
   ], {
-    env: { ...process.env, DSH_HOME: home, OD_RESOURCE_ROOT: fixtureRoot },
+    env: credentialIsolatedEnv({ ...process.env, DSH_HOME: home, OD_RESOURCE_ROOT: fixtureRoot }),
     cwd: cwd !== undefined ? fs.realpathSync(cwd) : undefined,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true, // 进程组长：stop 按组终止（runner 库同纪律）
@@ -441,7 +473,9 @@ async function startInstance({ label, home, fixtureRoot, patchFile, cwd }) {
     home,
     page: session.page,
     async close() {
-      await session.close()
+      // 会话页关闭失败不阻断进程组杀（页面已死/浏览器已崩形态实测可达）——泄漏即雪崩：
+      // boot 失败链泄漏的 dsh 实例会累积放大后续场景的资源竞争（引擎复跑实测泄漏 24 实例）
+      await session.close().catch(() => {})
       await stopInstance(child.pid)
     },
   }
@@ -524,21 +558,36 @@ async function pickDesignPreset(page) {
 }
 
 /**
- * 发送一条用户消息并等到回合跑完（无 API key 的隔离实例上，回合以 MISSING_CREDENTIAL
- * 失败收场——system 提示词在 provider 调用前已提交会话日志，该失败文案即「回合已跑」信号）。
+ * 发送一条用户消息并等到该回合到达终态（无 API key 的隔离实例上，回合以 provider 错误
+ * 失败收场——turn/end 事件 reason.kind='error'，会话日志实读核实在场）。
+ *
+ * 结算信号走会话日志通道（{@link readSessionLog} turnEnds 计数基线 +1）：UI 失败文案
+ * （MISSING_CREDENTIAL）呈现窗口不稳（套件头注登记，u-probe 同款改道先例），且
+ * model-service 注册失败宽限重查（client/model-service route-store 5s grace + 一次性重查
+ * 定时器）落地后，回合失败的 UI 呈现时点进一步漂移；turn/end 是回合终态的确定性在盘信号。
+ * 超时抛错带基线/实得计数——悬挂形态（注册失败被 grace 窗口吞掉且重查未落地）可辨。
  */
-async function sendUserMessage(page, text) {
+async function sendUserMessage(page, text, home) {
   const composer = page.locator('[contenteditable="true"]').first()
   await composer.click()
   await page.keyboard.type(text)
   await page.waitForTimeout(300)
   await page.getByRole('button', { name: 'Send message' }).click()
-  await page.waitForFunction(
-    () => document.body.innerText.includes('MISSING_CREDENTIAL') || document.body.innerText.includes('This turn failed'),
-    undefined,
-    { timeout: 45000 },
-  )
-  await page.waitForTimeout(1500) // 落盘 batch flush 余量
+  const countTurnEnds = () => collectSessionFiles(home)
+    .map((entry) => readSessionLog(entry.file).turnEnds.length)
+    .reduce((sum, count) => sum + count, 0)
+  const baseline = countTurnEnds()
+  const deadline = Date.now() + 45000
+  let settled = baseline
+  while (Date.now() < deadline) {
+    settled = countTurnEnds()
+    if (settled >= baseline + 1) {
+      await page.waitForTimeout(1500) // 落盘 batch flush 余量（原有语义保持）
+      return
+    }
+    await sleep(500)
+  }
+  throw new AssertionError(`等待回合终态（turn/end）超时（45000ms；基线 ${baseline}，实得 ${settled}）——回合未到达终态（model-service 注册宽限悬挂形态：注册失败被 grace 窗口吞掉且重查未落地）或日志 flush 滞后`)
 }
 
 /**
@@ -610,12 +659,13 @@ function collectSessionFiles(home) {
   return files
 }
 
-/** 读取一份会话日志的 system/message 文本清单、user/message 消息、preset 选定记录与 turn/start 轮次号。 */
+/** 读取一份会话日志的 system/message 文本清单、user/message 消息、preset 选定记录与 turn/start、turn/end 轮次记录。 */
 function readSessionLog(file) {
   const systemMessages = []
   const userMessages = []
   const presetSelections = []
   const turnStarts = []
+  const turnEnds = []
   for (const line of fs.readFileSync(file, 'utf8').trim().split('\n')) {
     if (line === '') continue
     const event = JSON.parse(line)
@@ -641,8 +691,16 @@ function readSessionLog(file) {
       // 评论环投递通道判据（comment-loop·V10）。
       turnStarts.push(event.data?.turn ?? null)
     }
+    if (event.type === 'turn/end') {
+      // 回合终态事件（无凭据隔离环境常态 = reason.kind 'error' 的 provider 失败收场，
+      // 会话日志实读核实在场）——sendUserMessage 的回合结算判据走此通道：UI 失败文案
+      // （MISSING_CREDENTIAL）呈现窗口不稳（套件头注登记，u-probe 同款改道先例），且
+      // model-service 注册失败宽限重查（client/model-service route-store 5s grace + 一次性
+      // 重查定时器）落地后回合失败的 UI 呈现时点进一步漂移，turn/end 是确定性在盘信号。
+      turnEnds.push({ turn: event.data?.turn ?? null, reasonKind: event.data?.reason?.kind ?? null })
+    }
   }
-  return { systemMessages, userMessages, presetSelections, turnStarts }
+  return { systemMessages, userMessages, presetSelections, turnStarts, turnEnds }
 }
 
 /**
@@ -765,6 +823,16 @@ function expectDoctorSections(body) {
  * 最近祖先带 data-od-id）、footer 裸链接（path 级，无 id 无锚属性）。path 级 sel 固定为
  * 'html > body:nth-of-type(1) > footer:nth-of-type(1) > a:nth-of-type(1)'（pick-script
  * pathSelectorFor 的 tag:nth-of-type 链；footer/a 均为该型唯一子元素）。
+ *
+ * 补写影响契约（anchor-backfill 设计 §4.3 e2e 影响面 items[3] 登记，U4 单元核对）：
+ * 共用本 fixture 的 anchor 场景族 P2/P3/P4/P5/P7/P8 的唯一 section 预置 data-od-id="hero-sec"
+ * ——补写器 tagged 跳过判定认该属性，fixture 字节不变（补写资格亦不成立：fixture 在监听
+ * 启动快照内 = unrecognized-existing，双重不触碰）；footer 载体在 section 外，拾取仍落
+ * path 级 = 现状口径（anchor-backfill·V1 criteria：section 外元素不在补写收益内）。六场景
+ * 断言涉及拾取锚点级别处均已符合非 path 级口径——section 内拾取断言为 id/data 级
+ * （P2①②、P3/P4/P7/P8 的 #main-title 与 #hero p），path 级断言仅命中 footer 载体
+ * （P2③、P3/P4/P8 的 footer a）。fixture 若日后调整（新增无锚属性 section 或增删
+ * footer），该安全前提失效需重审（anchor-backfill 设计 AS13 同族前提）。
  */
 const PICK_ARTIFACT_NAME = 'pick-me.html'
 const PICK_ARTIFACT_PATH_SEL = 'html > body:nth-of-type(1) > footer:nth-of-type(1) > a:nth-of-type(1)'
@@ -1003,25 +1071,32 @@ async function bootDesignSessionWithArtifact({ label, workspace, artifact = 'ind
   seedProbeArtifact(workspace)
   fs.writeFileSync(path.join(workspace, PICK_ARTIFACT_NAME), pickArtifactHtml())
   const instance = await withInstance({ label, fixtureRoot: MINI_OD_ROOT, workspaceDir: workspace })
-  const { page, home } = instance
-  await pickWorkspace(page, workspace)
-  await pickDesignPreset(page)
-  await sendUserMessage(page, 'design a landing page for the comment loop')
-  const sessionId = findSessionIdBySystemMark(home, DESIGN_INJECTION_MARK)
-  // 材质化标记在盘（probeDesignSession 伺服可达前提 = 评论侧栏挂载前提；S1 材质化同通道）
-  const framesReady = path.join(fs.realpathSync(workspace), '.od-frames', DECK_FRAMEWORK_FILE_NAME)
-  const deadline = Date.now() + 20000
-  while (!fs.existsSync(framesReady) && Date.now() < deadline) await sleep(500)
-  assert(fs.existsSync(framesReady), `材质化标记缺席（评论侧栏挂载前提）：${framesReady}`)
-  await openDesignPanel(page)
-  await page.waitForFunction(
-    (name) => Array.from(document.querySelectorAll('.odp-row')).some((el) => el.textContent?.trim() === name),
-    artifact,
-    { timeout: 15000 },
-  )
-  await page.locator('.odp-row', { hasText: artifact }).first().click()
-  await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
-  return { instance, page, home, workspace, sessionId }
+  try {
+    const { page, home } = instance
+    await pickWorkspace(page, workspace)
+    await pickDesignPreset(page)
+    await sendUserMessage(page, 'design a landing page for the comment loop', home)
+    const sessionId = findSessionIdBySystemMark(home, DESIGN_INJECTION_MARK)
+    // 材质化标记在盘（probeDesignSession 伺服可达前提 = 评论侧栏挂载前提；S1 材质化同通道）
+    const framesReady = path.join(fs.realpathSync(workspace), '.od-frames', DECK_FRAMEWORK_FILE_NAME)
+    const deadline = Date.now() + 20000
+    while (!fs.existsSync(framesReady) && Date.now() < deadline) await sleep(500)
+    assert(fs.existsSync(framesReady), `材质化标记缺席（评论侧栏挂载前提）：${framesReady}`)
+    await openDesignPanel(page)
+    await page.waitForFunction(
+      (name) => Array.from(document.querySelectorAll('.odp-row')).some((el) => el.textContent?.trim() === name),
+      artifact,
+      { timeout: 15000 },
+    )
+    await page.locator('.odp-row', { hasText: artifact }).first().click()
+    await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
+    return { instance, page, home, workspace, sessionId }
+  } catch (error) {
+    // boot 中途失败兜底收场（实例 close 由场景 try/finally 承载，但 boot 本体在 try 外——
+    // 不兜底则 dsh 子进程与浏览器泄漏，累积放大后续场景失败，引擎复跑实测泄漏 24 实例雪崩）
+    await instance.close().catch(() => {})
+    throw error
+  }
 }
 
 // ── 场景 ─────────────────────────────────────────────────────────────────────
@@ -1064,7 +1139,7 @@ async function scenarioV1() {
     })
 
     await stepAsync(results, '默认 preset 行为不变：standard 会话 system 节点无设计内容', async () => {
-      await sendUserMessage(page, 'plain session smoke')
+      await sendUserMessage(page, 'plain session smoke', home)
       const { log } = await waitForSessionLog(home, (_entry, l) => l.systemMessages.length > 0)
       const sys = log.systemMessages.at(-1) ?? ''
       assert(!sys.includes(DESIGN_INJECTION_MARK), 'standard 会话 system 节点不应含设计路由段')
@@ -1077,7 +1152,7 @@ async function scenarioV1() {
       await clearModalGates(page)
       await pickWorkspace(page, workspace)
       await pickDesignPreset(page)
-      await sendUserMessage(page, 'design a coffee brand landing page')
+      await sendUserMessage(page, 'design a coffee brand landing page', home)
       const { log } = await waitForSessionLog(
         home,
         (_entry, l) => l.systemMessages.some((t) => t.includes(DESIGN_INJECTION_MARK)),
@@ -1184,7 +1259,7 @@ async function scenarioPanelAndDoctor() {
     const { page, home } = instance
     await pickWorkspace(page, workspace)
     await pickDesignPreset(page)
-    await sendUserMessage(page, 'design a landing page')
+    await sendUserMessage(page, 'design a landing page', home)
 
     await stepAsync(results, 'doctor 输出十一分节齐全，前八节零回归（V5）', async () => {
       const body = await runDoctor(page)
@@ -1282,10 +1357,10 @@ async function scenarioDoctorRich() {
   const workspace = makeWorkspaceDir('v5-rich')
   const instance = await withInstance({ label: 'v5-rich', fixtureRoot: RICH_ROOT, workspaceDir: workspace })
   try {
-    const { page } = instance
+    const { page, home } = instance
     await pickWorkspace(page, workspace)
     await pickDesignPreset(page)
-    await sendUserMessage(page, 'doctor richness check')
+    await sendUserMessage(page, 'doctor richness check', home)
     await stepAsync(results, 'doctor ⑨ 资产丰富度非降级：craft 3 册（排除元文件）/ 形状包 1 / manifest 命中 1（V5/D10⑨）', async () => {
       const body = await runDoctor(page)
       assert(body.includes('craft 手册：3 册'), `⑨ craft 册数不对（rich-assets 3 手册 + README 元文件应排除）：${body.slice(body.indexOf('【9/12】'), body.indexOf('【10/12】'))}`)
@@ -1319,7 +1394,7 @@ async function scenarioQualityLoop() {
     const { page, home } = instance
     await pickWorkspace(page, workspace)
     await pickDesignPreset(page)
-    await sendUserMessage(page, 'design a pricing page')
+    await sendUserMessage(page, 'design a pricing page', home)
 
     await stepAsync(results, '监听器启动记录在场（watcher started 行，V2 前置）', async () => {
       await waitForReportLine(workspaceReal, (line) => line.type === 'watcher' && line.event === 'started')
@@ -1387,7 +1462,7 @@ async function scenarioStandardZeroIntrusion() {
   try {
     const { page, home } = instance
     await pickWorkspace(page, workspace)
-    await sendUserMessage(page, 'plain session writing an html file')
+    await sendUserMessage(page, 'plain session writing an html file', home)
 
     await stepAsync(results, 'V7：standard 会话写 P0 HTML——零监听（.od-quality/ 不出现）', async () => {
       fs.writeFileSync(path.join(workspaceReal, 'legacy.html'), dirtyArtifactHtml('Plain session page'))
@@ -1477,7 +1552,7 @@ async function scenarioNoAssets() {
       await stepAsync(results, '清单损坏 override + 真机候选：doctor 列出坏候选且选中真机渠道（回退形态）', async () => {
         await pickWorkspace(si3.page, workspace)
         await pickDesignPreset(si3.page)
-        await sendUserMessage(si3.page, 'doctor candidates check')
+        await sendUserMessage(si3.page, 'doctor candidates check', si3.home)
         const body = await runDoctor(si3.page)
         assert(body.includes('渠道 override'), 'doctor 应列出 override 候选')
         assert(body.includes('（渠道 stable）') && body.includes('← 已选中'), 'doctor 应标出真机渠道选中项')
@@ -1499,7 +1574,7 @@ async function scenarioDrift() {
     const { page, home } = instance
     await pickWorkspace(page, workspace)
     await pickDesignPreset(page)
-    await sendUserMessage(page, 'design a landing page')
+    await sendUserMessage(page, 'design a landing page', home)
 
     await stepAsync(results, '漂移布局：设计 preset 未 broken、会话正常注入（搜索式发现定位到非默认清单位置）', async () => {
       const { log } = await waitForSessionLog(home, (_entry, l) => l.systemMessages.some((t) => t.includes(DESIGN_INJECTION_MARK)))
@@ -1547,7 +1622,7 @@ async function scenarioResume() {
     gen1 = await launch(GEN1_ROOT)
     await pickWorkspace(gen1.page, workspace)
     await pickDesignPreset(gen1.page)
-    await sendUserMessage(gen1.page, 'start a poster design')
+    await sendUserMessage(gen1.page, 'start a poster design', home)
     const gen1Entry = await waitForSessionLog(home, (_entry, l) => l.systemMessages.some((t) => t.includes(GEN1_SENTENCE)) || l.systemMessages.length > 0)
     assert(
       gen1Entry.log.systemMessages.some((t) => t.includes('resume gen1')),
@@ -1598,7 +1673,7 @@ async function scenarioResume() {
     })
 
     await stepAsync(results, 'resume：新一轮 system 节点反映 gen2 资产、无 gen1 特征句残留（V1·RL7）', async () => {
-      await sendUserMessage(gen2Page, 'continue the poster with a hero section')
+      await sendUserMessage(gen2Page, 'continue the poster with a hero section', home)
       const entry = collectSessionFiles(home)
         .map((f) => ({ ...f, log: readSessionLog(f.file) }))
         .find((f) => f.log.systemMessages.length > 1 || f.log.systemMessages.some((t) => t.includes(GEN2_SENTENCE)))
@@ -1712,7 +1787,7 @@ async function scenarioProjectWrites() {
     await clearModalGates(instance.page)
     await pickWorkspace(instance.page, workspace)
     await pickDesignPreset(instance.page)
-    await sendUserMessage(instance.page, message)
+    await sendUserMessage(instance.page, message, instance.home)
   }
   const gitStatus = () => spawnSync('git', ['status', '--porcelain'], { cwd: workspace, encoding: 'utf8' }).stdout.trim().split('\n').filter((l) => l !== '')
 
@@ -1961,7 +2036,7 @@ async function scenarioCommentNoAgent() {
     first = await launch()
     await pickWorkspace(first.page, workspace)
     await pickDesignPreset(first.page)
-    await sendUserMessage(first.page, 'design a page whose agent will be gone')
+    await sendUserMessage(first.page, 'design a page whose agent will be gone', home)
     const sessionId = findSessionIdBySystemMark(home, DESIGN_INJECTION_MARK)
     await first.close()
     first = null
@@ -2052,7 +2127,7 @@ async function scenarioStandardSessionNoComments() {
   try {
     const { page, home } = instance
     await pickWorkspace(page, workspace)
-    await sendUserMessage(page, 'plain session with one html artifact')
+    await sendUserMessage(page, 'plain session with one html artifact', home)
     const entry = await waitForSessionLog(home, (_e, l) => l.systemMessages.length > 0)
     const sessionId = path.basename(path.dirname(entry.file))
     fs.writeFileSync(path.join(workspaceReal, 'legacy.html'), '<!doctype html><html lang="en"><body><h1>plain session page</h1></body></html>')
@@ -2259,7 +2334,8 @@ function runVerifyRunner(args) {
     timeout: 420000,
     maxBuffer: 32 * 1024 * 1024,
     // opendesign preset 探测 fixture 化：runner 起的实例同样落在 mini-od 资产根上（共存态确定性，不依赖真机 OD）。
-    env: { ...process.env, OD_RESOURCE_ROOT: MINI_OD_ROOT },
+    // env 凭据隔离与 startInstance 同规则：runner 自启的 dsh 实例同受无凭据前提约束。
+    env: credentialIsolatedEnv({ ...process.env, OD_RESOURCE_ROOT: MINI_OD_ROOT }),
   })
   let verdict = null
   for (const line of (proc.stdout ?? '').split('\n').reverse()) {
@@ -2296,7 +2372,7 @@ async function scenarioShellCoexistRegression() {
       const { page, home } = instance
       // projects 场景的「当前会话行标记」前置 = 已有会话（缺前置显式 degrade，不假 pass）——先建 standard 会话。
       await pickWorkspace(page, workspace)
-      await sendUserMessage(page, 'plain session for shell coexistence regression')
+      await sendUserMessage(page, 'plain session for shell coexistence regression', home)
       await waitForSessionLog(home, (_entry, l) => l.systemMessages.length > 0)
       const outcome = runVerifyRunner([
         '--url', instance.url, '--scenarios', 'brand,projects',
@@ -2747,11 +2823,11 @@ async function scenarioAnchorLayout() {
   const instance = await withInstance({ label: 'p5-layout', fixtureRoot: MINI_OD_ROOT, workspaceDir: workspace })
   const pageErrors = []
   try {
-    const { page } = instance
+    const { page, home } = instance
     page.on('pageerror', (error) => { pageErrors.push(error instanceof Error ? error.message : String(error)) })
     await pickWorkspace(page, workspace)
     await pickDesignPreset(page)
-    await sendUserMessage(page, 'design a landing page for layout tie-in')
+    await sendUserMessage(page, 'design a landing page for layout tie-in', home)
 
     await stepAsync(results, 'comment-anchor·V4①：宽屏默认态基准——左侧边栏展开（Collapse sidebar 按钮在场）', async () => {
       await waitForSidebarState(page, true)
@@ -3144,6 +3220,200 @@ async function scenarioAnchorEntryUniqueness() {
 }
 
 /**
+ * 场景 B1（anchor-backfill·V1 + V2 + V3）：产物首写补写全链路 + 改稿保留锚属性 no-op +
+ * 丢弃属性重补失效。编号域 = opendesign-anchor-backfill 设计包（步骤注释以
+ * anchor-backfill· 前缀标注防与其他包同号混淆；任务书 U4 承载）。
+ *
+ * 载体 = 会话内新写 landing.html（3 个顶层 section 全部无锚属性——快照外新写 = session-artifact，
+ * 补写资格谓词命中；无 P0 特征不触发回注；section 外 footer 载体按 AS13 口径不补、拾取仍落
+ * path 级 = 现状）：
+ *  V1 首写补写全链路：写盘 → 轮询防抖窗口（800ms 防抖 + 检查链毫秒级；固定等待不稳，轮询
+ *    读产物文件直至 data-od-id 在场或超时——U4 checkpoints 口径）→ 磁盘断言 3 个 section
+ *    起始标签各带 data-od-id="od-sec-<hash8>"（G2 形态、插入点在标签结束 > 之前、同文件
+ *    唯一）→ 预览进评论模式点击第一 section 内主标题（无 id）→ 落盘锚点非 path 级（data
+ *    级，sel = 磁盘实际补写值；V1 criteria 断言口径：主标题无 id → data 级）→ report.jsonl
+ *    有 {type:'anchor-backfill', inserted:3} 行 + 补写触发轮无 missing-section-anchor 发现
+ *    （lint 恒见补写后内容，D1）。
+ *  V2 改稿保留属性：脚本重写产物模拟模型按保留指令改稿（data-od-id 值原样、内部内容变）→
+ *    补写器 no-op（anchor-backfill 行 inserted=0 skipped=3，D7 no-op 也记行）→ 探针重挂
+ *    ready 握手后评论锚点仍命中（徽章重建、零失效态、定位高亮正常——补写后的重挂链路 =
+ *    V10 常态一次重挂的承载面）。
+ *  V3 丢弃属性（验收 A3 合并裁决的 e2e 半场）：脚本重写丢弃全部 data-od-id 且内容已变 →
+ *    重补新值 ≠ 旧值（内容指纹式生成，D3）→ 既有评论锚点失配如实标注失效（Anchor missing
+ *    + 定位禁用 + 徽章零重建），非静默指错。
+ */
+function landingFixtureHtml({ heroTitle, featureTitle = 'Feature Overview', ctaText = 'call to action copy for the landing', secAttrs = ['', '', ''] }) {
+  return [
+    '<!doctype html>',
+    '<html lang="en">',
+    '<head><meta charset="utf-8" /><title>landing</title></head>',
+    '<body>',
+    `  <section class="hero"${secAttrs[0]}>`,
+    `    <h1>${heroTitle}</h1>`,
+    '    <p>hero intro copy for the landing</p>',
+    '  </section>',
+    `  <section class="features"${secAttrs[1]}>`,
+    `    <h2>${featureTitle}</h2>`,
+    '    <p>feature list copy for the landing</p>',
+    '  </section>',
+    `  <section class="cta"${secAttrs[2]}>`,
+    `    <p>${ctaText}</p>`,
+    '  </section>',
+    '  <footer>',
+    '    <a href="#top">contact link</a>',
+    '  </footer>',
+    '</body>',
+    '</html>',
+  ].join('\n')
+}
+
+/** 读产物 HTML 里已带 G2 形态 data-od-id 的 section 起始标签锚 id 值清单（文档序）。 */
+function readSectionAnchorIds(html) {
+  return [...html.matchAll(/<section\b[^>]*?\bdata-od-id="(od-sec-[0-9a-f]{8})"/gi)].map((m) => m[1])
+}
+
+/**
+ * 轮询磁盘产物直至全部 section 起始标签带 G2 形态 data-od-id（防抖 800ms + 检查链毫秒级；
+ * 固定等待不稳则轮询——任务书 U4 checkpoints 口径）。返回锚 id 值清单（文档序）。
+ */
+async function waitForBackfillIds(file, expectedSections, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs
+  let ids = []
+  let sectionCount = 0
+  while (Date.now() < deadline) {
+    const html = fs.readFileSync(file, 'utf8')
+    ids = readSectionAnchorIds(html)
+    sectionCount = [...html.matchAll(/<section\b/gi)].length
+    if (ids.length === expectedSections && sectionCount === expectedSections) return ids
+    await sleep(300)
+  }
+  throw new AssertionError(`等待产物补写 data-od-id 超时（${timeoutMs}ms；sections ${sectionCount} 个、已带锚属性 ${ids.length} 个）`)
+}
+
+/** 轮询 report.jsonl 直至指定产物 anchor-backfill 行数达到 expected 并返回该行清单。 */
+async function waitForBackfillRows(workspace, artifactPath, expected, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs
+  let rows = []
+  while (Date.now() < deadline) {
+    rows = readQualityReport(workspace).filter((line) => line.type === 'anchor-backfill' && line.path === artifactPath)
+    if (rows.length >= expected) return rows
+    await sleep(300)
+  }
+  throw new AssertionError(`等待 anchor-backfill 行达到 ${expected} 条超时（${timeoutMs}ms；实际 ${rows.length} 条：${JSON.stringify(rows)}）`)
+}
+
+async function scenarioAnchorBackfill() {
+  const results = []
+  const workspace = makeWorkspaceDir('b1-backfill')
+  const { instance, page, home, workspace: ws } = await bootDesignSessionWithArtifact({ label: 'b1-backfill', workspace })
+  const frame = page.frameLocator('iframe.odp-frame')
+  const workspaceReal = fs.realpathSync(ws)
+  const landingPath = path.join(workspaceReal, 'landing.html')
+  let heroIds = []
+  let v3ReadyBaseline = 0
+  try {
+    // 监听器在位是补写资格的前提（快照外新写 = session-artifact；S3 同款前置）
+    await waitForReportLine(workspaceReal, (line) => line.type === 'watcher' && line.event === 'started')
+    // ready 观察哨（P4 同款：父页收集桥上行 ready 报文——V2/V3 改稿重挂与握手的机器判据；
+    // 观察哨须先于改稿就位，基线语义与 P4 一致 = 只看增量）
+    await page.evaluate(() => {
+      window.__b1Inbound = []
+      window.addEventListener('message', (event) => {
+        if (event.data?.type === 'odp-pick:ready') window.__b1Inbound.push({ at: Date.now() })
+      })
+    })
+
+    await stepAsync(results, 'anchor-backfill·V1①②③：会话内新写 3-section 无锚属性产物——防抖窗口后磁盘产物每 section 起始标签带 data-od-id="od-sec-<hash8>"（G2 形态、同文件唯一、插入点在 > 前）', async () => {
+      fs.writeFileSync(landingPath, landingFixtureHtml({ heroTitle: 'Hero Title' }))
+      heroIds = await waitForBackfillIds(landingPath, 3)
+      assert(heroIds.length === 3 && new Set(heroIds).size === 3, `3 个 section 锚 id 应齐且同文件唯一：${JSON.stringify(heroIds)}`)
+      const html = fs.readFileSync(landingPath, 'utf8')
+      assert(/<section class="hero" data-od-id="od-sec-[0-9a-f]{8}">/.test(html), `补写插入形态应为一空格 + 属性于标签结束 > 前（G2）：${html.match(/<section class="hero"[^>]*>/)?.[0]}`)
+    })
+
+    await stepAsync(results, 'anchor-backfill·V1⑥：report.jsonl 记录链——{type:anchor-backfill, inserted:3} 行 + 补写触发轮 no-op 行（inserted=0 skipped=3，D5 幂等/D7 no-op 也记行）+ 无 missing-section-anchor 发现（lint 恒见补写后内容）', async () => {
+      // 第二轮（补写写回自身触发）no-op 行在盘 = 检查链已在补写后内容上完整跑完的机器判据
+      const rows = await waitForBackfillRows(workspaceReal, 'landing.html', 2)
+      assert(rows[0].inserted === 3 && rows[0].skipped === 0, `首轮补写行应 inserted=3 skipped=0：${JSON.stringify(rows[0])}`)
+      assert(rows[1].inserted === 0 && rows[1].skipped === 3, `二轮应为 no-op 行（inserted=0 skipped=3）：${JSON.stringify(rows[1])}`)
+      await sleep(1200) // 二轮 lint 与发现行落盘余量（发现行随 onFindings 在 no-op 行之后追加）
+      const missedAnchors = readQualityReport(workspaceReal).filter((line) => line.type === 'finding' && line.id === 'missing-section-anchor')
+      assert(missedAnchors.length === 0, `missing-section-anchor 应恒不触发（D1/P4 时序）：${JSON.stringify(missedAnchors)}`)
+    })
+
+    await stepAsync(results, 'anchor-backfill·V1④⑤：预览进评论模式拾取第一 section 内主标题（无 id）——落盘锚点非 path 级（data 级，sel = 磁盘实际补写值）+ 侧栏锚点行在位', async () => {
+      // 产物清单在面板挂载时拉取一次——补写产物经 tab 关闭重开重新进列表（P5 同款重挂形态）
+      await closeDesignTab(page)
+      await openDesignPanel(page)
+      await page.locator('.odp-row', { hasText: 'landing.html' }).first().click()
+      await page.waitForSelector('iframe.odp-frame', { timeout: 15000 })
+      await sendCommentViaPick(page, 'section.hero h1', '补写锚点探针评论')
+      const threads = await waitForCommentThreads(ws, (list) => list.length >= 1)
+      const expected = `[data-od-id="${heroIds[0]}"]`
+      assert(
+        threads[0].anchor?.level === 'data' && threads[0].anchor?.sel === expected,
+        `拾取锚点应为 data 级（非 path 级，V1 criteria）且 sel = 磁盘补写值：${JSON.stringify(threads[0].anchor)}（期望 ${expected}）`,
+      )
+      const levelText = await page.locator('.odp-thread .odp-thread-anchor-level').first().textContent()
+      assert(levelText?.trim() === 'Anchor attribute', `侧栏锚点行级别名应为 en 字典 'Anchor attribute'：${JSON.stringify(levelText)}`)
+    })
+
+    await stepAsync(results, 'anchor-backfill·V2②③：脚本改稿保留 data-od-id 值（内部内容变，模拟模型按保留指令改稿）——磁盘属性值原样 + 补写器 no-op（report 记 inserted=0 skipped=3）', async () => {
+      fs.writeFileSync(landingPath, landingFixtureHtml({ heroTitle: 'Hero Title Refined', secAttrs: heroIds.map((id) => ` data-od-id="${id}"`) }))
+      const rows = await waitForBackfillRows(workspaceReal, 'landing.html', 3)
+      assert(rows[2].inserted === 0 && rows[2].skipped === 3, `改稿保留属性轮应为 no-op 行（inserted=0 skipped=3）：${JSON.stringify(rows[2])}`)
+      const html = fs.readFileSync(landingPath, 'utf8')
+      assert(JSON.stringify(readSectionAnchorIds(html)) === JSON.stringify(heroIds), `保留改稿后磁盘锚属性值应原样：${JSON.stringify(readSectionAnchorIds(html))}（期望 ${JSON.stringify(heroIds)}）`)
+      assert(html.includes('<h1>Hero Title Refined</h1>'), '改稿内容应落盘（保留属性同时内部内容变化）')
+    })
+
+    await stepAsync(results, 'anchor-backfill·V2④：改稿后探针重挂 ready 握手——评论锚点仍命中（徽章重建恰 1 枚、零失效态、定位高亮正常；V10 常态一次重挂承载面）', async () => {
+      const baseline = await page.evaluate(() => window.__b1Inbound.length)
+      const deadline = Date.now() + 12000
+      while (Date.now() < deadline && (await page.evaluate(() => window.__b1Inbound.length)) < baseline + 1) await sleep(300)
+      assert((await page.evaluate(() => window.__b1Inbound.length)) >= baseline + 1, `保留属性改稿后 ≤12s 应出现 ready 握手（重挂发生，基线 ${baseline}）`)
+      await frame.locator('.od-pick-badge').waitFor({ state: 'visible', timeout: 15000 })
+      const badgeCount = await frame.locator('.od-pick-badge').count()
+      assert(badgeCount === 1, `重挂后徽章应重建恰 1 枚（锚点仍命中）：${badgeCount}`)
+      await page.waitForFunction(() => document.querySelectorAll('.odp-thread--missed').length === 0, undefined, { timeout: 15000 })
+      await page.locator('.odp-thread button.odp-button', { hasText: 'Locate' }).first().click()
+      await frame.locator('.od-pick-flash').waitFor({ state: 'visible', timeout: 3000 })
+    })
+
+    await stepAsync(results, 'anchor-backfill·V3①②：脚本改稿丢弃全部 data-od-id 且内容已变——重补新值 ≠ 旧值（内容指纹式，D3）+ report 重补行 inserted=3', async () => {
+      // ready 基线在写盘前取样（写盘后探针 5s 窗口内可能已完成重挂——后取样会漏掉增量）
+      v3ReadyBaseline = await page.evaluate(() => window.__b1Inbound.length)
+      fs.writeFileSync(landingPath, landingFixtureHtml({ heroTitle: 'Hero Title Final Round', featureTitle: 'Feature Recap', ctaText: 'renewed call to action copy' }))
+      const newIds = await waitForBackfillIds(landingPath, 3)
+      assert(newIds.length === 3 && newIds.every((id, index) => id !== heroIds[index]), `重补新值应 ≠ 旧值（内容已变 → 新 hash，D3）：${JSON.stringify({ old: heroIds, new: newIds })}`)
+      const rows = await waitForBackfillRows(workspaceReal, 'landing.html', 5)
+      assert(rows[3].inserted === 3, `丢弃属性重补行应 inserted=3：${JSON.stringify(rows[3])}`)
+      assert(rows[4].inserted === 0 && rows[4].skipped === 3, `重补触发轮应为 no-op 行：${JSON.stringify(rows[4])}`)
+    })
+
+    await stepAsync(results, 'anchor-backfill·V3③：既有评论锚点失配——面板如实标注失效（Anchor missing + 定位禁用 + 徽章零重建），非静默指错', async () => {
+      const deadline = Date.now() + 12000
+      while (Date.now() < deadline && (await page.evaluate(() => window.__b1Inbound.length)) < v3ReadyBaseline + 1) await sleep(300)
+      assert((await page.evaluate(() => window.__b1Inbound.length)) >= v3ReadyBaseline + 1, `丢弃属性改稿后 ≤12s 应出现 ready 握手（基线 ${v3ReadyBaseline}）`)
+      await page.waitForFunction(() => document.querySelectorAll('.odp-thread--missed').length === 1, undefined, { timeout: 30000 })
+      const missedFlag = await page.evaluate(() => document.querySelector('.odp-thread--missed .odp-anchor-missed')?.textContent?.trim())
+      assert(missedFlag === 'Anchor missing', `失效标注文案应为 en 字典 'Anchor missing'：${JSON.stringify(missedFlag)}`)
+      const missedLocate = await page.evaluate(() => {
+        const missed = document.querySelector('.odp-thread--missed')
+        const button = missed?.querySelector('.odp-thread-actions button')
+        return { disabled: button?.disabled ?? null, text: button?.textContent?.trim() ?? null }
+      })
+      assert(missedLocate.disabled === true && missedLocate.text === 'Locate', `失效条目定位钮应禁用：${JSON.stringify(missedLocate)}`)
+      const badgeCount = await frame.locator('.od-pick-badge').count()
+      assert(badgeCount === 0, `失配锚点不应重建徽章（不静默指错到另一元素）：${badgeCount}`)
+    })
+  } finally {
+    await instance.close()
+  }
+  return results
+}
+
+/**
  * 场景 u-probe（探针段，wave 0 · opendesign-comment-anchor 设计包；随套件全量运行，承担
  * 驱动形态回归断言——11 步中 8 步硬断言，仅 tab 右键菜单 / 分栏按钮 / 全局句柄三步登记性质）：
  * AS7(b) 宿主形态层 + V11 步④ 驱动性，一场景承载两探针（编号域 = 本设计包，裸用 AS/V 编号）。
@@ -3413,6 +3683,7 @@ try {
     ['P6 anchor·V7+RL2/RL3 注入完整性（sandbox逐字/响应=磁盘+注入/HEAD无body+ETag/非HTML与设备壳不注/顶层直开零UI）', scenarioAnchorInjection],
     ['P7 anchor·RL5 桥契约负路径（错v/错前缀双向静默+合法对照连通）', scenarioAnchorNegativePaths],
     ['P8 anchor·V6+D3 入口唯一化（无直发框/追加resolve可用/失败回执可见可重发/产物不可拾取降级与恢复）', scenarioAnchorEntryUniqueness],
+    ['B1 anchor-backfill·V1+V2+V3 首写补写全链路（磁盘data-od-id+非path级锚点+补写行）+改稿保留no-op+丢弃重补失效', scenarioAnchorBackfill],
     ['u-probe AS7frameLocator伺服桥+V11④dockkit驱动性（opendesign-comment-anchor 探针段）', scenarioProbeU],
   ]
 
