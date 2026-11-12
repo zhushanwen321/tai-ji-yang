@@ -70,6 +70,7 @@ pnpm workflows:test          # workflow 构建与双平台结构测试
 
 ## 测试纪律
 
+- **主测试目标是桌面版 DSH**（DeepSeek Harness.app）：这是实际使用环境，插件浏览器半场运行时的 React 与面板环境由宿主供给。自动化验收通道（verify-taiji-yang，CLI `dsh web` 隔离实例）绿**不代表**桌面版可用——触达宿主 client 环境的改动（设置面板分区、槽位贡献、交互形态），验收收尾必须在桌面版真机复核核心交互。
 - 增量优先：开发中只跑受影响模块的测试（`pnpm test <路径>`）；项目收尾或跨模块改动跑 `pnpm check` 全量。
 - 提交前下限是 `pnpm check:static`（pre-commit 会再跑一遍）。
 - `client/theme/host-font-sheet.spec.ts` 是根包字体复合简写的升级护栏：需要 `DSH_FONT_SHEET` 环境变量指向宿主源样式表 `gradient-shadow-text.css`（缺省探测本机 DSH 源码仓固定路径）；本地找不到时显式失败并给设置指引，不静默跳过；CI 环境（`CI=true`）没有宿主源码仓，显式跳过并播报说明——该护栏由本地全量与发布前本地检查承担。
@@ -116,7 +117,7 @@ pnpm workflows:test          # workflow 构建与双平台结构测试
 | 技术设计与方案裁决 | tech-design-wf（全局技能） |
 | 功能实现 / 修复的开发流程 | dev-flow-wf（全局技能） |
 | 审查问题的批量修复循环 | review-fix-loop（全局 saved workflow；项目 reviewer 在 `.agents/reviewers/`，含子包判据） |
-| 真实 DSH 宿主验收（根包 tai-ji-yang-shell） | verify-taiji-yang（项目入口，`.agents/`；只验根包） |
+| 真实 DSH 宿主自动化验收（根包 tai-ji-yang-shell；CLI `dsh web` 隔离通道，非桌面版） | verify-taiji-yang（项目入口，`.agents/`；只验根包）；桌面版真机复核在此通道之外、按测试纪律执行 |
 | 真实 DSH 宿主验收（design-mode 子包） | `pnpm test:e2e:design-mode`（`packages/opendesign-design-mode/tests/e2e/`，node 直跑，双版本宿主） |
 | PR 审查修复与交付前编排 | pr-cr-fix（项目入口，`.agents/`）；完整链路由仓内 pr-lifecycle workflow 承载 |
 
