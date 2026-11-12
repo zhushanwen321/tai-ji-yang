@@ -100,6 +100,17 @@ export class RoutesListModel {
    * 栅栏不得跨服务期生效。
    */
   private appliedRevision: number | undefined
+  /**
+   * 本会话最近一次成功写入的 (routes, whitelist)（镜像回显对账基准）：load 的内容级回放
+   * 守卫据此区分「自己写入的回显 / 滞后回放 / 外部变更」三态。undefined = 本会话尚未成功
+   * 写入（或双败后交还权威）——镜像内容无条件采纳。
+   */
+  private lastWritten: { routes: RouteEntry[]; whitelist: string[] } | undefined
+  /** 最近覆写前值集合（容量 3）：滞后回放的内容判定源——被上次写入覆盖掉的旧值正是滞后
+   * 快照携带的内容；容量覆盖镜像滞后窗口内的少数几个世代，越界即按外部变更采纳。 */
+  private readonly preImages = new Set<string>()
+  /** 已收敛重写的内容键（单发防抖：同一滞后内容只回写一次，防镜像反复投递成回写乒乓）。 */
+  private reconciledFor: string | undefined
   /** 构造时启动的首读（测试 await model.pending 等待就绪）。 */
   readonly pending: Promise<void>
   private unsubscribe: (() => void) | undefined
@@ -133,11 +144,16 @@ export class RoutesListModel {
     const snapshot = this.deps.configForm.getSnapshot()
     if (snapshot.status === 'unavailable') {
       this.appliedRevision = undefined
+      this.lastWritten = undefined
+      this.preImages.clear()
+      this.reconciledFor = undefined
       this.state = { ...emptySnapshot(), status: 'unavailable' }
       this.notify()
       return
     }
     if (snapshot.status !== 'ready') {
+      // loading 是镜像的瞬时态（命名空间重开走 unavailable → ready）——只重置 revision
+      // 栅栏（原语义），会话写入权威保留：重开后的 ready 快照若与本会话写入一致照常采纳。
       this.appliedRevision = undefined
       this.state = { ...emptySnapshot(), status: 'loading' }
       this.notify()
@@ -164,6 +180,38 @@ export class RoutesListModel {
       : {}
     const routes = sanitizeRoutes(section[ROUTES_FIELD])
     const whitelist = sanitizeWhitelist(section[WHITELIST_FIELD])
+    // 内容级回放守卫（AF-1-1 的补强层）：revision 栅栏挡「revision 倒退」的滞后快照，但
+    // 插件 Config 与 llm-pi-ai 等命名空间共享宿主设置文档的 revision 计数——其他命名空间的
+    // 写入会把计数推进到 ≥ appliedRevision，让一份**内容滞后**的镜像快照蒙混过栅栏被采纳
+    // （实测形态：路由改名落盘后，供应商创建推进 revision，滞后的改名前内容被采纳，路由 id
+    // 被回写成旧值；删路由后被采纳的滞后内容把路由「复活」，悬挂区永不渲染）。守卫判定：
+    // 快照内容 == 本会话最近一次成功写入值 → 自己写入的回显，采纳；落在最近覆写前值集合
+    // （preImages）内 → 滞后回放，不采纳其 Config 派生面（保留乐观状态），并对该内容单发
+    // 一次 lastWritten 收敛重写（reconciledFor 防同内容反复投递形成回写乒乓）；两者皆非
+    // → 外部变更（其他窗口/其他写者），采纳并重置会话写入权威。探测面照跑。
+    const content = contentKey(routes, whitelist)
+    if (this.lastWritten !== undefined && content !== contentKey(this.lastWritten.routes, this.lastWritten.whitelist)) {
+      if (this.preImages.has(content)) {
+        await this.probeDerived(this.state.routes)
+        if (this.reconciledFor !== content) {
+          this.reconciledFor = content
+          // 收敛重写走裸 set（不经 attemptCommit 的栅栏计数）：同值重写宿主是否前移
+          // revision 未知，不计数避免 appliedRevision 虚高；被拒不重试（防抖在 reconciledFor）。
+          try {
+            await this.deps.configForm.set(ROUTES_FIELD, this.lastWritten.routes)
+            await this.deps.configForm.set(WHITELIST_FIELD, this.lastWritten.whitelist)
+          } catch {
+            // 收敛写失败：等下一次镜像投递或用户操作再收敛，不外抛（探测面已刷新）。
+          }
+          await this.load()
+        }
+        return
+      }
+      // 真外部变更：会话写入权威让位（镜像内容与本会话写入无关）。
+      this.lastWritten = undefined
+      this.preImages.clear()
+      this.reconciledFor = undefined
+    }
     const routeIds = new Set(routes.map((route) => route.id))
     this.state = {
       ...emptySnapshot(),
@@ -349,12 +397,12 @@ export class RoutesListModel {
     await this.writeRoutes(this.state.routes.filter((route) => route.id !== id))
   }
 
-  /** 白名单勾选/取消（D1：勾选即暴露、取消即从选择器消失）。 */
-  async toggleWhitelist(id: string): Promise<void> {
+  /** 白名单勾选/取消（D1：勾选即暴露、取消即从选择器消失）。返回是否被宿主接受。 */
+  async toggleWhitelist(id: string): Promise<boolean> {
     const next = this.state.whitelist.includes(id)
       ? this.state.whitelist.filter((entry) => entry !== id)
       : [...this.state.whitelist, id]
-    await this.writeWhitelist(next)
+    return await this.writeWhitelist(next)
   }
 
   /** 单条移除悬挂条目（只动悬挂条目；有效条目不触碰——V6 步骤 5）。 */
@@ -369,48 +417,85 @@ export class RoutesListModel {
     await this.writeWhitelist(this.state.whitelist.filter((entry) => alive.has(entry)))
   }
 
-  /** routes 整字段写回（乐观更新已由调用方先行；拒绝/失败 → 重读回落并显式上报）。 */
+  /** routes 整字段写回：登记覆写前值（回放守卫的判定源）+ 记录会话写入值 + 乐观更新
+   * （悬挂即时重算——删路由后 hanging 无需等镜像回读即可渲染，V6 步骤 4 的可观察事实）。 */
   private async writeRoutes(routes: RouteEntry[]): Promise<boolean> {
-    this.state = { ...this.state, routes }
+    this.trackPreImage()
+    this.lastWritten = { routes, whitelist: this.state.whitelist }
+    this.state = { ...this.state, routes, hanging: computeHanging(routes, this.state.whitelist) }
     this.notify()
     return await this.commit(ROUTES_FIELD, routes)
   }
 
-  /** whitelist 整字段写回（同上）。 */
-  private async writeWhitelist(whitelist: string[]): Promise<void> {
-    this.state = { ...this.state, whitelist }
+  /** whitelist 整字段写回（同 writeRoutes）。 */
+  private async writeWhitelist(whitelist: string[]): Promise<boolean> {
+    this.trackPreImage()
+    this.lastWritten = { routes: this.state.routes, whitelist }
+    this.state = { ...this.state, whitelist, hanging: computeHanging(this.state.routes, whitelist) }
     this.notify()
-    await this.commit(WHITELIST_FIELD, whitelist)
+    return await this.commit(WHITELIST_FIELD, whitelist)
   }
 
-  /** 整字段提交（ConfigFormLike.set；失败重读 = 以 Config 真值为准 + notice/error 上报）。
-   * 返回是否被宿主接受（路由卡即时保存的 toast 分支依据）。上报在重读完成**之后**置位：
-   * load() 以 emptySnapshot 展开重建 state，先置后读会把 notice/error 在同一同步续体内
-   * 吞掉（两次 notify 之间无渲染落点，SC9 显式上报不可见）。 */
-  private async commit(field: string, value: unknown): Promise<boolean> {
+  /** 登记当前内容为「最近覆写前值」（容量 3，FIFO 越界丢弃——覆盖镜像滞后窗口内的世代数）。 */
+  private trackPreImage(): void {
+    this.preImages.add(contentKey(this.state.routes, this.state.whitelist))
+    while (this.preImages.size > 3) {
+      const oldest = this.preImages.values().next().value
+      if (oldest === undefined) break
+      this.preImages.delete(oldest)
+    }
+  }
+
+  /** 单次写尝试（persist.ts attempt 同构）：accepted = 宿主接受；refused = revision 栅栏拒绝；
+   * failed = 传输异常（detail 为错误消息）。accepted 时前移 appliedRevision（原 commit 内注释
+   * 语义不变：栅栏挡掉 commit 后重读里的滞后回放，AF-1-1 弹回主径）。 */
+  private async attemptCommit(field: string, value: unknown): Promise<{ kind: 'accepted' } | { kind: 'refused' } | { kind: 'failed'; detail: string }> {
     try {
       const accepted = await this.deps.configForm.set(field, value)
       if (accepted) {
-        // set 被接受即宿主侧 revision 已前移（写入带 revision 栅栏，无冲突才接受），而镜像
-        // 快照更新滞后于 set 落盘（persist.ts 镜像/mutate 两路径）——本 store 的状态此刻至少
-        // 在 appliedRevision+1，前移栅栏把 commit 后重读里的滞后回放（revision ≤ 写前值）
-        // 挡掉；不前移则滞后镜像 revision 与已采纳值相等，倒退恰好漏过（AF-1-1 弹回主径）。
         this.appliedRevision = (this.appliedRevision ?? 0) + 1
-      } else {
-        await this.load()
-        this.state = { ...this.state, notice: this.t('route.writeRefused') }
-        this.notify()
-        return false
+        return { kind: 'accepted' }
       }
+      return { kind: 'refused' }
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error)
-      await this.load()
-      this.state = { ...this.state, error: this.t('route.writeFailed', { detail }) }
-      this.notify()
-      return false
+      return { kind: 'failed', detail: error instanceof Error ? error.message : String(error) }
     }
+  }
+
+  /**
+   * 整字段提交（ConfigFormLike.set；失败重读 = 以 Config 真值为准 + notice/error 上报）。
+   * 返回是否被宿主接受（路由卡即时保存的 toast 分支依据）。
+   *
+   * 一次失败按设计「重读一次再试」（persist.ts save 同款）：写插件 Config 走宿主 settings
+   * mutate 带 revision 栅栏，宿主拒绝冲突时已自做一次镜像重读（ConfigFormController.recover），
+   * 但被拒写入**不重放**——路由卡的即时保存节奏（成员增删 200ms 级连发）必然产生携带过期
+   * 栅栏的 set，首次被拒后必须有人拿重读出的新栅栏把同值重发一次，否则成员增量静默丢失
+   *（verify V5 实测：第二个成员的 add 被拒、patch 只有第一个成员）。第二次 attempt 取的是
+   * 重读后的最新栅栏，非盲重试；连续失败才回落 Config 真值并显式上报。
+   *
+   * 上报在重读完成**之后**置位：load() 以 emptySnapshot 展开重建 state，先置后读会把
+   * notice/error 在同一同步续体内吞掉（两次 notify 之间无渲染落点，SC9 显式上报不可见）。
+   */
+  private async commit(field: string, value: unknown): Promise<boolean> {
+    const first = await this.attemptCommit(field, value)
+    const outcome = first.kind === 'accepted' ? first : await this.attemptCommit(field, value)
+    if (outcome.kind === 'accepted') {
+      await this.load()
+      return true
+    }
+    // 双败：会话写入权威失效（lastWritten 不再代表宿主真相），镜像内容重新无条件采纳——
+    // load 的回放守卫据此回落 Config 真值（原 AF-1-1 语义）。
+    this.lastWritten = undefined
+    this.preImages.clear()
+    this.reconciledFor = undefined
     await this.load()
-    return true
+    if (outcome.kind === 'refused') {
+      this.state = { ...this.state, notice: this.t('route.writeRefused') }
+    } else {
+      this.state = { ...this.state, error: this.t('route.writeFailed', { detail: outcome.detail }) }
+    }
+    this.notify()
+    return false
   }
 
   /** locale 座位（store 文案：写入失败上报等；由视图传入——ProvidersListModel 的 t 同款）。 */
@@ -472,4 +557,16 @@ function emptySnapshot(): RoutesSnapshot {
     notice: undefined,
     error: undefined,
   }
+}
+
+/** (routes, whitelist) 的内容键（回放守卫与覆写前值集合的相等判定；JSON 序列化足够——
+ * 两侧都是 sanitize/乐观更新产出的同构形态，键序稳定）。 */
+function contentKey(routes: RouteEntry[], whitelist: string[]): string {
+  return JSON.stringify([routes, whitelist])
+}
+
+/** 悬挂条目（D1：whitelist 中不在 routes 的 id）。 */
+function computeHanging(routes: RouteEntry[], whitelist: string[]): string[] {
+  const routeIds = new Set(routes.map((route) => route.id))
+  return whitelist.filter((id) => !routeIds.has(id))
 }

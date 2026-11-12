@@ -157,6 +157,13 @@ export function ModelServiceSection({ t, close, remote, configForm }: ModelServi
 
   const switchView = (view: ViewId): void => {
     activeView.current = view
+    // 切视图即重读（数据拉取式 + 分区打开重读语义 SI2 的视图粒度延伸）：providers-view 保存
+    // 后有自身 reload，models/routes 两视图的写入来自供应商视图与路由卡自身，切走再切回的
+    // 期间数据可能已被本分区或其他写者推进（宿主 settings describe 视图对新写入条目也有
+    // 秒级同步延迟）——切回时主动重读，陈旧快照不跨切换存活。
+    if (view === 'providers') void providersModel.current?.load()
+    if (view === 'models') void modelsModel.current?.load()
+    if (view === 'routes') void routesModel.current?.load()
     rerender((count) => count + 1)
   }
 

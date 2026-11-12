@@ -462,6 +462,11 @@ export class ProviderEditModel {
   private precondition(): string | undefined {
     const wantsCustomList = this.state.customOnly || !this.state.directoryMode
     if (wantsCustomList && this.state.models.length === 0) return this.deps.t('models.saveBlockedEmpty')
+    // 窄表单零填写 = 写入全字段缺省的空 profile 条目；宿主 settings 视图对该形态视为未设置
+    // （describe 条目延迟出现——隔离实例实测），接入因此不成立：至少要有密钥或一条模型。
+    if (this.state.narrow && this.target.isNew && this.state.apiKeyValue.trim() === '' && this.state.models.length === 0) {
+      return this.deps.t('provider.narrowEmptyBlocked')
+    }
     return undefined
   }
 
@@ -821,7 +826,12 @@ export function ProviderEditBody({ t, model, focusModel, onCancel }: ProviderEdi
 
       {/* 保存 / 取消 */}
       <div className="ms-edit-actions">
-        <button type="button" className="ms-button ms-button-primary" disabled={state.saving} onClick={() => { void model.save() }}>
+        <button
+          type="button"
+          className="ms-button ms-button-primary"
+          disabled={state.saving || (state.narrow && state.directoryMode && state.apiKeyValue.trim() === '' && state.models.length === 0 && !state.overrideOnly)}
+          title={state.narrow && state.apiKeyValue.trim() === '' && state.models.length === 0 ? t('provider.narrowEmptyBlocked') : undefined}
+          onClick={() => { void model.save() }}>
           {t('action.save')}
         </button>
         <button type="button" className="ms-button" onClick={onCancel}>{t('action.cancel')}</button>

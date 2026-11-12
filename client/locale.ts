@@ -448,6 +448,7 @@ export const modelServiceZh = {
   'route.noSelectableProviders': '（暂无可编辑供应商）',
   /** 卡脚（收起态）的成员编辑入口。 */
   'route.editMembers': '编辑成员',
+  'route.collapseMembers': '收起成员',
 
   /* ── 三层时间窗（M2：命名窗口矩阵 / 48 格精细 / 特殊日期）── */
   'route.grid.matrix': '命名窗口',
@@ -554,6 +555,7 @@ export const modelServiceZh = {
   'save.refTakenA': '该 ref 已被占用（本 profile 内供应商或宿主分区供应商的派生 ref），请更换显示名',
   'save.refTakenB': '该 ref 已被占用（可能来自其他 profile 的同名供应商），请更换显示名',
   'save.refTakenRoute': '该名称与已注册的模型路由同名，请更换显示名',
+  'provider.narrowEmptyBlocked': '至少填写 API 密钥或添加一个模型后再接入（全空的接入在宿主设置视图中等同于未设置）',
   'delete.confirmDraft': '再点确认删除「{name}」（含其模型清单）',
   'delete.crossProfileConfirm': '该供应商的凭据引用 {ref} 由宿主派生，可能被其他 profile 的同名供应商共用；删除将一并清除该凭据。',
   /** 路由成员引用警告（D3 删除流程：列出受影响路由，用户确认后继续删除）。 */
@@ -684,6 +686,7 @@ export const modelServiceEn = {
   'route.dragHandle': 'Drag to reorder; focus and use arrow keys',
   'route.noSelectableProviders': '(no editable providers)',
   'route.editMembers': 'Edit members',
+  'route.collapseMembers': 'Collapse members',
 
   /* ── Time window grid (M2: named-window matrix / 48 slots / special dates) ── */
   'route.grid.matrix': 'Named windows',
@@ -783,6 +786,7 @@ export const modelServiceEn = {
   'save.refTakenA': 'This ref is already taken (derived by a provider in this profile or the host Models section); choose another display name',
   'save.refTakenB': 'This ref is already taken (likely by a same-named provider in another profile); choose another display name',
   'save.refTakenRoute': 'This name collides with a registered model route; choose another display name',
+  'provider.narrowEmptyBlocked': 'Fill in the API key or add at least one model before connecting (an empty profile counts as unset in the host settings view)',
   'delete.confirmDraft': 'Click again to delete "{name}" (including its model list)',
   'delete.crossProfileConfirm': 'The credential ref {ref} of this provider is host-derived and may be shared by same-named providers in other profiles; deleting also clears that credential.',
   'delete.routeReferences': 'This provider is referenced by route(s) ({routes}); after deletion the affected members become unavailable (marked "provider deleted" in the routes view). Confirm to proceed.',

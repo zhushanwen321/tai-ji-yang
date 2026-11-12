@@ -167,10 +167,33 @@ describe('RoutesListModel revision 倒退栅栏（AF-1-1）', () => {
     // 拒绝 = 宿主侧 revision 未前移 → 栅栏不前移 → commit 后的重读（revision 1 ≥ 1）正常
     // 采纳，state 回落 Config 真值（whitelist 空）。
     expect(model.getSnapshot().whitelist).toEqual([])
-    expect(form.sets).toHaveLength(1)
+    // 首败重试一次（persist.ts save 同款「重读一次再试」）：连续失败 = 两次 set。
+    expect(form.sets).toHaveLength(2)
     // 回落完成后显式上报必须在场（SC9/文件头自声明；终态同步 F1-11：notice 不随重读
     // 重建被吞——load 以 emptySnapshot 展开重建 state，先置后读会清掉上报）。
     expect(model.getSnapshot().notice).toBe('写入被宿主拒绝，已恢复为当前保存值')
+  })
+
+  it('首败重试即接受（revision 栅栏拒绝的恢复路径）：写入落盘、无上报（路由卡即时保存连发的丢失修复）', async () => {
+    const form = fakeConfigForm(readySnapshot({ revision: 1, whitelist: [] }))
+    // 首次 set 携带过期栅栏被拒（镜像滞后于前一次写入），宿主拒绝时已自做镜像重读，
+    // 第二次 set 用新栅栏——接受。
+    let calls = 0
+    form.set = async (field: string, value: unknown) => {
+      calls += 1
+      form.sets.push({ field, value })
+      return calls > 1
+    }
+    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    await model.pending
+
+    const accepted = await model.toggleWhitelist('verify-route')
+    expect(accepted).toBe(true)
+    expect(form.sets).toHaveLength(2)
+    expect(model.getSnapshot().whitelist).toEqual(['verify-route'])
+    // 重试成功不上报（notice/error 双无）。
+    expect(model.getSnapshot().notice).toBeUndefined()
+    expect(model.getSnapshot().error).toBeUndefined()
   })
 })
 
@@ -359,5 +382,67 @@ describe('saveRoute 回传与 moveMember 数据交换（路由交互定稿 A2/A8
     expect(moveMember(source, 0, -1)).toBe(source)
     expect(moveMember(source, 0, 5)).toBe(source)
     expect(moveMember(source, 5, 0)).toBe(source)
+  })
+})
+
+describe('内容级回放守卫（共享 revision 计数下滞后内容蒙混栅栏的防护）', () => {
+  function whitelistSnapshot(revision: number, whitelist: string[]): ConfigFormSnapshotLike {
+    return {
+      status: 'ready',
+      value: { routes: [{ id: 'verify-route', name: 'verify-route', members: [] }], whitelist },
+      revision,
+      writable: true,
+    }
+  }
+
+  it('revision 被外部写入推进的滞后内容不采纳：state 保留会话写入值 + 单发收敛重写', async () => {
+    const form = fakeConfigForm(whitelistSnapshot(1, []))
+    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    await model.pending
+    await model.toggleWhitelist('verify-route')
+    // toggle 已接受（applied = 2）。滞后镜像投递：revision 5（被其他命名空间写入推进）+
+    // 内容 = 覆写前值（whitelist 空）——栅栏放行、内容守卫拦下。
+    const setsBefore = form.sets.length
+    form.deliver(whitelistSnapshot(5, []))
+    await settle()
+    await settle()
+    expect(model.getSnapshot().whitelist).toEqual(['verify-route'])
+    // 单发收敛：内容收敛重写恰好一轮（ROUTES + WHITELIST 两个裸 set）。
+    expect(form.sets.length).toBe(setsBefore + 2)
+    // 同内容再次投递：reconciledFor 防抖，不再重写。
+    form.deliver(whitelistSnapshot(6, []))
+    await settle()
+    await settle()
+    expect(form.sets.length).toBe(setsBefore + 2)
+    expect(model.getSnapshot().whitelist).toEqual(['verify-route'])
+  })
+
+  it('真外部变更（内容 ≠ 会话写入值 ≠ 覆写前值）照常采纳：会话写入权威让位', async () => {
+    const form = fakeConfigForm(whitelistSnapshot(1, []))
+    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    await model.pending
+    await model.toggleWhitelist('verify-route')
+    // 其他窗口把 whitelist 改成另一条目：revision 前进 + 内容既非写入值也非覆写前值。
+    form.deliver(whitelistSnapshot(5, ['other-route']))
+    await settle()
+    await settle()
+    expect(model.getSnapshot().whitelist).toEqual(['other-route'])
+    // 此后镜像回放外部内容照常采纳（无写入权威时无条件采纳）。
+    form.deliver(whitelistSnapshot(6, ['other-route', 'another']))
+    await settle()
+    await settle()
+    expect(model.getSnapshot().whitelist).toEqual(['other-route', 'another'])
+  })
+
+  it('删除路由的悬挂在乐观更新即重算（不等镜像回读——V6 步骤 4 的可观察事实不再依赖滞后镜像）', async () => {
+    const form = fakeConfigForm(whitelistSnapshot(1, ['verify-route']))
+    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    await model.pending
+    expect(model.getSnapshot().hanging).toEqual([])
+
+    await model.deleteRoute('verify-route')
+    expect(model.getSnapshot().routes).toEqual([])
+    // 删除已乐观生效：hanging = whitelist ∖ routes 立即呈现（镜像滞后/毒回放不再吞掉它）。
+    expect(model.getSnapshot().hanging).toEqual(['verify-route'])
   })
 })

@@ -96,6 +96,14 @@ export function RoutesView({ t, model }: RoutesViewProps) {
     rerender((count) => count + 1)
   }
 
+  /** 删除当选卡后选中态回退到剩余第一张（deleteRoute 的乐观更新先于 commit，回调时快照已
+   * 不含被删 id）：selectedId 悬挂指向已删 id 时没有任何卡处于展开态，配置流（成员管线）断档。 */
+  const handleCardDeleted = (deletedId: string): void => {
+    if (selectedId.current !== deletedId) return
+    selectedId.current = model.getSnapshot().routes.find((route) => route.id !== deletedId)?.id
+    rerender((count) => count + 1)
+  }
+
   return (
     <div className="ms-routes">
       {state.status === 'unavailable' && <div className="ms-note ms-note-warn">{t('routes.snapshotUnavailable')}</div>}
@@ -120,6 +128,7 @@ export function RoutesView({ t, model }: RoutesViewProps) {
                 onSelect={() => { select(route.id) }}
                 onToast={showToast}
                 onRenamed={followRename}
+                onDeleted={handleCardDeleted}
               />
             ))}
           </div>
@@ -187,10 +196,12 @@ export interface RouteCardProps {
   onToast: (message: string) => void
   /** 改名成功后以新 id 接管选中态（RoutesView 持选中真相）。 */
   onRenamed: (newId: string) => void
+  /** 删除完成后回调（两段确认第二击落地后；RoutesView 据此做选中态回退）。 */
+  onDeleted: (id: string) => void
 }
 
 /** 路由卡（卡头 + 展开卡体 / 收起卡脚）。 */
-export function RouteCard({ t, route, state, model, selected, onSelect, onToast, onRenamed }: RouteCardProps) {
+export function RouteCard({ t, route, state, model, selected, onSelect, onToast, onRenamed, onDeleted }: RouteCardProps) {
   const deleteArmed = useRef(false)
   const [, rerender] = useState(0)
   const registrationFailed = state.registrationFailed.includes(route.id)
@@ -209,13 +220,18 @@ export function RouteCard({ t, route, state, model, selected, onSelect, onToast,
             role="switch"
             checked={state.whitelist.includes(route.id)}
             aria-label={t('route.visibleToggle', { name: route.name })}
-            onChange={() => { void model.toggleWhitelist(route.id).then(() => onToast(t('save.saved'))) }}
+            onChange={() => { void model.toggleWhitelist(route.id).then((accepted) => { if (accepted) onToast(t('save.saved')) }) }}
           />
           {t('route.visibleLabel')}
         </label>
         {hit !== undefined
           ? <span className="ms-row-note">{t('route.hitNow', { provider: hit.provider, model: hit.model })}</span>
           : <span className="ms-row-note">{t('route.noHitNow')}</span>}
+        {selected && (
+          <button type="button" className="ms-button ms-button-sm" onClick={onSelect}>
+            {t('route.collapseMembers')}
+          </button>
+        )}
       </div>
       {selected && (
         <RouteCardBody t={t} route={route} state={state} model={model} onToast={onToast} onRenamed={onRenamed} />
@@ -229,7 +245,7 @@ export function RouteCard({ t, route, state, model, selected, onSelect, onToast,
             onClick={() => {
               if (deleteArmed.current) {
                 deleteArmed.current = false
-                void model.deleteRoute(route.id)
+                void model.deleteRoute(route.id).then(() => { onDeleted(route.id) })
               } else {
                 deleteArmed.current = true
               }

@@ -92,6 +92,13 @@
   color: var(--taiji-ink-err);
 }
 
+/* 小号按钮（卡头「收起成员」等行内轻动作；与 ms-button 同 token，仅收尺寸）。 */
+.ms-button-sm {
+  padding: 1px 8px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
 .ms-input,
 .ms-select {
   appearance: none;

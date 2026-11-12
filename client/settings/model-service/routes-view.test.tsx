@@ -114,12 +114,13 @@ function fakeModel(snapshot: RoutesSnapshot): RoutesListModel & {
 }
 
 /** 渲染单张卡（RoutesView 内部对每路由挂 RouteCard；卡头/卡脚接线在此直挂断言）。 */
-function renderCard(snapshot: RoutesSnapshot, route: RouteEntry, model: RoutesListModel, selected = false): FakeElement[] {
+function renderCard(snapshot: RoutesSnapshot, route: RouteEntry, model: RoutesListModel, selected = false, onDeleted: (id: string) => void = () => {}): FakeElement[] {
   return collectElements(viewModule.RouteCard({
     t, route, state: snapshot, model, selected,
     onSelect: () => {},
     onToast: () => {},
     onRenamed: () => {},
+    onDeleted,
   }))
 }
 
@@ -210,10 +211,11 @@ describe('RouteCard 卡头与卡脚', () => {
     expect(elementsWithClass(elements, 'ms-route-card-foot')).toHaveLength(0)
   })
 
-  it('收起卡脚：删除两段确认（第一击只武装改文案，第二击才 deleteRoute）', async () => {
+  it('收起卡脚：删除两段确认（第一击只武装改文案，第二击才 deleteRoute）+ 完成回调 onDeleted(route.id)', async () => {
     const snapshot = readySnapshot({ routes: [ROUTE] })
     const model = fakeModel(snapshot)
-    const elements = renderCard(snapshot, ROUTE, model)
+    let deletedWith: string | undefined
+    const elements = renderCard(snapshot, ROUTE, model, false, (id) => { deletedWith = id })
     const deletes = elementsWithClass(elements, 'ms-button').filter((button) => textOf(button) === modelServiceZh['route.delete'])
     expect(deletes).toHaveLength(1)
     ;(deletes[0].props.onClick as () => void)()
@@ -222,6 +224,18 @@ describe('RouteCard 卡头与卡脚', () => {
     ;(deletes[0].props.onClick as () => void)()
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(model.deletes).toEqual(['work-route'])
+    expect(deletedWith).toBe('work-route')
+  })
+
+  it('当选卡卡头有「收起成员」按钮（toggle 收起通道）；收起态卡头无该按钮', () => {
+    const snapshot = readySnapshot({ routes: [ROUTE] })
+    const model = fakeModel(snapshot)
+    const expanded = renderCard(snapshot, ROUTE, model, true)
+    const collapseOnExpanded = elementsWithClass(expanded, 'ms-button').filter((button) => textOf(button) === modelServiceZh['route.collapseMembers'])
+    expect(collapseOnExpanded).toHaveLength(1)
+    const collapsed = renderCard(snapshot, ROUTE, model, false)
+    const collapseOnCollapsed = elementsWithClass(collapsed, 'ms-button').filter((button) => textOf(button) === modelServiceZh['route.collapseMembers'])
+    expect(collapseOnCollapsed).toHaveLength(0)
   })
 })
 
