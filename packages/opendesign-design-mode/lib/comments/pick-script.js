@@ -530,8 +530,8 @@ const PICK_SCRIPT_SOURCE = String.raw`(function () {
     var element = locateElement(sel)
     if (element !== null) return
     // 无命中回报：G1 动作词表恰七项、无独立 locate-miss——按 SC2 内存锚点集对账出
-    // 完整四字段项后经 anchors-status 承载（面板按 sel 对账线程标失效）。sel 不在
-    // 最近锚点集内（面板自造寻址）无处对账，静默。
+    // 完整四字段项后经 anchors-status 承载（面板按报文 threadId 标失效，sel 随行呈现、
+    // 不参与面板对账）。sel 不在最近锚点集内（面板自造寻址）无处对账，静默。
     for (var i = 0; i < lastAnchors.length; i++) {
       if (lastAnchors[i].sel === sel) {
         send('anchors-status', [{ threadId: lastAnchors[i].threadId, ordinal: lastAnchors[i].ordinal, sel: sel, hit: false }])
