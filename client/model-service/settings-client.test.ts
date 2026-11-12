@@ -14,6 +14,7 @@ import {
   saveProvider,
   THINKING_LEVELS,
   undeclaredFieldPaths,
+  writeProviderModels,
   type CredentialsRemoteLike,
   type LlmRemoteLike,
   type ModelDraft,
@@ -779,5 +780,97 @@ describe('routeReferencesOf 路由成员引用检索（D3 删除流程的警告�
     expect(routeReferencesOf('other', routes)).toEqual(['路由乙'])
     expect(routeReferencesOf('nobody', routes)).toEqual([])
     expect(routeReferencesOf('yanshi', [])).toEqual([])
+  })
+})
+
+describe('writeProviderModels 模型清单写通道（清单交互定稿 C3）', () => {
+  const models = [
+    { id: 'm1', name: 'M1', input: ['text'] },
+    { id: 'm2', name: 'M2', input: ['text', 'image'], contextWindow: 1048576 },
+  ]
+
+  it('往返：describe 取 revision → mutate 整段 set providers.<key>.models → 回执回读', async () => {
+    const settings = fakeSettings({ providers: { yanshi: { displayName: 'Yanshi' } }, revision: 7 })
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', models)
+    expect(result.kind).toBe('saved')
+    expect(settings.mutations).toEqual([
+      { ns: 'llm-pi-ai', ops: [{ op: 'set', path: ['providers', 'yanshi', 'models'], value: models }], revision: 7 },
+    ])
+    if (result.kind !== 'saved') return
+    expect(result.profile.displayName).toBe('Yanshi') // 整字段 path set：清单外字段不在 ops、回执原样
+    expect(result.revision).toBe(8) // mutate 回执 revision（宿主写入后前移）
+    expect(result.undeclared).toEqual([])
+  })
+
+  it('空清单 = unset models（目录默认语义恢复，不写显式空数组）', async () => {
+    const settings = fakeSettings({ providers: { yanshi: { models } }, revision: 3 })
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', [])
+    expect(result.kind).toBe('saved')
+    expect(settings.mutations[0].ops).toEqual([{ op: 'unset', path: ['providers', 'yanshi', 'models'] }])
+    expect(settings.mutations[0].revision).toBe(3)
+  })
+
+  it('settings/conflict：重读一次后同形 ops 重发一次（revision 取重读值）', async () => {
+    const settings = fakeSettings({
+      providers: { yanshi: {} },
+      revision: 7,
+      // 模拟他写者：旧栅栏提交 → 宿主回 settings/conflict 且 revision 已前移（bump）。
+      mutateImpl: (_ns, _ops, expectedRevision) => {
+        if (expectedRevision === 7) {
+          settings.bumpRevision()
+          return Promise.resolve({ ok: false as const, error: { code: 'settings/conflict', message: 'stale', details: {} } })
+        }
+        return undefined
+      },
+    })
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', models)
+    expect(result.kind).toBe('saved')
+    expect(settings.mutations.map((mutation) => mutation.revision)).toEqual([7, 8]) // 首发旧栅栏 → 重读（8）重发
+    expect(settings.mutations[1].ops).toEqual(settings.mutations[0].ops)
+  })
+
+  it('连续冲突：四段式文案（含字段路径 / 事实 / 出路），不产生第三次写入', async () => {
+    const settings = fakeSettings({
+      providers: { yanshi: {} },
+      revision: 7,
+      mutateImpl: () => {
+        settings.bumpRevision()
+        return Promise.resolve({ ok: false as const, error: { code: 'settings/conflict', message: 'stale again', details: {} } })
+      },
+    })
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', models)
+    expect(result.kind).toBe('rejected')
+    expect(settings.mutations).toHaveLength(2) // 非盲重试：最多一重
+    if (result.kind !== 'rejected') return
+    expect(result.message).toContain('providers.yanshi.models')
+    expect(result.message).toContain('revision=8')
+    expect(result.message).toContain('正在编辑')
+  })
+
+  it('非冲突拒绝：宿主消息原样透传（含恢复线索）', async () => {
+    const settings = fakeSettings({
+      providers: { yanshi: {} },
+      mutateImpl: () =>
+        Promise.resolve({ ok: false as const, error: { code: 'settings/rejected', message: 'models[0].id is required', details: {} } }),
+    })
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', models)
+    expect(result.kind).toBe('rejected')
+    if (result.kind !== 'rejected') return
+    expect(result.message).toContain('models[0].id is required')
+  })
+
+  it('回读校验：写入后回执里 schema 未声明的字段进 undeclared（AS17）', async () => {
+    const settings = fakeSettings({
+      providers: { yanshi: {} },
+      mutateImpl: (ns, ops) => {
+        const op = ops[0]
+        const injected = [{ id: 'm1', name: 'M1', input: ['text'], unknownField: 1 }]
+        return Promise.resolve({ ok: true as const, value: { ns, value: { providers: { yanshi: { models: injected } } }, revision: 9 } })
+      },
+    })
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', models)
+    expect(result.kind).toBe('saved')
+    if (result.kind !== 'saved') return
+    expect(result.undeclared).toEqual(['models[0].unknownField'])
   })
 })

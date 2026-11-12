@@ -270,14 +270,16 @@ export function installLocale(host: LocaleInstallHost): void {
 export const TAIJI_MODEL_SERVICE_LOCALE_NS = 'taiji.model-service'
 
 /**
- * 模型服务分区简体中文字典（u-foundation 骨架 30 键 + M1 填充 + M2 增键，当前 192 键）。
+ * 模型服务分区简体中文字典（u-foundation 骨架 + M1 填充 + M2 增键 + 路由卡与清单操作台
+ * 增键）。
  *
  * 键集分段（与下方注释分段一致）：分区与三视图 / 供应商表单字段 / 凭据徽章 / 模型区
- * 来源态 / 空态文案 / 路由视图与三层时间窗 / 通用动作 / 供应商视图 / 展开体表单与发现 /
- * 保存与删除结果文案。措辞来源：空态文案与来源态抄设计包空态矩阵与 D11 的界面语义原文；
- * 字段名对齐宿主 provider schema 字段语义；思考档位/添加流程/窄表单词条对齐供应商接入
- * 交互重设计。骨架键值不被后续填充改动，由 locale.test.ts 的骨架用例断言看守；骨架期
- * 占位词条与被替换语义的旧词条（D6 三档策略按钮）已清理移除（沿革 git 可追溯）。
+ * 来源态 / 空态文案 / 路由卡工作台与三层时间窗 / 模型清单操作台 / 通用动作 / 供应商视图 /
+ * 展开体表单与发现 / 保存与删除结果文案。措辞来源：空态文案与来源态抄设计包空态矩阵与
+ * D11 的界面语义原文；字段名对齐宿主 provider schema 字段语义；思考档位/添加流程/窄表单
+ * 词条对齐供应商接入交互重设计。骨架键值不被后续填充改动，由 locale.test.ts 的骨架用例
+ * 断言看守；被新交互替换语义的旧词条（顶部新建表单、展开体编辑器、白名单 checkbox、
+ * D6 三档策略按钮）随交互下线同步清理移除（全仓 grep 确认零消费点，沿革 git 可追溯）。
  */
 export const modelServiceZh = {
   /* ── 分区与三视图 ── */
@@ -359,8 +361,35 @@ export const modelServiceZh = {
   'models.emptyGoProviders': '前往供应商视图接入',
   /** 清单视图的筛选输入占位/可访问名（G16）。 */
   'models.viewFilter': '筛选模型',
+  /** 来源筛选 chip 组（清单交互定稿 C4）与其三个候选。 */
+  'models.sourceFilter': '按来源筛选',
+  'models.sourceFilterAll': '全部',
+  'models.sourceFilterCustom': '自定义',
+  'models.sourceFilterDirectory': '目录默认',
   /** 四层数据源中拿不到的字段标注（G16：上下文/输入类型/最大输出缺失）。 */
   'models.fieldMissing': '未提供',
+
+  /* ── 模型清单操作台（清单交互定稿：分组组头 / 行内编辑 / 复制 / 自定义此清单）── */
+  /** 组头清单态徽章（目录默认态注明只读；托管组用 countBadge 素计数）。 */
+  'models.directoryCountBadge': '目录默认 · {n} 个（只读）',
+  'models.customCountBadge': '自定义清单 · {n} 个',
+  'models.countBadge': '{n} 个',
+  /** 组级动作：目录默认组铺开目录模型为可编辑起点 / 自定义组追加空白条目行。 */
+  'models.customizeFromDirectory': '自定义此清单',
+  'models.addModel': '添加模型',
+  /** 目录默认条目的行内动作（整体替换语义：写入后目录默认被该清单替换，toast 注明）。 */
+  'models.copyToCustom': '复制到自定义清单',
+  /** 自定义条目的行内动作。 */
+  'models.removeModel': '删除',
+  'models.editSave': '保存',
+  /** 行内编辑保存的前置校验（宿主 models[] 条目 id 必填）。 */
+  'models.editNeedsId': '模型 ID 不能为空',
+  /** 复制命中同 id 时的不重复提示（不产生写入）。 */
+  'models.duplicateId': '模型 {id} 已在自定义清单中，未重复添加',
+  /** 来源筛选无结果空态（关键词空、来源 chip 非「全部」时）。 */
+  'models.emptySourceFiltered': '该来源下没有模型',
+  /** 写通道传输异常的前缀（写通道 rejected 分支的消息已自包含，不经此键）。 */
+  'models.writeFailed': '模型清单写入失败',
 
   /* ── 路由视图（M2：路由列表 / 白名单 / 悬挂 / 注册降级 / 空态矩阵）── */
   'routes.snapshotUnavailable': '插件配置未被服务（Config 命名空间不可用）；重新打开本分区或检查插件装载状态。',
@@ -371,15 +400,20 @@ export const modelServiceZh = {
   'routes.emptyMembersUnavailable': '白名单已勾选，但成员模型当前不可用',
   'routes.emptyMembersUnavailableNext': '检查路由成员：供应商是否已删、模型是否在清单、凭据是否已配置。',
   'route.create': '新建路由',
+  /** 新建卡的默认名（{n} = 避重序号；非 ASCII 名的 id 走 p-<n> 序号回落，天然可辨）。 */
+  'route.newCardName': '新路由 {n}',
   'route.nameField': '路由名称',
-  'route.namePlaceholder': '例：工作日旗舰模型',
-  'route.idPreview': '保存标识：{id}',
-  'route.nameHint': '路由标识 {id} 创建后固定；改名不影响白名单与对话流。',
-  'route.edit': '编辑路由',
+  /** 就地改名的说明（改名 = renameRoute 重派生 id 并迁移白名单，不再是「改名不改 id」）。 */
+  'route.renameHint': '点击改名：保存后重新派生标识，白名单与对话流可见性随新标识迁移',
   'route.delete': '删除路由',
   'route.confirmDelete': '再点确认删除',
-  'route.whitelistedBadge': '白名单',
-  'route.whitelistToggle': '白名单勾选：{name}',
+  /** 卡头「对话流可见」开关（白名单勾选的语义化；Config 落盘仍是 whitelist 字段）。 */
+  'route.visibleLabel': '对话流可见',
+  'route.visibleToggle': '对话流可见开关：{name}',
+  /** 注册状态徽章（卡头常显）与失败修复条的就地改名动作。 */
+  'route.registeredBadge': '已注册',
+  'route.registrationFailedBadge': '注册失败',
+  'route.fixRenameApply': '改名并重试',
   'route.hitNow': '当前命中：{provider} / {model}',
   'route.noHitNow': '当前时段无命中成员',
   'route.noMembers': '还没有成员：编辑路由并添加至少一个供应商模型。',
@@ -402,16 +436,18 @@ export const modelServiceZh = {
   'route.cleanupHanging': '清理失效条目',
   'route.membersTitle': '成员（顺序即优先级）',
   'route.addMember': '添加成员',
-  'route.moveUp': '上移',
-  'route.moveDown': '下移',
+  /** 无已接入供应商时添加成员的行内指引（按钮同时禁用）。 */
+  'route.noProvidersHint': '先在供应商视图接入供应商',
   'route.removeMember': '移除成员',
   'route.memberProvider': '成员供应商',
   'route.memberModel': '成员模型',
   'route.memberModelInput': '输入模型 ID',
   'route.memberCondition': '成员条件',
-  'route.editWindow': '编辑时间窗',
-  'route.editWindowNeedsWindow': '先把条件切换为「时间窗」再编辑窗口。',
+  /** 拖拽把手的可访问名（键盘可达回退 = 聚焦后方向键移动一位）。 */
+  'route.dragHandle': '拖动调整顺序，聚焦后方向键移动',
   'route.noSelectableProviders': '（暂无可编辑供应商）',
+  /** 卡脚（收起态）的成员编辑入口。 */
+  'route.editMembers': '编辑成员',
 
   /* ── 三层时间窗（M2：命名窗口矩阵 / 48 格精细 / 特殊日期）── */
   'route.grid.matrix': '命名窗口',
@@ -578,7 +614,25 @@ export const modelServiceEn = {
   'models.clearFilter': 'Clear filter',
   'models.emptyGoProviders': 'Go to Providers',
   'models.viewFilter': 'Filter models',
+  'models.sourceFilter': 'Filter by source',
+  'models.sourceFilterAll': 'All',
+  'models.sourceFilterCustom': 'Custom',
+  'models.sourceFilterDirectory': 'Directory defaults',
   'models.fieldMissing': 'Not provided',
+
+  /* ── Model list workbench (grouped headers / inline edit / copy / customize) ── */
+  'models.directoryCountBadge': 'Directory defaults · {n} (read-only)',
+  'models.customCountBadge': 'Custom list · {n}',
+  'models.countBadge': '{n}',
+  'models.customizeFromDirectory': 'Customize this list',
+  'models.addModel': 'Add model',
+  'models.copyToCustom': 'Copy to custom list',
+  'models.removeModel': 'Delete',
+  'models.editSave': 'Save',
+  'models.editNeedsId': 'Model ID is required',
+  'models.duplicateId': 'Model {id} is already in the custom list; not added again',
+  'models.emptySourceFiltered': 'No models under this source',
+  'models.writeFailed': 'Failed to write the model list',
 
   /* ── Routes view (M2: list / whitelist / hanging / registration degraded / empty matrix) ── */
   'routes.snapshotUnavailable': 'Plugin config is not being served (namespace unavailable); reopen this section or check the plugin state.',
@@ -589,15 +643,16 @@ export const modelServiceEn = {
   'routes.emptyMembersUnavailable': 'Whitelist is ticked, but member models are currently unavailable',
   'routes.emptyMembersUnavailableNext': 'Check route members: provider deleted, model missing from the list, or credential not configured.',
   'route.create': 'New route',
+  'route.newCardName': 'New route {n}',
   'route.nameField': 'Route name',
-  'route.namePlaceholder': 'e.g. Weekday flagship',
-  'route.idPreview': 'Saved id: {id}',
-  'route.nameHint': 'Route id {id} is fixed once created; renaming keeps whitelist and conversations intact.',
-  'route.edit': 'Edit route',
+  'route.renameHint': 'Click to rename: saving re-derives the id and migrates whitelist visibility to it',
   'route.delete': 'Delete route',
   'route.confirmDelete': 'Click again to confirm',
-  'route.whitelistedBadge': 'Whitelist',
-  'route.whitelistToggle': 'Whitelist toggle: {name}',
+  'route.visibleLabel': 'Visible in chat',
+  'route.visibleToggle': 'Chat visibility toggle: {name}',
+  'route.registeredBadge': 'Registered',
+  'route.registrationFailedBadge': 'Registration failed',
+  'route.fixRenameApply': 'Rename and retry',
   'route.hitNow': 'Hit now: {provider} / {model}',
   'route.noHitNow': 'No member matches the current time',
   'route.noMembers': 'No members yet: edit the route and add at least one provider model.',
@@ -620,16 +675,15 @@ export const modelServiceEn = {
   'route.cleanupHanging': 'Clean stale entries',
   'route.membersTitle': 'Members (order = priority)',
   'route.addMember': 'Add member',
-  'route.moveUp': 'Move up',
-  'route.moveDown': 'Move down',
+  'route.noProvidersHint': 'Connect a provider in the Providers view first',
   'route.removeMember': 'Remove member',
   'route.memberProvider': 'Member provider',
   'route.memberModel': 'Member model',
   'route.memberModelInput': 'Type a model id',
   'route.memberCondition': 'Member condition',
-  'route.editWindow': 'Edit window',
-  'route.editWindowNeedsWindow': 'Switch the condition to "Time window" first to edit the grid.',
+  'route.dragHandle': 'Drag to reorder; focus and use arrow keys',
   'route.noSelectableProviders': '(no editable providers)',
+  'route.editMembers': 'Edit members',
 
   /* ── Time window grid (M2: named-window matrix / 48 slots / special dates) ── */
   'route.grid.matrix': 'Named windows',

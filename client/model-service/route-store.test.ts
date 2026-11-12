@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { RoutesListModel, WHITELIST_FIELD } from './route-store'
+import { moveMember, RoutesListModel, ROUTES_FIELD, WHITELIST_FIELD } from './route-store'
 import type { PluginConfigFormLike } from './credentials-client'
 import type { ConfigFormSnapshotLike } from '../persist'
+import type { RouteEntry } from './route-evaluate'
 import type { ModelServiceHost } from './settings-client'
 
 /**
@@ -9,6 +10,10 @@ import type { ModelServiceHost } from './settings-client'
  * set 落盘时会以旧 revision 旧值整段重建 state——revision 倒退栅栏必须挡住这类回放
  * （state.whitelist 不弹回），同时不得破坏两条正常路径：subscribe 带新 revision 快照的
  * 前进对账、宿主拒绝写时回落 Config 真值。
+ *
+ * 路由交互定稿增测（本文件第二批）：renameRoute 改名重派生 + 白名单迁移、saveRoute 拒绝
+ * 回传、selectableProviders 快照口径（未接入目录 route 不直出）、注册探测的 id 占用识别
+ * （物理 provider 撞 taiji-route-* 形态）、moveMember 排序数据交换。
  */
 
 /** 初始 Config 快照（routes 一条 + 白名单空；revision 可调）。 */
@@ -166,5 +171,193 @@ describe('RoutesListModel revision 倒退栅栏（AF-1-1）', () => {
     // 回落完成后显式上报必须在场（SC9/文件头自声明；终态同步 F1-11：notice 不随重读
     // 重建被吞——load 以 emptySnapshot 展开重建 state，先置后读会清掉上报）。
     expect(model.getSnapshot().notice).toBe('写入被宿主拒绝，已恢复为当前保存值')
+  })
+})
+
+/** 探测面可脚本化的假宿主（快照 providers 段 / 注册表 / 目录可注入）。 */
+function probeRemote(options: {
+  registered?: string[]
+  providers?: Record<string, unknown>
+  directory?: { provider: string; displayName: string }[]
+} = {}): ModelServiceHost {
+  return {
+    settings: {
+      describe: async () => ({
+        ok: true,
+        value: { writable: true, namespaces: [{ ns: 'llm-pi-ai', value: { providers: options.providers ?? {} }, revision: 1 }] },
+      }),
+      mutate: async () => ({ ok: true, value: { ns: 'llm-pi-ai' } }),
+    },
+    llm: {
+      listProviders: async () => ({ ok: true, value: (options.registered ?? []).map((id) => ({ id, name: id })) }),
+      listConfigurableProviders: async () => ({
+        ok: true,
+        value: (options.directory ?? []).map((row) => ({ provider: row.provider, displayName: row.displayName, settingsNs: 'llm-pi-ai', settingsPath: ['providers', row.provider] })),
+      }),
+      discoverModels: async () => ({ ok: true, value: [] }),
+    },
+    credentials: {
+      describe: async () => ({ ok: true, value: {} }),
+      set: async () => ({ ok: true, value: undefined }),
+      unset: async () => ({ ok: true, value: undefined }),
+    },
+  }
+}
+
+/** 带自定义 routes/whitelist 的 Config 快照。 */
+function routesSnapshot(routes: RouteEntry[], whitelist: string[]): ConfigFormSnapshotLike {
+  return { status: 'ready', value: { routes, whitelist }, revision: 1, writable: true }
+}
+
+describe('selectableProviders 快照口径（路由交互定稿 A4）', () => {
+  it('只列 providers 快照已存在的条目；taiji-route-* 前缀剔除；未接入的目录 route 不直出', async () => {
+    const remote = probeRemote({
+      providers: {
+        alpha: { displayName: 'Alpha', models: [{ id: 'a1', name: 'A1' }, { id: '' }] },
+        'taiji-route-x': { displayName: '幽灵', models: [] },
+        beta: {},
+      },
+      directory: [
+        { provider: 'alpha', displayName: 'Alpha 目录名' },
+        { provider: 'beta', displayName: 'Beta 目录名' },
+        { provider: 'zeta', displayName: 'Zeta（未接入）' },
+      ],
+    })
+    const model = new RoutesListModel({ remote, configForm: fakeConfigForm(routesSnapshot([], [])) })
+    await model.pending
+    const selectable = model.getSnapshot().selectableProviders
+    // 快照存在且可枚举：alpha（displayName 优先）+ beta（displayName 缺失 → 目录名回落）。
+    expect(selectable.map((row) => ({ key: row.key, name: row.name }))).toEqual([
+      { key: 'alpha', name: 'Alpha' },
+      { key: 'beta', name: 'Beta 目录名' },
+    ])
+    // 模型清单收窄：空 id 条目丢弃。
+    expect(selectable[0].models).toEqual([{ id: 'a1', name: 'A1' }])
+    // 未接入的 zeta 不直出、taiji-route-* 不直出。
+    expect(selectable.some((row) => row.key === 'zeta')).toBe(false)
+    expect(selectable.some((row) => row.key === 'taiji-route-x')).toBe(false)
+  })
+
+  it('llm-pi-ai 快照缺席（宿主未装）时选择器为空（不虚构目录候选）', async () => {
+    const remote = probeRemote({
+      registered: [],
+      directory: [{ provider: 'alpha', displayName: 'Alpha' }],
+    })
+    remote.settings.describe = async () => ({ ok: true, value: { writable: true, namespaces: [] } })
+    const model = new RoutesListModel({ remote, configForm: fakeConfigForm(routesSnapshot([], [])) })
+    await model.pending
+    expect(model.getSnapshot().selectableProviders).toEqual([])
+  })
+})
+
+describe('注册探测的 id 占用识别（V7 可构造形态）', () => {
+  const routes: RouteEntry[] = [
+    { id: 'p-1', name: '验证路由', members: [] },
+    { id: 'p-2', name: '另一条', members: [] },
+  ]
+
+  it('id 被物理 provider 占用（providers 段含 taiji-route-p-1 条目）→ 判注册失败', async () => {
+    const remote = probeRemote({
+      registered: ['taiji-route-p-1', 'taiji-route-p-2'],
+      providers: { 'taiji-route-p-1': { displayName: '占用者' } },
+    })
+    const model = new RoutesListModel({ remote, configForm: fakeConfigForm(routesSnapshot(routes, [])) })
+    await model.pending
+    // p-1 的宿主 id 归物理适配器（DUPLICATE_ADAPTER 拒注册），p-2 真注册成功。
+    expect(model.getSnapshot().registrationFailed).toEqual(['p-1'])
+  })
+
+  it('无占用时维持原判定：注册表缺 taiji-route-<id> 即失败', async () => {
+    const remote = probeRemote({ registered: ['taiji-route-p-1'] })
+    const model = new RoutesListModel({ remote, configForm: fakeConfigForm(routesSnapshot(routes, [])) })
+    await model.pending
+    expect(model.getSnapshot().registrationFailed).toEqual(['p-2'])
+  })
+})
+
+describe('renameRoute（改名重派生 + 白名单迁移，路由交互定稿 B）', () => {
+  it('新 id 派生替换旧条目，白名单旧 id 同步迁移，成员原样保留', async () => {
+    const routes: RouteEntry[] = [
+      { id: 'old', name: 'Old', members: [{ provider: 'alpha', model: 'a1', order: 1, condition: { type: 'none' } }] },
+    ]
+    const form = fakeConfigForm(routesSnapshot(routes, ['old', 'ghost']))
+    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    await model.pending
+
+    const updated = await model.renameRoute('old', 'New Route')
+    expect(updated).toEqual({ id: 'new-route', name: 'New Route', members: routes[0].members })
+    expect(model.getSnapshot().routes[0].id).toBe('new-route')
+    // 白名单迁移只动旧 id（悬挂条目 ghost 不受影响）。
+    expect(model.getSnapshot().whitelist).toEqual(['new-route', 'ghost'])
+    expect(form.sets).toEqual([
+      { field: ROUTES_FIELD, value: model.getSnapshot().routes },
+      { field: WHITELIST_FIELD, value: ['new-route', 'ghost'] },
+    ])
+  })
+
+  it('新名撞其余路由 id 时派生加序号；旧 id 自身不占位（可改回同形 id）', async () => {
+    const routes: RouteEntry[] = [
+      { id: 'x', name: 'X', members: [] },
+      { id: 'x-2', name: 'X two', members: [] },
+    ]
+    const model = new RoutesListModel({ remote: fakeRemote(), configForm: fakeConfigForm(routesSnapshot(routes, [])) })
+    await model.pending
+
+    const updated = await model.renameRoute('x', 'x-2')
+    // 旧 id x 与旧白名单条目不参与查重，新名 x-2 撞第二条 → 加序号。
+    expect(updated?.id).toBe('x-2-2')
+  })
+
+  it('宿主拒绝写入时返回 undefined 且回落旧值（notice 上报在场）', async () => {
+    const form = fakeConfigForm(routesSnapshot([{ id: 'old', name: 'Old', members: [] }], ['old']))
+    form.setAccepted = false
+    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    await model.pending
+
+    const updated = await model.renameRoute('old', 'New')
+    expect(updated).toBeUndefined()
+    expect(model.getSnapshot().notice).toBe('写入被宿主拒绝，已恢复为当前保存值')
+  })
+
+  it('空名或未知路由 id：不动作（返回 undefined，零写入）', async () => {
+    const form = fakeConfigForm(routesSnapshot([{ id: 'old', name: 'Old', members: [] }], []))
+    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    await model.pending
+    expect(await model.renameRoute('old', '   ')).toBeUndefined()
+    expect(await model.renameRoute('missing', 'New')).toBeUndefined()
+    expect(form.sets).toHaveLength(0)
+  })
+})
+
+describe('saveRoute 回传与 moveMember 数据交换（路由交互定稿 A2/A8）', () => {
+  it('saveRoute 接受时回传 true（成员即时保存通道的 toast 依据）', async () => {
+    const routes: RouteEntry[] = [{ id: 'a', name: 'A', members: [] }]
+    const model = new RoutesListModel({ remote: fakeRemote(), configForm: fakeConfigForm(routesSnapshot(routes, [])) })
+    await model.pending
+    expect(await model.saveRoute({ id: 'a', name: 'A', members: [{ provider: 'p', model: 'm', order: 1, condition: { type: 'none' } }] })).toBe(true)
+    expect(model.getSnapshot().routes[0].members).toHaveLength(1)
+  })
+
+  it('moveMember：move 语义（from 移到 to，其余顺移）、order 重排、原数组不动', () => {
+    const source = [
+      { provider: 'p1', model: 'm1', order: 1, condition: { type: 'none' } },
+      { provider: 'p2', model: 'm2', order: 2, condition: { type: 'none' } },
+      { provider: 'p3', model: 'm3', order: 3, condition: { type: 'none' } },
+    ]
+    const moved = moveMember(source, 0, 2)
+    expect(moved.map((member) => member.provider)).toEqual(['p2', 'p3', 'p1'])
+    expect(moved.map((member) => member.order)).toEqual([1, 2, 3])
+    expect(source.map((member) => member.provider)).toEqual(['p1', 'p2', 'p3'])
+  })
+
+  it('moveMember：越界或原位返回原数组引用（调用方以引用同异判无操作）', () => {
+    const source = [
+      { provider: 'p1', model: 'm1', order: 1, condition: { type: 'none' } },
+      { provider: 'p2', model: 'm2', order: 2, condition: { type: 'none' } },
+    ]
+    expect(moveMember(source, 0, 0)).toBe(source)
+    expect(moveMember(source, 0, -1)).toBe(source)
+    expect(moveMember(source, 0, 5)).toBe(source)
+    expect(moveMember(source, 5, 0)).toBe(source)
   })
 })

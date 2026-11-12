@@ -19,6 +19,10 @@
  *   · 「当前命中」预览（D5/G18：route-evaluate 纯函数，打开视图时算一次——与 Node 半场
  *     求值同源，同一纯函数复用）。
  *
+ * 成员供应商下拉的口径（路由交互定稿 A4）：宿主设置文档 providers 快照中**已存在**的条目
+ * （含自定义 route；displayName 目录名回落）——未接入的目录 route 不可选（与供应商视图的
+ * 清单口径反转同源：路由成员只能引用已接入的供应商）。
+ *
  * 路由 id 派生（AX11/D5/V5 步骤 2）：deriveRouteId 与当前 routes 及白名单现有条目（含悬挂）
  * 查重，冲突加序号（-2、-3…）——同名路由二次创建不被拒，派生 id 区分；悬挂条目靠 id 保持
  * 身份，拒绝改名会破坏悬挂态不复活的机制，所以这里是加序号而不是拒绝。
@@ -49,7 +53,7 @@ export interface MemberAvailability {
   ref: string | undefined
 }
 
-/** 可选成员的 provider 行（成员选择器数据；排除插件自身前缀与托管 provider）。 */
+/** 可选成员的 provider 行（成员选择器数据；providers 快照已接入条目，排除插件自身前缀）。 */
 export interface SelectableProvider {
   key: string
   name: string
@@ -187,26 +191,44 @@ export class RoutesListModel {
         .map((provider) => provider.id)
         .filter((id) => id.startsWith(ROUTE_PROVIDER_PREFIX)),
     )
+    // id 占用识别（V7 可构造形态的探测修正）：物理 provider 的 key 可以是 `taiji-route-<id>`
+    // 形态（用户自定义 provider key 不拦），此时宿主注册表同样含该 id，但它是物理适配器——
+    // 路由适配器注册必然被 DUPLICATE_ADAPTER 拒。这类 id 从「已注册」判定里剔除（判定依据 =
+    // llm-pi-ai 快照 providers 段有同名条目；路由适配器不在设置文档里）。反方向（路由先占 id、
+    // 后建同名 provider）已被保存预检拦截（checkRouteConflict 拒绝），不会出现双占。
+    const squattedIds = new Set(
+      llmPiAi !== undefined && llmPiAi.available
+        ? Object.keys(llmPiAi.providers).filter((key) => key.startsWith(ROUTE_PROVIDER_PREFIX))
+        : [],
+    )
     const registrationFailed = routes
       .map((route) => route.id)
-      .filter((id) => !registeredRouteProviders.has(`${ROUTE_PROVIDER_PREFIX}${id}`))
-    const selectableProviders = directory
-      .filter((row) => row.settingsNs === 'llm-pi-ai' && !row.provider.startsWith(ROUTE_PROVIDER_PREFIX))
-      .map((row) => {
-        const profile = llmPiAi !== undefined && llmPiAi.available ? llmPiAi.providers[row.provider] : undefined
-        const models = Array.isArray(profile?.models) ? profile.models : []
-        return {
-          key: row.provider,
-          name: typeof profile?.displayName === 'string' && profile.displayName !== '' ? profile.displayName : row.displayName,
-          models: models
-            .filter((model): model is Record<string, unknown> => typeof model === 'object' && model !== null)
-            .map((model) => ({
-              id: typeof model.id === 'string' ? model.id : '',
-              name: typeof model.name === 'string' && model.name !== '' ? model.name : typeof model.id === 'string' ? model.id : '',
-            }))
-            .filter((model) => model.id !== ''),
-        }
+      .filter((id) => {
+        const expected = `${ROUTE_PROVIDER_PREFIX}${id}`
+        return squattedIds.has(expected) || !registeredRouteProviders.has(expected)
       })
+    // 成员供应商下拉口径（路由交互定稿 A4）：providers 快照里已存在的条目（含自定义 route；
+    // 未接入的目录 route 不直出）。displayName 目录名回落（快照条目未写 displayName 时）。
+    const selectableProviders =
+      llmPiAi !== undefined && llmPiAi.available
+        ? Object.entries(llmPiAi.providers)
+            .filter(([key]) => !key.startsWith(ROUTE_PROVIDER_PREFIX))
+            .map(([key, profile]) => {
+              const models = Array.isArray(profile?.models) ? profile.models : []
+              const directoryRow = directory.find((row) => row.provider === key)
+              return {
+                key,
+                name: typeof profile?.displayName === 'string' && profile.displayName !== '' ? profile.displayName : directoryRow?.displayName ?? key,
+                models: models
+                  .filter((model): model is Record<string, unknown> => typeof model === 'object' && model !== null)
+                  .map((model) => ({
+                    id: typeof model.id === 'string' ? model.id : '',
+                    name: typeof model.name === 'string' && model.name !== '' ? model.name : typeof model.id === 'string' ? model.id : '',
+                  }))
+                  .filter((model) => model.id !== ''),
+              }
+            })
+        : []
     const availability = this.buildMemberAvailability(routes, llmPiAi, credentials)
     this.state = {
       ...this.state,
@@ -284,11 +306,43 @@ export class RoutesListModel {
     return route
   }
 
-  /** 保存路由编辑（整体替换该条；id 创建后固定，改名只动 name——D5）。 */
-  async saveRoute(updated: RouteEntry): Promise<void> {
+  /** 保存路由编辑（整体替换该条；返回是否被宿主接受——调用方给 toast/错误反馈）。
+   * 改名走 renameRoute（重派生 id），本通道只动成员与既有 id 下的字段。 */
+  async saveRoute(updated: RouteEntry): Promise<boolean> {
     const routes = this.state.routes.map((route) => (route.id === updated.id ? updated : route))
-    await this.writeRoutes(routes)
+    return await this.writeRoutes(routes)
   }
+
+  /**
+   * 改名并重派生 id（路由卡就地改名与注册失败「改名修复」共用通道）：新名 → 新 id
+   * （deriveRouteId 查重——其余路由 id 与白名单现存条目（含悬挂）参与占位，旧路由自身与
+   * 旧 id 的白名单条目不占位，它们将被替换/迁移）→ routes 段原位替换 + 白名单同步迁移
+   * （旧 id → 新 id）→ 两次整字段提交。注册自动重试：routes volatile-update 链路（index.js
+   * ensureRouteRegistration）按新 id 集合重新注册，旧 id 的虚拟模型随集合更新停用。
+   * 返回更新后的路由（新 id 供视图保持选中）；写入被拒/失败返回 undefined（state 已回落重读）。
+   */
+  async renameRoute(oldId: string, newName: string): Promise<RouteEntry | undefined> {
+    const route = this.state.routes.find((candidate) => candidate.id === oldId)
+    if (route === undefined) return undefined
+    const name = newName.trim()
+    if (name === '') return undefined
+    const others = this.state.routes.filter((candidate) => candidate.id !== oldId)
+    const whitelistWithoutOld = this.state.whitelist.filter((entry) => entry !== oldId)
+    const id = deriveRouteId(name, others, whitelistWithoutOld)
+    const updated: RouteEntry = { id, name, members: route.members }
+    const routes = this.state.routes.map((candidate) => (candidate.id === oldId ? updated : candidate))
+    const whitelist = this.state.whitelist.map((entry) => (entry === oldId ? id : entry))
+    this.state = { ...this.state, routes, whitelist }
+    this.notify()
+    const routesAccepted = await this.commit(ROUTES_FIELD, routes)
+    const whitelistAccepted = await this.commit(WHITELIST_FIELD, whitelist)
+    return routesAccepted && whitelistAccepted ? updated : undefined
+  }
+
+  /**
+   * 成员拖拽/键盘排序的数据交换由模块级纯函数 moveMember 承担（见文件尾）；视图把落点/
+   * 方向键换算成 (from, to) 后调它，再经 saveRoute 整体落盘。
+   */
 
   /** 删除路由（白名单条目转悬挂保留——D1 不自动清理，界面给标注与清理动作）。 */
   async deleteRoute(id: string): Promise<void> {
@@ -316,10 +370,10 @@ export class RoutesListModel {
   }
 
   /** routes 整字段写回（乐观更新已由调用方先行；拒绝/失败 → 重读回落并显式上报）。 */
-  private async writeRoutes(routes: RouteEntry[]): Promise<void> {
+  private async writeRoutes(routes: RouteEntry[]): Promise<boolean> {
     this.state = { ...this.state, routes }
     this.notify()
-    await this.commit(ROUTES_FIELD, routes)
+    return await this.commit(ROUTES_FIELD, routes)
   }
 
   /** whitelist 整字段写回（同上）。 */
@@ -330,9 +384,10 @@ export class RoutesListModel {
   }
 
   /** 整字段提交（ConfigFormLike.set；失败重读 = 以 Config 真值为准 + notice/error 上报）。
-   * 上报在重读完成**之后**置位：load() 以 emptySnapshot 展开重建 state，先置后读会把
-   * notice/error 在同一同步续体内吞掉（两次 notify 之间无渲染落点，SC9 显式上报不可见）。 */
-  private async commit(field: string, value: unknown): Promise<void> {
+   * 返回是否被宿主接受（路由卡即时保存的 toast 分支依据）。上报在重读完成**之后**置位：
+   * load() 以 emptySnapshot 展开重建 state，先置后读会把 notice/error 在同一同步续体内
+   * 吞掉（两次 notify 之间无渲染落点，SC9 显式上报不可见）。 */
+  private async commit(field: string, value: unknown): Promise<boolean> {
     try {
       const accepted = await this.deps.configForm.set(field, value)
       if (accepted) {
@@ -345,16 +400,17 @@ export class RoutesListModel {
         await this.load()
         this.state = { ...this.state, notice: this.t('route.writeRefused') }
         this.notify()
-        return
+        return false
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
       await this.load()
       this.state = { ...this.state, error: this.t('route.writeFailed', { detail }) }
       this.notify()
-      return
+      return false
     }
     await this.load()
+    return true
   }
 
   /** locale 座位（store 文案：写入失败上报等；由视图传入——ProvidersListModel 的 t 同款）。 */
@@ -386,6 +442,20 @@ export function deriveRouteId(displayName: string, routes: RouteEntry[], whiteli
     const candidate = `${base}-${n}`
     if (!taken.has(candidate)) return candidate
   }
+}
+
+/**
+ * 成员拖拽/键盘排序的数据交换（把 from 位成员移到 to 位，其余顺移；move 语义——成员顺序
+ * 即优先级，拖到目标位是插入而不是与目标对换）。纯函数返回新数组（原数组不动）；越界或
+ * 原位返回原数组引用（调用方以引用同异判无操作）。视图拖拽落点与把手方向键回退共用同一次
+ * 数据交换，重排后 order = 数组序（1 起）。
+ */
+export function moveMember(members: RouteMember[], from: number, to: number): RouteMember[] {
+  if (from === to || from < 0 || to < 0 || from >= members.length || to >= members.length) return members
+  const next = [...members]
+  const moved = next.splice(from, 1)[0]
+  next.splice(to, 0, moved)
+  return next.map((member, index) => ({ ...member, order: index + 1 }))
 }
 
 /** 空快照（loading/unavailable 态共用）。 */

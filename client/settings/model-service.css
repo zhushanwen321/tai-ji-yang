@@ -597,15 +597,66 @@
   justify-content: flex-start;
 }
 
-/* 模型清单视图。 */
+/* 模型清单操作台：工具行（关键词 + 来源 chip）/ 分组组头 / 行与行内编辑卡。 */
 .ms-models {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
+.ms-models-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .ms-models-filter {
   max-width: 240px;
+}
+
+/* 来源筛选 chip（全部 / 自定义 / 目录默认；点选态与模态 chip 同语）。 */
+.ms-source-chips {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.ms-source-chip {
+  appearance: none;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  border-radius: 999px;
+  padding: 1px 10px;
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.ms-source-chip-active {
+  background: var(--taiji-brand-soft);
+  color: var(--taiji-ink);
+  border-color: var(--taiji-brand-ring);
+}
+
+/* 供应商分组（组头 + 行列表）。 */
+.ms-model-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-md);
+}
+
+.ms-model-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 2px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
 }
 
 .ms-model-list {
@@ -621,6 +672,27 @@
   border-bottom: 0.5px solid var(--dsw-alias-border-l1);
   font-size: 12px;
   flex-wrap: wrap;
+}
+
+/* 行内编辑卡（既有条目原位展开 / 新增条目追加行）。 */
+.ms-model-row-edit {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.ms-model-row-new {
+  padding: 6px 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+.ms-model-row-new .ms-model-row-edit {
+  border-style: dashed;
 }
 
 .ms-model-list-provider {
@@ -679,54 +751,156 @@
   color: var(--dsw-alias-label-secondary);
 }
 
-/* ── 路由视图（M2）：列表 / 白名单 / 悬挂 / 状态条 ─────────────────────────── */
+/* ── 路由卡工作台：卡 / 卡头（就地改名与徽章）/ 成员管线（拖拽）/ 修复条 / 悬挂区 ── */
 .ms-routes {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.ms-routes-add {
+.ms-routes-actions {
+  display: flex;
+}
+
+.ms-route-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ms-route-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-base);
+}
+
+/* 选中卡（展开态）：brand-ring 描边 + 浮起面色，与视图切换条选中态同语。 */
+.ms-route-card-selected {
+  border-color: var(--taiji-brand-ring);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.ms-route-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ms-route-card-foot {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.ms-routes-name {
-  width: 220px;
+/* 卡头路由名：文本形态按钮（点击就地改名），hover 提示可改。 */
+.ms-route-name {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
+  cursor: text;
+  text-align: start;
 }
 
-.ms-routes-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.ms-route-name:hover {
+  color: var(--taiji-ink);
+  box-shadow: inset 0 -1px 0 var(--taiji-brand-ring);
 }
 
-.ms-route-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px 8px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: var(--dsw-radius-md);
+.ms-route-name-input {
+  width: 200px;
 }
 
-.ms-route-members {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding-left: 16px;
+/* 拖拽把手：六点 grip（纯 CSS 径向渐变点阵，色取次级标签色）+ grab 光标。 */
+.ms-drag-handle {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: var(--dsw-radius-xs);
+  width: 16px;
+  height: 22px;
+  padding: 0;
+  background-color: transparent;
+  background-image: radial-gradient(circle, var(--dsw-alias-label-secondary) 1px, transparent 1.5px);
+  background-size: 6px 6px;
+  background-position: center;
+  background-repeat: repeat;
+  cursor: grab;
+  flex: none;
 }
 
-.ms-route-member {
-  font-size: 12px;
+.ms-drag-handle:hover {
+  border-color: var(--taiji-brand-ring);
+  background-color: var(--taiji-brand-soft);
 }
 
-.ms-route-member-edit {
+.ms-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* 拖拽悬停目标行：蓝色描边提示落点（定稿 A2）。 */
+.ms-route-member-row {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  padding: 4px 2px;
+  border-bottom: 0.5px dashed var(--dsw-alias-border-l1);
+}
+
+.ms-drop-target {
+  box-shadow: inset 0 0 0 2px var(--taiji-brand-ring);
+  border-radius: var(--dsw-radius-xs);
+}
+
+.ms-route-pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ms-route-pipeline-title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.ms-route-pipeline-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+/* 注册失败修复条（卡内说明 + 就地改名）。 */
+.ms-route-fix {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--taiji-warn-ring);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--taiji-warn-soft);
+}
+
+.ms-route-fix-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ms-route-member-window {
+  flex-basis: 100%;
+  padding-left: 16px;
 }
 
 .ms-hanging {

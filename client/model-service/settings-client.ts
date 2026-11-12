@@ -586,6 +586,62 @@ export function routeReferencesOf(key: string, routes: RouteEntry[]): string[] {
   return names
 }
 
+// ── 模型清单操作台的写通道（清单交互定稿 C3）────────────────────────────────
+
+/** 模型清单写入结果（UI 按 kind 分支渲染；rejected 不产生任何写入——ops 未发或被拒）。 */
+export type WriteModelsResult =
+  | { kind: 'saved'; profile: HostProviderProfile; revision: number | undefined; undeclared: string[] }
+  | { kind: 'rejected'; message: string }
+
+/**
+ * 整段写入一个供应商的模型清单（模型清单视图行内编辑/删除/复制/自定义此清单的唯一写通道）：
+ * describe 取 revision → mutate 整段 set providers.<key>.models → mutate 回执即写入后快照，
+ * 回读校验未声明字段（AS17 同款）。空清单 = unset models 字段（目录默认语义恢复，与供应商
+ * 表单「保存空清单即保持目录默认」同口径——整段 set 空数组会在文档里留下显式空清单，与
+ * 「缺席 = 按目录解析」的宿主语义相悖）。settings/conflict 重读一次重发一次，第二次仍拒 =
+ * 四段式文案上报；非冲突拒绝原样透传宿主消息。
+ */
+export async function writeProviderModels(remote: ModelServiceHost, key: string, models: HostProviderProfile[]): Promise<WriteModelsResult> {
+  const ops: SettingsOp[] = models.length > 0
+    ? [{ op: 'set', path: ['providers', key, 'models'], value: models }]
+    : [{ op: 'unset', path: ['providers', key, 'models'] }]
+  let view: SettingsNamespaceViewLike
+  try {
+    const snapshot = await readLlmPiAi(remote.settings)
+    const first = await remote.settings.mutate(LLM_PI_AI_NS, ops, snapshot.revision)
+    if (!first.ok) {
+      if (first.error.code !== 'settings/conflict') {
+        return { kind: 'rejected', message: rejectedMessage(first.error.message) }
+      }
+      // 非盲重试：重读最新 revision 后同形 ops 再发一次（path ops 按存储视图解析，AS11）。
+      const fresh = await readLlmPiAi(remote.settings)
+      const second = await remote.settings.mutate(LLM_PI_AI_NS, ops, fresh.revision)
+      if (!second.ok) {
+        return { kind: 'rejected', message: modelsConflictFailureMessage(key, second.error.message, fresh.revision) }
+      }
+      view = second.value
+    } else {
+      view = first.value
+    }
+  } catch (error) {
+    return { kind: 'rejected', message: `模型清单写入失败：${messageOf(error)}。请确认宿主设置服务可用后重试。` }
+  }
+  const writtenProfile = readWrittenProfile(view, key)
+  return {
+    kind: 'saved',
+    profile: writtenProfile,
+    revision: typeof view.revision === 'number' ? view.revision : undefined,
+    undeclared: undeclaredFieldPaths(writtenProfile),
+  }
+}
+
+/** 模型清单连续冲突的四段式文案（本包 + 命名空间与字段 + 事实 + 出路，settingsConflictFailureMessage 同构）。 */
+function modelsConflictFailureMessage(key: string, message: string, revision: number | undefined): string {
+  return `模型清单未能写入宿主设置文档（llm-pi-ai 命名空间 providers.${key}.models）：`
+    + `重读一次（revision=${String(revision)}）后重试仍被拒（${message}）。`
+    + '可能另一个窗口正在编辑同一供应商的模型清单；请重试一次，仍失败则重新打开本分区再操作。'
+}
+
 /** 回读校验：profile 顶层与 models[] 条目里宿主 schema 未声明的字段路径（「宿主不消费」标注）。 */
 export function undeclaredFieldPaths(profile: HostProviderProfile): string[] {
   const paths: string[] = []

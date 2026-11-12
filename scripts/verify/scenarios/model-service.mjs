@@ -32,14 +32,19 @@
  *    供应商，断言保存被拒 + 跨 profile 占用文案 + 设置文档零写入 + 改名重试成功；a 支文案
  *    （宿主「模型」分区创建 taiji-* 路由供应商）的宿主表单自动化构造未建立，登记
  *    notProvable；删除供应商后设置文档条目与凭据 ref 均清除（V4 步骤 5，无孤儿密钥）。
- *  V9（清单与只读行）：模型清单视图渲染自定义条目（来源态标注「自定义清单」+ 上下文字段）；
- *    筛选无结果空态 + 清除动作（V9 步骤 5）；宿主托管只读行视隔离实例的注册情况存在
- *    （无托管行时登记 notProvable，不假红）。
+ *  V9（模型清单操作台）：按供应商分组的组头（供应商名 + 来源徽章 + 清单态徽章）；关键词
+ *    筛选空态 + 清除动作（V9 步骤 5）与来源筛选 chip；行内编辑保存的写路径（writeProviderModels
+ *    整段写回落盘）；目录默认组（内置供应商零填写接入 = 目录默认态）的「复制到自定义清单」
+ *    （整体替换语义显式提示：toast「目录默认已被替换」+ 组徽章翻转）；宿主托管只读组视
+ *    隔离实例的注册情况存在（无托管行时登记 notProvable，不假红）。
  *
- *  M2 段（路由面）：V5 步骤 1-2 的派生 id 语义（同名路由加序号并存）与步骤 9/10 的 G18
- *    成员行「供应商已删」标注；V6 的白名单勾选/取消与悬挂清理的 Config 侧语义（插件
- *    Config 落盘 whitelist/routes 断言——SC8 权威写入的可观察事实）；V7 的可自动化子集
- *    （注册冲突状态条与对话流真实报错需宿主同名适配器/真实端点，notProvable 登记）。
+ *  M2 段（路由卡工作台）：V5 的新建即配置（新卡就地命名、派生 id 落盘）、同名二次创建加
+ *    序号区分、成员管线即时保存与拖拽排序（move 语义成员序翻转，判定源 = readRouteMemberModels
+ *    的 routes 段成员序）、G18「供应商已删」标注；V6 的对话流可见开关（role=switch，白名单
+ *    checkbox 的语义化）勾选/取消/恢复与悬挂清理的 Config 侧语义（插件 Config 落盘
+ *    whitelist/routes 断言——SC8 权威写入的可观察事实）；V7 的注册失败就地改名修复路径
+ *    （物理 provider 占用 taiji-route-p-1 → 中文路由派生 id 撞宿主 → 卡头红徽 + 修复条 →
+ *    就地改名 → 警告条退场）；对话流真实报错需真实端点，notProvable 登记。
  *
  * 本场景不发任何模型对话请求（V1 步骤 8 / V5 步骤 5-8 / V7 的流式与错误断言需要真实可用
  * 端点，归 D3 真机）。
@@ -51,7 +56,7 @@ import { bootInto } from '../lib/browser.mjs'
 export const meta = {
   id: 'model-service',
   title: '模型服务接入与路由',
-  description: '分区并存无串页 / 接入全流程与热重算 / 冲突重读重试双方保留 / 密钥零泄漏与保存链路 / 清单来源态与空态 / 路由创建与派生 id、成员落盘、白名单启停与悬挂清理',
+  description: '分区并存无串页 / 接入全流程与热重算 / 冲突重读重试双方保留 / 密钥零泄漏与保存链路 / 模型清单操作台（分组、来源筛选、行内编辑、复制到自定义清单） / 路由卡工作台（新建即配置、就地改名、成员拖拽排序、对话流可见开关、注册失败就地修复、悬挂清理）',
 }
 
 /**
@@ -117,6 +122,29 @@ export async function waitForSelfTestFailures() {
     failures.push('同步 true cond 未立即通过——await 改写破坏了同步谓词兼容')
   }
   return failures
+}
+
+/**
+ * 从 cordis.patch.yml 文本按路由 id 提取 routes 段该路由的成员 model 序（成员顺序 = 优先级，
+ * 拖拽排序断言的判定源）。判定窗口 = 该路由条目行（`- id: <routeId>`）到下一个同级路由条目
+ * 或 whitelist 键为止；只取窗口内的 `model:` 值行，不受 providers 段模型条目（`- id:` 形态）
+ * 与 routes 段其他路由文本干扰。路由不存在返回 []。
+ */
+function readRouteMemberModels(patchText, routeId) {
+  const lines = patchText.split('\n')
+  const startIdx = lines.findIndex((line) => new RegExp(`^\\s*-\\s*id:\\s*${routeId}\\s*$`).test(line))
+  if (startIdx < 0) return []
+  const entryIndent = (lines[startIdx].match(/^\s*/) ?? [''])[0].length
+  const models = []
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const line = lines[i]
+    if (/^\s*whitelist:/.test(line)) break
+    const nextRoute = /^\s*-\s*id:/.exec(line)
+    if (nextRoute !== null && (line.match(/^\s*/) ?? [''])[0].length <= entryIndent) break
+    const model = /^\s*model:\s*(\S+)\s*$/.exec(line)
+    if (model !== null) models.push(model[1].replace(/^['"]|['"]$/g, ''))
+  }
+  return models
 }
 
 /** 打开设置面板（宿主触发钮 aria-label 跟随语言，候选依次试）。 */
@@ -535,27 +563,107 @@ export async function run(ctx) {
   ev.notProvable('V4 步骤 9 a 支（本 profile 持有者的撞名文案）：需在宿主「模型」分区经其创建表单写入 taiji-* 路由供应商并录密钥，宿主分区表单的自动化选择器勘察未建立（非通道缺失，是构造未建立），归 D3 真机复验；a 支判定分支由 credentials-client 单测覆盖')
   ev.notProvable('V4 步骤 6（unset 失败 → 待清理清单重试）：需让凭据服务在删除动作时不可用，自动构造超出本场景通道；重试机制由 credentials-client 单测覆盖')
 
-  // V9：模型清单视图——自定义条目来源态标注 + 上下文字段 + 筛选空态。
+  // V9：模型清单操作台——分组组头 / 来源 chip / 行内编辑写路径 / 目录默认组复制到自定义清单。
   await page.locator('.ms-section .ms-viewbar-button', { hasText: '模型清单' }).first().click()
   // 视图就绪等待（四层拼装含宿主 IPC，冷启动首读偶发秒级抖动——固定 sleep 会把抖动放大成
-  // fill 硬超时；就绪锚点 = 过滤输入框，loading 态不渲染它）。
-  await page.waitForSelector('.ms-models-filter', { state: 'visible', timeout: 20000 })
-  const customRow = await page.locator('.ms-model-list-row.ms-source-custom', { hasText: 'verify-model' }).first().isVisible().catch(() => false)
-  ev.assert('V9/自定义条目行渲染且带来源态标注', customRow, {
-    expected: 'ms-source-custom 行（verify-model）',
-    actual: String(customRow),
+  // fill 硬超时；就绪锚点 = 工具行（筛选输入 + 来源 chip），loading 态不渲染它）。
+  await page.waitForSelector('.ms-models-toolbar', { state: 'visible', timeout: 20000 })
+  const customGroup = page.locator('.ms-model-group', { hasText: providerName }).first()
+  const customGroupVisible = await customGroup.isVisible().catch(() => false)
+  const customBadge = await customGroup.locator('.ms-badge', { hasText: '自定义清单' }).first().textContent().catch(() => null)
+  ev.assert('V9/分组组头渲染（自定义组：供应商名 + 来源徽章 + 清单态徽章）', customGroupVisible && customBadge !== null, {
+    expected: 'ms-model-group（verify-<stamp>）+「自定义清单 · N 个」徽章',
+    actual: `group=${String(customGroupVisible)} badge=${String(customBadge)}`,
   })
+  // 关键词筛选空态（既有 V9 步骤 5 语义保留）。
   await page.locator('.ms-models-filter').first().fill('不存在的模型名')
   await page.waitForTimeout(300)
   const filterEmpty = await page.locator('.ms-empty-title', { hasText: '没有匹配' }).first().isVisible().catch(() => false)
-  ev.assert('V9/筛选无结果空态（含筛选词）', filterEmpty, { expected: '没有匹配「…」的模型', actual: String(filterEmpty) })
+  ev.assert('V9/关键词筛选无结果空态（含筛选词）', filterEmpty, { expected: '没有匹配「…」的模型', actual: String(filterEmpty) })
   const clearVisible = await page.locator('.ms-empty .ms-button', { hasText: '清除筛选' }).first().isVisible().catch(() => false)
   await page.locator('.ms-empty .ms-button', { hasText: '清除筛选' }).first().click().catch(() => {})
   ev.assert('V9/筛选空态给清除动作且可点', clearVisible, { expected: '清除筛选按钮', actual: String(clearVisible) })
-  // 宿主托管只读行：隔离实例未登录 DeepSeek 账号时目录可能没有托管行——存在才断言。
-  const managedRow = await page.locator('.ms-model-list-row.ms-source-managed').first().isVisible().catch(() => false)
-  if (!managedRow) {
-    ev.notProvable('V9/宿主托管 provider 只读行：隔离实例未配置宿主托管供应商（deepseek-account/official），目录无托管行；真机已登录实例复验')
+
+  // 来源筛选 chip：目录默认 chip 下自定义组退场，「全部」复位。
+  await page.locator('.ms-source-chip', { hasText: '目录默认' }).first().click()
+  const customHiddenByChip = await waitFor(async () => !(await customGroup.isVisible().catch(() => false)), 4000)
+  ev.assert('V9/来源筛选 chip（目录默认）下自定义组隐藏', customHiddenByChip, {
+    expected: '自定义组退场',
+    actual: String(customHiddenByChip),
+  })
+  await page.locator('.ms-source-chip', { hasText: '全部' }).first().click()
+  await waitFor(async () => customGroup.isVisible().catch(() => false), 4000)
+
+  // 行内编辑写路径（writeProviderModels 整段写回）：编辑行 → 改显示名 → 保存 → patch models[] 出现新名。
+  await customGroup.locator('.ms-button', { hasText: '编辑' }).first().click()
+  await page.waitForTimeout(300)
+  await page.locator('.ms-model-row-edit .ms-model-edit-name').first().fill('Verify Model Renamed')
+  await page.locator('.ms-model-row-edit .ms-button-primary', { hasText: '保存' }).first().click()
+  const renamedInPatch = await waitFor(() => readFileSync(patchFile, 'utf8').includes('Verify Model Renamed'), 8000)
+  ev.assert('V9/行内编辑保存（writeProviderModels 整段写回落盘）', renamedInPatch, {
+    expected: 'patch 的 providers 段出现改名后的条目（Verify Model Renamed）',
+    actual: renamedInPatch ? '已写入' : '8s 内未出现',
+  })
+
+  // 目录默认组 + 复制到自定义清单：接入一个内置目录供应商且不写模型（models[] 缺席 = 目录
+  // 默认态），组头徽章「目录默认 · N 个（只读）」+「自定义此清单」动作；复制首行 = 整体替换
+  // 语义（toast 注明「目录默认已被替换」+ 组徽章翻转自定义清单 + patch 写入该条目）。
+  await page.locator('.ms-section .ms-viewbar-button', { hasText: '供应商' }).first().click()
+  await page.waitForTimeout(300)
+  const builtinCardAgain = page.locator('.ms-section .ms-button-primary', { hasText: '添加供应商' })
+  if (!(await builtinCardAgain.first().isVisible().catch(() => false))) return
+  await builtinCardAgain.first().click()
+  await page.waitForTimeout(300)
+  if (!(await page.locator('.ms-section .ms-addflow-card', { hasText: '内置' }).first().isVisible().catch(() => false))) return
+  await page.locator('.ms-section .ms-addflow-card', { hasText: '内置' }).first().click()
+  await page.waitForTimeout(300)
+  const builtinItem = page.locator('.ms-addflow-item').first()
+  const builtinDisplayName = (await builtinItem.textContent().catch(() => ''))?.trim() ?? ''
+  await builtinItem.locator('.ms-button', { hasText: '接入' }).first().click()
+  await page.waitForTimeout(300)
+  // 窄表单零填写保存 = 目录默认态（端点/协议/清单由目录解析；保存空清单即保持目录默认）。
+  await page.locator('.ms-edit-body .ms-button-primary', { hasText: '保存并接入' }).first().click()
+  const builtinSaved = await waitFor(async () =>
+    page.locator('.ms-edit-body .ms-note-ok, .ms-edit-body .ms-note-warn', { hasText: '已保存' }).first().isVisible().catch(() => false), 8000)
+  ev.assert('V9/内置目录供应商零填写接入（目录默认态）', builtinSaved && builtinDisplayName !== '', {
+    expected: '窄表单保存回执（目录默认保持）',
+    actual: `saved=${String(builtinSaved)} name=${builtinDisplayName}`,
+  })
+  await page.locator('.ms-edit-body .ms-button', { hasText: '取消' }).first().click().catch(() => {})
+  await page.locator('.ms-section .ms-viewbar-button', { hasText: '模型清单' }).first().click()
+  await page.waitForTimeout(400)
+  const dirGroup = page.locator('.ms-model-group', { hasText: builtinDisplayName }).first()
+  const dirBadge = await dirGroup.locator('.ms-badge', { hasText: '目录默认' }).first().textContent().catch(() => null)
+  const customizeVisible = await dirGroup.locator('.ms-button', { hasText: '自定义此清单' }).first().isVisible().catch(() => false)
+  ev.assert('V9/目录默认组（组头徽章「目录默认 · N 个（只读）」+ 自定义此清单动作）', dirBadge !== null && customizeVisible, {
+    expected: '目录默认徽章 + 自定义此清单按钮',
+    actual: `badge=${String(dirBadge)} customize=${String(customizeVisible)}`,
+  })
+  await dirGroup.locator('.ms-button', { hasText: '复制到自定义清单' }).first().click()
+  const replacedToast = await waitFor(async () =>
+    page.locator('.ms-note-ok', { hasText: '目录默认已被替换' }).first().isVisible().catch(() => false), 6000)
+  const dirBadgeFlipped = await waitFor(async () =>
+    (await dirGroup.locator('.ms-badge', { hasText: '自定义清单' }).first().textContent().catch(() => null)) !== null, 6000)
+  ev.assert('V9/复制到自定义清单（整体替换语义显式提示：toast + 组徽章翻转）', replacedToast && dirBadgeFlipped, {
+    expected: '「目录默认已被替换」toast + 组徽章翻转为自定义清单',
+    actual: `toast=${String(replacedToast)} badge=${String(dirBadgeFlipped)}`,
+  })
+  // 收尾：删除内置目录供应商（无密钥引用，删除即 unset 条目；恢复目录默认的干净底座）。
+  await page.locator('.ms-section .ms-viewbar-button', { hasText: '供应商' }).first().click()
+  await page.waitForTimeout(300)
+  const builtinItemRow = page.locator('.ms-provider-item', { hasText: builtinDisplayName }).first()
+  await builtinItemRow.locator('.ms-button', { hasText: '删除供应商' }).first().click()
+  await page.waitForTimeout(300)
+  await builtinItemRow.locator('.ms-button', { hasText: '再点确认删除' }).first().click()
+  await waitFor(async () => !(await builtinItemRow.isVisible().catch(() => false)), 8000)
+
+  // 宿主托管只读组：切回模型清单视图再断言（隔离实例未登录 DeepSeek 账号时目录可能没有
+  // 托管行——存在才断言）。
+  await page.locator('.ms-section .ms-viewbar-button', { hasText: '模型清单' }).first().click()
+  await page.waitForSelector('.ms-models-toolbar', { state: 'visible', timeout: 20000 })
+  const managedGroupVisible = await page.locator('.ms-model-group .ms-source-badge-managed').first().isVisible().catch(() => false)
+  if (!managedGroupVisible) {
+    ev.notProvable('V9/宿主托管 provider 只读组：隔离实例未配置宿主托管供应商（deepseek-account/official），目录无托管行；真机已登录实例复验')
   }
 
   // ── V4 步骤 4/5：删除供应商 → 条目与 ref 均清除（无孤儿密钥）────────────────
@@ -579,39 +687,64 @@ export async function run(ctx) {
     actual: String(refGone),
   })
 
-  // ── M2 段：V5 路由编排与悬挂标注 / V6 白名单启停与清理 / V7 注册降级（可自动化子集）──
+  // ── M2 段：V5 路由卡工作台 / V6 对话流可见开关与悬挂 / V7 注册失败就地改名修复 ──
   // 断言范围（真机 D3 补全的部分逐条 notProvable 登记）：
-  //  V5（步骤 1-2 的派生 id 语义 + 步骤 9 的 G18 标注；步骤 10 需宿主「模型」分区删除
-  //    表单自动化，归 D3，见 COVERAGE）：路由视图空态 → 新建路由 →
-  //    同名二次创建不被拒、两条并存且派生 id 加序号区分 → 删第二条恢复；路由编辑器添加
-  //    成员引用 M2 供应商 → 白名单勾选后插件 Config 落盘 routes/whitelist（SC8 权威写入
-  //    的可观察事实）→ 删除成员供应商后路由视图成员行呈现「供应商已删」标注（G18）。
-  //  V6（步骤 2/3/5/6 的 Config 侧语义）：取消勾选 → whitelist 落盘移除；重新勾选 → 恢复；
-  //    删除路由 → 白名单条目转悬挂（「路由已删除」标注 + 不自动清理）；单条移除与批量
-  //    清理只移除悬挂条目；空白名单 = 全不暴露（Config whitelist 空断言；对话流选择器侧
-  //    需要 D3）。
-  //  V7：注册冲突状态条需宿主侧已有同名 taiji-route-* 适配器（隔离实例不可自然构造）与
-  //    成员不可用的对话流真实报错（需真实端点）→ notProvable，真机 D3 复验。
+  //  V5（步骤 1-2 派生 id 语义 + 步骤 9 G18 标注；步骤 10 需宿主「模型」分区删除表单自动化，
+  //    归 D3）：路由视图空态 → 新建即配置（新卡就地命名，派生 id 落盘）→ 同名二次创建不被
+  //    拒、派生 id 加序号区分 → 删第二条恢复 → 成员管线添加成员引用 m2 供应商（即时保存
+  //    落盘 routes 段）→ 拖拽排序（把手 → 目标行，move 语义成员序翻转落盘）→ 删除成员供应商
+  //    后成员行「供应商已删」标注。
+  //  V6（步骤 1/2/3/5/6 的 Config 侧语义）：对话流可见开关（role=switch，白名单 checkbox 的
+  //    语义化）勾选 → whitelist 落盘；取消 → 移除；恢复 → 重写；删除路由 → 白名单条目转悬挂
+  //    （「路由已删除」标注 + 不自动清理）；批量清理只移除悬挂条目；空白名单 = 全不暴露
+  //    （判定统一读 whitelist 段值域——readWhitelistEntries；对话流选择器侧归 D3）。
+  //  V7（就地改名修复路径的可构造形态）：物理 provider 的 key 占用 taiji-route-p-1（自定义
+  //    provider key 不拦该形态）→ 中文路由名派生 id p-1 撞宿主（DUPLICATE_ADAPTER）→ 卡头
+  //    红徽 + 修复条 → 就地改名「验证路由2」（派生 p-2，不撞）→ 警告条退场（注册自动重试
+  //    恢复）。探测侧的占用识别（快照 providers 段含 taiji-route-* 条目 = 物理占用）见
+  //    route-store probeDerived；成员不可用的对话流真实报错归 D3。
 
   const m2ProviderName = `verify-m2-${stamp}`
   const m2ProviderKey = deriveKey(m2ProviderName)
   ev.step({ step: 'model-service.m2.setup', stats: { m2ProviderName, m2ProviderKey } })
 
-  // M2 前置：创建一个供应商 + 一条模型（路由成员引用它；端点不可达不影响配置写入）。
+  // M2 前置：创建一个供应商 + 两条模型（拖拽排序需要两个可分辨的成员；端点不可达不影响配置写入）。
   if (!(await clickNav(page, '模型服务'))) return
   await openCustomAddForm(page)
   await page.locator('.ms-edit-body .ms-field', { hasText: '显示名称' }).first().locator('input').fill(m2ProviderName)
   await page.locator('.ms-edit-body .ms-field', { hasText: 'API 端点' }).first().locator('input').fill('http://127.0.0.1:9/v1')
   await page.locator('.ms-edit-body .ms-button', { hasText: '手动添加模型' }).first().click()
   await page.waitForTimeout(200)
-  await page.locator('.ms-model-edit-id').first().fill('m2-model')
-  await page.locator('.ms-model-edit-name').first().fill('M2 Model')
+  await page.locator('.ms-model-edit-id').nth(0).fill('m2-model')
+  await page.locator('.ms-model-edit-name').nth(0).fill('M2 Model')
+  await page.locator('.ms-edit-body .ms-button', { hasText: '手动添加模型' }).first().click()
+  await page.waitForTimeout(200)
+  await page.locator('.ms-model-edit-id').nth(1).fill('m2-model-2')
+  await page.locator('.ms-model-edit-name').nth(1).fill('M2 Model 2')
   await page.locator('.ms-edit-body .ms-button-primary', { hasText: '保存并接入' }).first().click()
   const m2Saved = await waitFor(() => readFileSync(patchFile, 'utf8').includes(`  ${m2ProviderKey}:`), 8000)
   ev.assert('M2 前置/供应商创建落盘', m2Saved, {
     expected: `cordis.patch.yml 出现 ${m2ProviderKey}`,
     actual: m2Saved ? '已写入' : '8s 内未出现',
   })
+
+  /** 路由卡定位：按卡头派生 id 徽章全文匹配（路由名可能互为子串，徽章全文才是身份）。 */
+  const routeCard = (id) => page.locator('.ms-route-card').filter({
+    has: page.locator('.ms-badge-catalog', { hasText: new RegExp(`^${id}$`) }),
+  }).first()
+
+  /** 新建即配置（A3）：点「+ 新建路由」追加展开态新卡 → 卡头名点击就地改名 → Enter 提交。
+   * 先等卡数自增再点卡头名（last() 在新卡未挂载时会点中既有卡——创建是 store 异步写）。 */
+  const createAndNameRoute = async (name) => {
+    const before = await page.locator('.ms-route-card').count()
+    await page.locator('.ms-routes-actions .ms-button-primary', { hasText: '新建路由' }).first().click()
+    await waitFor(async () => (await page.locator('.ms-route-card').count()) === before + 1, 6000)
+    await page.locator('.ms-route-card .ms-route-name').last().click()
+    await page.locator('.ms-route-name-input').first().fill(name)
+    await page.locator('.ms-route-name-input').first().press('Enter')
+    await waitFor(() => readFileSync(patchFile, 'utf8').includes(name), 6000)
+    await page.waitForTimeout(300)
+  }
 
   // V5 步骤 1 前半 + 空态矩阵：路由视图空态「还没有路由」。
   await page.locator('.ms-section .ms-viewbar-button', { hasText: '模型路由' }).first().click()
@@ -622,58 +755,69 @@ export async function run(ctx) {
     actual: String(routesEmpty),
   })
 
-  // V5 步骤 2：新建路由；同名二次创建不被拒、派生 id 加序号区分；删第二条恢复。
-  const newRoute = async (name) => {
-    await page.locator('.ms-routes-name').first().fill(name)
-    await page.locator('.ms-section .ms-button-primary', { hasText: '新建路由' }).first().click()
-    await waitFor(() => readFileSync(patchFile, 'utf8').includes(name), 6000)
-    await page.waitForTimeout(300)
-  }
-  await newRoute('verify-route')
-  const firstRouteVisible = await page.locator('.ms-route-item', { hasText: 'verify-route' }).first().isVisible().catch(() => false)
-  ev.assert('V5/路由创建成功（行渲染 + Config 落盘）', firstRouteVisible, {
-    expected: 'ms-route-item（verify-route）',
+  // V5 步骤 2：新建即配置（新卡就地命名）；同名二次创建不被拒、派生 id 加序号区分；删第二条恢复。
+  await createAndNameRoute('verify-route')
+  const firstRouteVisible = await routeCard('verify-route').isVisible().catch(() => false)
+  ev.assert('V5/新建卡就地命名成功（卡渲染 + Config 落盘派生 id）', firstRouteVisible, {
+    expected: 'ms-route-card（id 徽章 verify-route）',
     actual: String(firstRouteVisible),
   })
-  await newRoute('verify-route')
-  const routeItems = await page.locator('.ms-route-item').count()
-  const secondIdVisible = await page.locator('.ms-route-item', { hasText: 'verify-route-2' }).first().isVisible().catch(() => false)
-  ev.assert('V5/同名路由二次创建不被拒：两条并存且派生 id 加序号区分（决策 5）', routeItems === 2 && secondIdVisible, {
-    expected: '2 条路由，第二条 id = verify-route-2',
-    actual: `rows=${String(routeItems)} secondId=${String(secondIdVisible)}`,
+  await createAndNameRoute('verify-route')
+  const routeCards = await page.locator('.ms-route-card').count()
+  const secondIdVisible = await routeCard('verify-route-2').isVisible().catch(() => false)
+  ev.assert('V5/同名路由二次创建不被拒：两条并存且派生 id 加序号区分（决策 5）', routeCards === 2 && secondIdVisible, {
+    expected: '2 张卡，第二条 id = verify-route-2',
+    actual: `cards=${String(routeCards)} secondId=${String(secondIdVisible)}`,
   })
-  await page.locator('.ms-route-item', { hasText: 'verify-route-2' }).first().locator('.ms-button', { hasText: '删除路由' }).first().click()
-  await page.locator('.ms-route-item', { hasText: 'verify-route-2' }).first().locator('.ms-button', { hasText: '再点确认删除' }).first().click()
-  await waitFor(() => !readFileSync(patchFile, 'utf8').includes('verify-route-2'), 6000)
-  ev.step({ step: 'v5.derivedId', stats: { routeItems, secondIdVisible } })
-
-  // V5 步骤 3 前置：路由编辑器添加成员（引用 m2 供应商 + 模型）并保存。
-  const routeItem = page.locator('.ms-route-item', { hasText: 'verify-route' }).first()
-  await routeItem.locator('.ms-button', { hasText: '编辑路由' }).first().click()
+  // 删第二条：切换选中（verify-route 卡编辑成员）→ verify-route-2 卡收起露卡脚 → 两段确认。
+  await routeCard('verify-route').locator('.ms-button', { hasText: '编辑成员' }).first().click()
   await page.waitForTimeout(300)
-  const editor = page.locator('.ms-route-editor').first()
-  await editor.locator('.ms-button', { hasText: '添加成员' }).first().click()
+  await routeCard('verify-route-2').locator('.ms-button', { hasText: '删除路由' }).first().click()
   await page.waitForTimeout(200)
-  const providerSelect = editor.locator('.ms-select[aria-label="成员供应商"]').first()
+  await routeCard('verify-route-2').locator('.ms-button', { hasText: '再点确认删除' }).first().click()
+  await waitFor(() => !readFileSync(patchFile, 'utf8').includes('verify-route-2'), 6000)
+  ev.step({ step: 'v5.derivedId', stats: { routeCards, secondIdVisible } })
+
+  // V5 成员管线（即时保存语义）：verify-route 卡已选中 → 添加成员（默认 = 首个已接入供应商
+  // 首模型）→ 第二个成员选 m2-model-2 → routes 段落盘。
+  const routeBody = routeCard('verify-route').locator('.ms-route-card-body')
+  await routeBody.locator('.ms-button', { hasText: '添加成员' }).first().click()
+  await page.waitForTimeout(200)
+  const providerSelect = routeBody.locator('.ms-select[aria-label="成员供应商"]').first()
   await providerSelect.selectOption({ label: m2ProviderName }).catch(async () => {
     // selectOption 按 label 兜底失败时按 value（provider key）再试。
     await providerSelect.selectOption(m2ProviderKey)
   })
-  const modelSelect = editor.locator('.ms-select[aria-label="成员模型"]').first()
-  await modelSelect.selectOption('m2-model').catch(() => {})
-  await editor.locator('.ms-button-primary', { hasText: '保存并接入' }).first().click()
   const routeSaved = await waitFor(() => readFileSync(patchFile, 'utf8').includes('m2-model'), 6000)
-  ev.assert('V5/路由成员保存落盘（成员引用物理 provider/model）', routeSaved, {
+  ev.assert('V5/成员管线即时保存落盘（成员引用物理 provider/model）', routeSaved, {
     expected: '插件 Config routes 段出现成员 m2-model',
     actual: routeSaved ? '已写入' : '6s 内未出现',
   })
+  await routeBody.locator('.ms-button', { hasText: '添加成员' }).first().click()
+  await page.waitForTimeout(200)
+  const modelSelect1 = routeBody.locator('.ms-select[aria-label="成员模型"]').nth(1)
+  await modelSelect1.selectOption('m2-model-2').catch(() => {})
+  await waitFor(() => readFileSync(patchFile, 'utf8').includes('m2-model-2'), 6000)
 
-  // V5 步骤 3 + V6 步骤 1：白名单勾选 → Config whitelist 落盘（SC8 权威语义）。
-  await page.locator('.ms-route-item', { hasText: 'verify-route' }).first().locator('.ms-check input[type="checkbox"]').first().check()
+  // V5 拖拽排序（定稿 A2）：把手 → 目标行 dragTo，move 语义翻转成员序并即时落盘。
+  const memberModelsBefore = readRouteMemberModels(readFileSync(patchFile, 'utf8'), 'verify-route')
+  await routeBody.locator('.ms-drag-handle').first().dragTo(routeBody.locator('.ms-route-member-row').nth(1))
+  const dragFlipped = await waitFor(() => {
+    const models = readRouteMemberModels(readFileSync(patchFile, 'utf8'), 'verify-route')
+    return models.length === 2 && models[0] === memberModelsBefore[1] && models[1] === memberModelsBefore[0]
+  }, 6000)
+  ev.assert('V5/成员拖拽排序落盘（move 语义翻转成员序）', dragFlipped, {
+    expected: `成员序 ${JSON.stringify([memberModelsBefore[1], memberModelsBefore[0]])}`,
+    actual: `before=${JSON.stringify(memberModelsBefore)} flipped=${String(dragFlipped)}`,
+  })
+
+  // V6 步骤 1：对话流可见开关（role=switch）勾选 → Config whitelist 落盘（SC8 权威语义）。
+  const visibleSwitch = routeCard('verify-route').locator('input[role="switch"]').first()
+  await visibleSwitch.check()
   // 判定对象 = whitelist 字段的值（readWhitelistEntries 提取）——全文件 includes('verify-route')
   // 会被 routes 段路由 id/name 结构性命中，勾没勾都绿，属无效验证。
   const whitelistWritten = await waitFor(() => (readWhitelistEntries(readFileSync(patchFile, 'utf8')) ?? []).includes('verify-route'), 6000)
-  ev.assert('V6/白名单勾选落盘（whitelist 含 verify-route）', whitelistWritten, {
+  ev.assert('V6/对话流可见开关勾选落盘（whitelist 含 verify-route）', whitelistWritten, {
     expected: '插件 Config whitelist 段出现 verify-route',
     actual: String(whitelistWritten),
   })
@@ -682,51 +826,110 @@ export async function run(ctx) {
     const emptyVisible = await page.locator('.ms-empty-title', { hasText: '已配置路由，但白名单还没有勾选' }).first().isVisible().catch(() => false)
     return !emptyVisible
   }, 6000)
-  ev.assert('V6/有路由未勾白名单的空态指向在勾选后消失', emptyMatrixGone, {
+  ev.assert('V6/有路由未勾可见开关的空态指向在勾选后消失', emptyMatrixGone, {
     expected: 'routes.emptyNotWhitelisted 空态退场',
     actual: String(emptyMatrixGone),
   })
 
-  // V6 步骤 2/3：取消勾选 → whitelist 移除；重新勾选 → 恢复（Config 侧启停语义）。
-  await page.locator('.ms-route-item', { hasText: 'verify-route' }).first().locator('.ms-check input[type="checkbox"]').first().uncheck()
-  // 取消勾选只写 whitelist 字段、不删 routes：routes 段路由 id/name 永含 verify-route 文本、
-  // whitelist 键空数组形态也永在——原全 section 文本两分支结构性恒 false（勾没勾都红）。
-  // 判定对象改为 whitelist 值：值为空数组或不含 verify-route 才算移除。
+  // V6 步骤 2/3：取消 → whitelist 移除；重新勾选 → 恢复（Config 侧启停语义）。
+  await visibleSwitch.uncheck()
   const whitelistCleared = await waitFor(() => {
     const entries = readWhitelistEntries(readFileSync(patchFile, 'utf8'))
     return entries !== null && !entries.includes('verify-route')
   }, 6000)
-  ev.assert('V6/取消勾选即从白名单移除（Config 侧）', whitelistCleared, {
+  ev.assert('V6/取消对话流可见即从白名单移除（Config 侧）', whitelistCleared, {
     expected: 'whitelist 不再含 verify-route',
     actual: String(whitelistCleared),
   })
-  // 重新勾选（AF-1-1 纵深加固）：先等 UI 呈现上一步取消勾选的真值（isChecked()=false）再点
-  // ——弹回窗口内 checkbox 仍是勾选态时 check() 对已勾选元素立即返回不点击（playwright
-  // check() 官方契约），写入静默丢失；消除对 UI 同步时序的隐式依赖，防 no-op 回归。
-  const whitelistCheckbox = page.locator('.ms-route-item', { hasText: 'verify-route' }).first().locator('.ms-check input[type="checkbox"]').first()
-  const uncheckedSettled = await waitFor(async () => !(await whitelistCheckbox.isChecked().catch(() => false)), 6000)
-  ev.assert('V6/重新勾选前 UI 已呈现未勾选态（取消勾选在界面生效）', uncheckedSettled, {
-    expected: 'checkbox isChecked() = false',
+  // 重新勾选（AF-1-1 纵深加固）：先等 UI 呈现上一步取消的真值（isChecked()=false）再点
+  // ——弹回窗口内开关仍是勾选态时 check() 对已勾选元素立即返回不点击（playwright check()
+  // 官方契约），写入静默丢失；消除对 UI 同步时序的隐式依赖，防 no-op 回归。
+  const uncheckedSettled = await waitFor(async () => !(await visibleSwitch.isChecked().catch(() => false)), 6000)
+  ev.assert('V6/重新勾选前 UI 已呈现未勾选态（取消在界面生效）', uncheckedSettled, {
+    expected: 'switch isChecked() = false',
     actual: String(uncheckedSettled),
   })
-  await whitelistCheckbox.check()
-  // 勾选后确认落盘（619 行同款判定）：不等落盘就进删除流程会让悬挂断言吃进写入竞态。
+  await visibleSwitch.check()
+  // 勾选后确认落盘：不等落盘就进后续删除流程会让悬挂断言吃进写入竞态。
   const whitelistRestored = await waitFor(() => (readWhitelistEntries(readFileSync(patchFile, 'utf8')) ?? []).includes('verify-route'), 6000)
   ev.assert('V6/重新勾选落盘（whitelist 恢复含 verify-route）', whitelistRestored, {
     expected: 'whitelist 恢复含 verify-route',
     actual: String(whitelistRestored),
   })
 
-  // V5 步骤 9（G18）：删除成员供应商 → 路由视图成员行「供应商已删」标注 + 白名单条目转悬挂。
+  // V7：注册失败就地改名修复（可构造形态 = 物理 provider 占用 taiji-route-p-1）。
+  // 先建占用供应商：自定义全表单，显示名 taiji-route-p-1（派生 key 即占用形态）+ 一条模型。
   if (!(await clickNav(page, '模型服务'))) return
-  // 前段 V6 在模型路由视图操作；分区保持挂载时 nav 重击当前分区不重置内部视图——显式切回
-  // 供应商视图再走删除流程。
   await page.locator('.ms-section .ms-viewbar-button', { hasText: '供应商' }).first().click().catch(() => {})
+  await page.waitForTimeout(300)
+  await openCustomAddForm(page)
+  await page.locator('.ms-edit-body .ms-field', { hasText: '显示名称' }).first().locator('input').fill('taiji-route-p-1')
+  await page.locator('.ms-edit-body .ms-field', { hasText: 'API 端点' }).first().locator('input').fill('http://127.0.0.1:9/v1')
+  await page.locator('.ms-edit-body .ms-button', { hasText: '手动添加模型' }).first().click()
+  await page.waitForTimeout(200)
+  await page.locator('.ms-model-edit-id').first().fill('squat-model')
+  await page.locator('.ms-edit-body .ms-button-primary', { hasText: '保存并接入' }).first().click()
+  const squatSaved = await waitFor(() => readFileSync(patchFile, 'utf8').includes('  taiji-route-p-1:'), 8000)
+  ev.assert('V7/占用供应商落盘（物理 provider key = taiji-route-p-1）', squatSaved, {
+    expected: 'providers.taiji-route-p-1 出现在设置文档（taiji-route-* 适配器被物理 provider 占用）',
+    actual: squatSaved ? '已写入' : '8s 内未出现',
+  })
+
+  // 中文路由名 → 派生 id p-1（deriveProviderKey 非 ASCII 序号回落）→ 撞占用 → 注册失败。
+  await page.locator('.ms-section .ms-viewbar-button', { hasText: '模型路由' }).first().click()
+  await page.waitForTimeout(400)
+  await createAndNameRoute('验证路由')
+  // 卡头红徽 + 修复条是异步探测派生（注册链路 volatile-update + store 探测 RPC），走 waitFor。
+  const failedRoute = routeCard('p-1')
+  const fixStripShown = await waitFor(async () =>
+    failedRoute.locator('.ms-route-fix').isVisible().catch(() => false), 10000)
+  const failedBadgeShown = await failedRoute.locator('.ms-badge-missing', { hasText: '注册失败' }).first().isVisible().catch(() => false)
+  ev.assert('V7/派生 id 撞宿主：卡头红徽（注册失败）+ 卡内修复条（原因 + 恢复指引 + 就地改名）', fixStripShown && failedBadgeShown, {
+    expected: 'route.registrationFailed 文案 + 注册失败徽章 + ms-route-fix 在场',
+    actual: `fix=${String(fixStripShown)} badge=${String(failedBadgeShown)}`,
+  })
+
+  // 就地改名修复：修复条内输入新名（验证路由2 → 派生 p-2，不撞占用）→ 改名并重试 →
+  // 白名单迁移 + 注册自动重试 → 警告条退场。
+  await page.locator('.ms-route-fix input').first().fill('验证路由2')
+  await page.locator('.ms-route-fix .ms-button', { hasText: '改名并重试' }).first().click()
+  const fixedRoute = routeCard('p-2')
+  const fixStripGone = await waitFor(async () => {
+    const cardVisible = await fixedRoute.isVisible().catch(() => false)
+    const stripVisible = await fixedRoute.locator('.ms-route-fix').isVisible().catch(() => false)
+    return cardVisible && !stripVisible
+  }, 10000)
+  ev.assert('V7/就地改名后警告条退场（新 id 重派生 + 注册自动重试恢复）', fixStripGone, {
+    expected: '卡以新 id p-2 在场且修复条退场',
+    actual: String(fixStripGone),
+  })
+
+  // V7 收尾清理：删除占用供应商与改名路由（不带走 whitelist 底座——p-2 路由未勾选）。
+  await page.locator('.ms-section .ms-viewbar-button', { hasText: '供应商' }).first().click()
+  await page.waitForTimeout(300)
+  const squatItem = page.locator('.ms-provider-item', { hasText: 'taiji-route-p-1' }).first()
+  await squatItem.locator('.ms-button', { hasText: '删除供应商' }).first().click()
+  await page.waitForTimeout(300)
+  await squatItem.locator('.ms-button', { hasText: '再点确认删除' }).first().click()
+  await waitFor(() => !readFileSync(patchFile, 'utf8').includes('  taiji-route-p-1:'), 8000)
+  await page.locator('.ms-section .ms-viewbar-button', { hasText: '模型路由' }).first().click()
+  await page.waitForTimeout(300)
+  // p-2 卡当前是选中态（改名后跟随选中）——先切换选中态收起它（点自身编辑成员 = toggle 收起），
+  // 卡脚的删除路由入口才在场；两段确认删除。
+  await fixedRoute.locator('.ms-button', { hasText: '编辑成员' }).first().click()
+  await page.waitForTimeout(300)
+  await fixedRoute.locator('.ms-button', { hasText: '删除路由' }).first().click()
+  await page.waitForTimeout(200)
+  await fixedRoute.locator('.ms-button', { hasText: '再点确认删除' }).first().click()
+  await waitFor(() => !readFileSync(patchFile, 'utf8').includes('验证路由2'), 6000)
+
+  // V5 步骤 9（G18）：删除成员供应商 → 路由成员行「供应商已删」标注（白名单条目转悬挂见 V6 步骤 4）。
+  await page.locator('.ms-section .ms-viewbar-button', { hasText: '供应商' }).first().click()
   await page.waitForTimeout(300)
   const m2Item = page.locator('.ms-provider-item', { hasText: m2ProviderName }).first()
   await m2Item.locator('.ms-button', { hasText: '删除供应商' }).first().click()
   // 删除前警告断言（D3 接线：requestDelete 经 routeReferencesOf 计算 → 确认区列出受影响路由；
-  // 该删除是场景内唯一被路由引用供应商的删除点，verify-route 成员在上方编辑器已引用 m2 供应商）。
+  // 该删除是场景内唯一被路由引用供应商的删除点，verify-route 成员在成员管线已引用 m2 供应商）。
   const routeWarnVisible = await waitFor(async () => {
     const warn = m2Item.locator('.ms-note-warn', { hasText: '被路由引用' }).first()
     const visible = await warn.isVisible().catch(() => false)
@@ -745,16 +948,18 @@ export async function run(ctx) {
   // 固定 600ms 后单次读 DOM 在删除传播链偏慢时假红（a-model-service-20261111230104 实测：
   // 删除前警告 waitFor 轮询 6s 内绿，徽章在固定 600ms 处缺席）。
   const providerMissingBadge = await waitFor(async () =>
-    page.locator('.ms-route-member .ms-badge-missing', { hasText: '供应商已删' }).first().isVisible().catch(() => false), 6000)
+    page.locator('.ms-route-member-row .ms-badge-missing', { hasText: '供应商已删' }).first().isVisible().catch(() => false), 6000)
   ev.assert('V5 步骤 9/成员行可用性标注（供应商已删，G18）', providerMissingBadge, {
-    expected: 'ms-badge-missing「供应商已删」（路由成员行）',
+    expected: 'ms-badge-missing「供应商已删」（成员管线行内常显）',
     actual: String(providerMissingBadge),
   })
 
-  // V6 步骤 4 前半：删除唯一路由 → 白名单条目转悬挂（「路由已删除」标注，不自动清理）。
-  const routeRow = page.locator('.ms-route-item', { hasText: 'verify-route' }).first()
-  await routeRow.locator('.ms-button', { hasText: '删除路由' }).first().click()
-  await routeRow.locator('.ms-button', { hasText: '再点确认删除' }).first().click()
+  // V6 步骤 4 前半：删除唯一白名单路由 → 白名单条目转悬挂（「路由已删除」标注，不自动清理）。
+  // verify-route 卡在此前未选中（V7 收尾只动 p-2 卡）——卡脚删除入口直接在场。
+  const verifyCard = routeCard('verify-route')
+  await verifyCard.locator('.ms-button', { hasText: '删除路由' }).first().click()
+  await page.waitForTimeout(200)
+  await verifyCard.locator('.ms-button', { hasText: '再点确认删除' }).first().click()
   await waitFor(async () => {
     const visible = await page.locator('.ms-hanging .ms-badge-missing', { hasText: '路由已删除' }).first().isVisible().catch(() => false)
     return visible
@@ -787,9 +992,8 @@ export async function run(ctx) {
     actual: String(blankWhitelist),
   })
 
-  // V7 可达子集收尾：注册冲突状态条与对话流真实报错需宿主同名适配器 / 真实端点，归 D3。
+  // V7 可达子集收尾：对话流真实报错需真实端点，归 D3（注册失败形态已按上方可构造路径覆盖）。
   ev.notProvable('V7 步骤 1-5（成员不可用的对话流具体失败 + 物理模型对照）：发消息需要真实可用端点，归 D3 真机；成员不可用的机制终结形态由 index.test.ts 假上游单测覆盖（ROUTE_MEMBER_UNAVAILABLE 保留原始码与 cause）')
-  ev.notProvable('V7 步骤 6（注册冲突状态条 ROUTE_REGISTRATION_FAILED）：需宿主已注册同名 taiji-route-* 适配器，隔离实例不可自然构造；状态条渲染与探测判定（route-store registrationFailed）由单测与 D3 复验')
 
   ev.attach('console.txt', recorder.text())
 }
