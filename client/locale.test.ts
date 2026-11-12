@@ -153,6 +153,38 @@ describe('模型服务分区双语字典（u-foundation 骨架 + M1 填充 + M2 
     expect(modelServiceZh['models.fieldMissing']).toBe('未提供')
   })
 
+  it('添加流程 / 窄表单 / 思考档位词条（供应商接入交互重设计）', () => {
+    // 添加流程两卡与内置候选列表
+    expect(modelServiceZh['addflow.builtinTitle']).toBe('接入内置供应商')
+    expect(modelServiceZh['addflow.builtinNote']).toContain('内置目录')
+    expect(modelServiceZh['addflow.customTitle']).toBe('接入自定义供应商')
+    expect(modelServiceZh['addflow.pickTitle']).toBe('选择内置供应商')
+    expect(modelServiceZh['addflow.connect']).toBe('接入')
+    // 窄表单说明条
+    expect(modelServiceZh['provider.narrowNote']).toContain('内置目录')
+    // 思考档位（7 档词表的界面文案 + 自定义档校验提示）
+    expect(modelServiceZh['model.thinkingLevels']).toBe('思考档位')
+    expect(modelServiceZh['model.thinkingEnabled']).toBe('支持思考')
+    expect(modelServiceZh['model.thinkingPreserved']).toBe('既有值原样保留')
+    expect(modelServiceZh['model.levelInvalid']).toContain('off')
+    expect(modelServiceZh['thinking.level.off']).toBe('关闭')
+    expect(modelServiceZh['thinking.level.minimal']).toBe('极简')
+    expect(modelServiceZh['thinking.level.low']).toBe('低')
+    expect(modelServiceZh['thinking.level.medium']).toBe('中')
+    expect(modelServiceZh['thinking.level.high']).toBe('高')
+    expect(modelServiceZh['thinking.level.xhigh']).toBe('超高')
+    expect(modelServiceZh['thinking.level.max']).toBe('最高')
+    // 旧三档策略按钮词条已删（死词条清理）
+    expect('thinking.all' in modelServiceZh).toBe(false)
+    expect('thinking.on-off' in modelServiceZh).toBe(false)
+    expect('thinking.high-max' in modelServiceZh).toBe(false)
+    expect('thinking.none' in modelServiceZh).toBe(false)
+    expect('thinking.all' in modelServiceEn).toBe(false)
+    expect('thinking.on-off' in modelServiceEn).toBe(false)
+    expect('thinking.high-max' in modelServiceEn).toBe(false)
+    expect('thinking.none' in modelServiceEn).toBe(false)
+  })
+
   it('installModelServiceLocale 经 ctx.effect 注册独立命名空间 taiji.model-service', () => {
     const registrations: { ns: string; dicts: Record<string, unknown> }[] = []
     const effects: (() => (() => void) | void)[] = []

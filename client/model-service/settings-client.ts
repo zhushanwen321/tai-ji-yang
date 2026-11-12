@@ -125,6 +125,13 @@ export type RefCheckResult = { ok: true } | { ok: false; branch: 'a' | 'b' }
  */
 export type HostProviderProfile = Record<string, unknown>
 
+/**
+ * 宿主 THINKING_LEVELS 词表（7 档，桌面 0.2.2 asar 内 dsh-llm-pi-ai/lib/index.js 实读）：
+ * reasoningEfforts 字典的值（wire 拼写）必须落在此词表内，键名（用户可见档名）由本插件
+ * 自由定义、但同名映射形态下键 = 值 = 档名，因此档位选择只在本词表内进行。
+ */
+export const THINKING_LEVELS: readonly string[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+
 /** 一条模型条目的编辑草案（模型编辑表单 ↔ 宿主 models[] 条目的映射载体）。 */
 export interface ModelDraft {
   id: string
@@ -132,15 +139,22 @@ export interface ModelDraft {
   contextWindow: number | undefined
   maxTokens: number | undefined
   input: ('text' | 'image')[]
+  /** 思考开关：true = 按 levels 逐档同名映射写 reasoningEfforts 字典；false = 写 false（非思考模型）。 */
+  thinkingEnabled: boolean
+  /** 已声明档位集合（元素 ∈ THINKING_LEVELS，自由组合；写盘 {level: level}，全集 = 七档逐档）。 */
+  levels: string[]
   /**
-   * 思考策略（D6 三档映射 + 无思考）：all = 全档位 / on-off = 开·关 / high-max = 高·最高 /
-   * none = 非思考模型 / preserve = 既有条目的 reasoningEfforts 不匹配三档形态时的原样保留态
-   * （读改写逐字写回，用户未编辑推理档位不产生 models diff——D3「只替换用户本次编辑的字段」
-   * 的保真形态；不可被用户主动选择，点任一策略按钮即覆盖）。
+   * preserve 态：既有 reasoningEfforts 非「false / 键值同名映射字典」的其他一切形态
+   * （值≠键的字典、省略字段、未知结构）——原样保留、写回逐字透传，不静默改写宿主权威数据
+   * （D3 读改写保真）；用户在 preserve 态勾选思考或点任一档位即转自由选集（preserve 翻 false）。
    */
-  thinkingStrategy: 'all' | 'on-off' | 'high-max' | 'none' | 'preserve'
+  preserve: boolean
   /** preserve 态携带的原始 reasoningEfforts 值（写回逐字透传；undefined = 既有条目省略该字段，写回同样省略）。 */
-  reasoningEffortsRaw?: unknown
+  preserveRaw?: unknown
+  /** 显示名已被用户手动编辑（草稿态标志，不入宿主写盘）：false 时显示名跟随 id 经 prettifyId 自动生成。 */
+  nameEdited?: boolean
+  /** 自定义档输入的草稿值（UI 态，不入宿主写盘；仅驱动行内校验提示的显隐）。 */
+  levelInput?: string
 }
 
 /** 供应商编辑草案（展开体表单的提交形态）。 */
@@ -149,6 +163,12 @@ export interface ProviderDraft {
   key: string
   /** 是否新建（决定预检与 ops 形态：新建整条 set / 编辑字段级 diff）。 */
   isNew: boolean
+  /**
+   * 窄表单（内置目录型的接入与编辑）：API 端点、协议、显示名与 compat 由内置目录解析，
+   * 四者均不进写入面（新建整条 set 不写这些字段；编辑 diff 不对它们发 op，宿主侧既有值
+   * 原样保留）。窄表单的 key = 目录 route 本身，不做显示名派生。
+   */
+  narrow: boolean
   displayName: string
   baseURL: string
   api: string
@@ -183,6 +203,13 @@ export const MODEL_DECLARED_FIELDS: readonly string[] = [
  * 读改写后原样保留，V1 步骤 10 的「不丢插件写入的字段」由此成立）。
  */
 const EDITABLE_PROFILE_FIELDS: readonly string[] = ['displayName', 'api', 'baseURL', 'models', 'compat']
+
+/**
+ * 窄表单（内置目录型）的 diff 字段集：只 models。displayName/api/baseURL 由目录解析
+ * （跳过 diff，宿主侧既有值原样保留）；compat 编辑面未在窄表单渲染、草案不携带用户编辑，
+ * 跳过 diff 防止按非本次编辑的草稿值（协议 gate 过滤后的存量底）误清宿主既有 compat。
+ */
+const NARROW_EDITABLE_PROFILE_FIELDS: readonly string[] = ['models']
 
 /** 宿主 llm-pi-ai 命名空间快照（展开体打开时读入；revision 随之持有）。 */
 export interface LlmPiAiSnapshot {
@@ -234,17 +261,20 @@ export async function listRegisteredRoutes(llm: LlmRemoteLike): Promise<string[]
 /**
  * 草案 → 宿主 profile 值（新 provider 的整条写入值）。
  *
- * 字段集刻意收窄到本表单拥有的面（displayName/api/baseURL/models + 协议可用时的 compat）：
- * 不写宿主 schema 的其余字段（缺省 = 宿主按默认值/目录能力解析），不写 apiKeyEnv 之外的
- * 任何凭据形态字段。apiKeyEnv 按 D7 只存 ref 名——由 saveProvider 在新建带密钥保存时传入
+ * 全表单：字段集刻意收窄到本表单拥有的面（displayName/api/baseURL/models + 协议可用时的
+ * compat）；窄表单（内置目录型）：displayName/api/baseURL 不写（端点、协议、显示名由内置
+ * 目录解析，缺省 = 宿主按目录解析）。两者均不写宿主 schema 的其余字段、不写 apiKeyEnv 之外
+ * 的任何凭据形态字段。apiKeyEnv 按 D7 只存 ref 名——由 saveProvider 在新建带密钥保存时传入
  * 派生 ref（不传 = 不写，编辑流的字段级 diff 永不触碰它）。models 条目按宿主 modelProfile
- * 形状逐字段写；思考策略按 D6 映射成 reasoningEfforts 字典或 false（AS15 已核对宿主校验规则）。
+ * 形状逐字段写；思考档位按已声明档位集合映射成 reasoningEfforts 字典或 false（AS15 已核对
+ * 宿主校验规则）。
  */
 export function profileFromDraft(draft: ProviderDraft, apiKeyEnv?: string): HostProviderProfile {
-  const profile: HostProviderProfile = {
-    displayName: draft.displayName,
-    api: draft.api,
-    baseURL: draft.baseURL,
+  const profile: HostProviderProfile = {}
+  if (!draft.narrow) {
+    profile.displayName = draft.displayName
+    profile.api = draft.api
+    profile.baseURL = draft.baseURL
   }
   if (apiKeyEnv !== undefined) profile.apiKeyEnv = apiKeyEnv
   // 目录默认态（草案空清单）不写 models：缺省 = 宿主按目录模型解析（保持目录默认语义的
@@ -254,42 +284,101 @@ export function profileFromDraft(draft: ProviderDraft, apiKeyEnv?: string): Host
   return profile
 }
 
-/** 模型草案 → 宿主 models[] 条目（D6 思考策略映射表，宿主 THINKING_LEVELS 全集逐档）。 */
+/** 模型草案 → 宿主 models[] 条目（思考档位按已声明档位集合映射，宿主 THINKING_LEVELS 词表）。 */
 export function modelFromDraft(draft: ModelDraft): HostProviderProfile {
   const entry: HostProviderProfile = { id: draft.id, name: draft.name }
   if (draft.contextWindow !== undefined) entry.contextWindow = draft.contextWindow
   if (draft.maxTokens !== undefined) entry.maxTokens = draft.maxTokens
   entry.input = [...draft.input]
-  if (draft.thinkingStrategy === 'none') {
-    entry.reasoningEfforts = false
-  } else if (draft.thinkingStrategy === 'preserve') {
-    // 原样保留（D3 读改写保真）：非三档形态的既有值逐字写回（不改写宿主权威数据）；
+  if (draft.preserve) {
+    // 原样保留（D3 读改写保真）：preserve 态的既有值逐字写回（不改写宿主权威数据）；
     // undefined = 既有条目省略该字段，写回同样省略（宿主语义 = 沿用安装目录能力）。
-    if (draft.reasoningEffortsRaw !== undefined) entry.reasoningEfforts = draft.reasoningEffortsRaw
+    if (draft.preserveRaw !== undefined) entry.reasoningEfforts = draft.preserveRaw
+  } else if (!draft.thinkingEnabled) {
+    entry.reasoningEfforts = false
   } else {
-    // wire spelling 按 pi-ai 协议 spelling（level 名本身即 wire 词形；off 带值合法——
-    // resolveModelReasoning「off with a value sends that value」）。
-    entry.reasoningEfforts = thinkingEffortsOf(draft.thinkingStrategy)
+    // 已声明档位集合逐档同名映射（键 = 值 = 档名；off 带值合法——resolveModelReasoning
+    // 「off with a value sends that value」；全集七档即历史「全部档位」的写盘形态）。
+    entry.reasoningEfforts = levelsToEfforts(draft.levels)
   }
   return entry
 }
 
-/** D6 三档映射：全部档位 = THINKING_LEVELS 全集逐档；开·关 / 高·最高 = 声明子集，未声明档不写键。 */
-export function thinkingEffortsOf(strategy: Exclude<ModelDraft['thinkingStrategy'], 'none'>): Record<string, string> {
-  if (strategy === 'on-off') return { off: 'off', high: 'high' }
-  if (strategy === 'high-max') return { off: 'off', high: 'high', max: 'xhigh' }
-  return { off: 'off', minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' }
+/**
+ * 已声明档位集合 → reasoningEfforts 字典（逐档同名映射）：键 = 用户可见档名，值 = wire 拼写
+ * （档名本身即 wire 词形，均 ∈ THINKING_LEVELS 词表——自由键名会写出宿主不接受的 wire 值）。
+ */
+export function levelsToEfforts(levels: readonly string[]): Record<string, string> {
+  return Object.fromEntries(levels.map((level) => [level, level]))
+}
+
+/**
+ * 模型 id → 显示名（自动生成的唯一来源）：按 `-` 切割换空格；全部段均不含大写字母时每段
+ * 首字母大写化（`my-model-v1` → `My Model V1`）；任一段含大写则整体只换连字符、保持原
+ * 大小写（`GLM-5.3` → `GLM 5.3` 这类大小写即词形的 id 不被改写）。
+ */
+export function prettifyId(id: string): string {
+  const segments = id.split('-')
+  if (segments.some((segment) => /[A-Z]/.test(segment))) return segments.join(' ')
+  return segments
+    .map((segment) => (segment === '' ? '' : segment.charAt(0).toUpperCase() + segment.slice(1)))
+    .join(' ')
+}
+
+/**
+ * 存量 models[] 条目 → 编辑草案（未知字段不进草案——它们由字段级 diff 之外的读改写保留面保证）。
+ *
+ * reasoningEfforts 归档（D3 读改写保真）：显式 false → 非思考（写回 false 与既有值一致）；
+ * 键值完全同名的字典 → 已声明档位集合（自由组合进 badge 交互，写回同名映射逐字一致）；
+ * 其他一切形态（值≠键的字典、省略字段、未知结构）→ preserve 原样保留态（草案携带原始值，
+ * 写回逐字透传，不静默改写宿主权威数据——宿主「模型」分区可写任意 THINKING_LEVELS 组合
+ * 与键名，非同名形态可达）。
+ */
+export function modelToDraft(model: Record<string, unknown>): ModelDraft {
+  const efforts = model.reasoningEfforts
+  let thinkingEnabled = false
+  let levels: string[] = []
+  let preserve = false
+  let preserveRaw: unknown
+  if (efforts === false) {
+    thinkingEnabled = false // 写回 false，与既有值一致（无损）
+  } else if (isRecord(efforts) && isSameNameEfforts(efforts)) {
+    thinkingEnabled = true
+    levels = Object.keys(efforts)
+  } else {
+    // 非 false、非同名映射字典（含 off 值为空串等值≠键的字典）、省略该字段（宿主语义 =
+    // 沿用目录能力）或其他未知形态：原样保留，写回逐字透传。
+    preserve = true
+    preserveRaw = efforts
+  }
+  return {
+    id: typeof model.id === 'string' ? model.id : '',
+    name: typeof model.name === 'string' ? model.name : '',
+    contextWindow: typeof model.contextWindow === 'number' ? model.contextWindow : undefined,
+    maxTokens: typeof model.maxTokens === 'number' ? model.maxTokens : undefined,
+    input: Array.isArray(model.input) ? model.input.filter((item): item is 'text' | 'image' => item === 'text' || item === 'image') : [],
+    thinkingEnabled,
+    levels,
+    preserve,
+    ...(preserveRaw !== undefined ? { preserveRaw } : {}),
+  }
+}
+
+/** reasoningEfforts 字典的「键值完全同名」判定（归档为已声明档位集合的判据）。 */
+function isSameNameEfforts(efforts: Record<string, unknown>): boolean {
+  return Object.entries(efforts).every(([key, value]) => value === key)
 }
 
 /**
  * 读改写的 ops（编辑既有 provider）：顶层字段级 diff——只对「本表单可编辑且值确实变了」的
  * 字段发 set op；draft 里删除的字段（如 compat 清空）发 unset op。apiKeyEnv 与清单外字段
- * 永不出现在 ops 里（宿主侧既有值原样保留）。
+ * 永不出现在 ops 里（宿主侧既有值原样保留）。窄表单只 diff models（NARROW_EDITABLE_PROFILE_FIELDS）。
  */
 export function profileDiffOps(existing: HostProviderProfile, draft: ProviderDraft, key: string): SettingsOp[] {
   const next = profileFromDraft(draft)
+  const fields = draft.narrow ? NARROW_EDITABLE_PROFILE_FIELDS : EDITABLE_PROFILE_FIELDS
   const ops: SettingsOp[] = []
-  for (const field of EDITABLE_PROFILE_FIELDS) {
+  for (const field of fields) {
     const before = existing[field]
     const after = next[field]
     if (after === undefined) {
@@ -331,8 +420,10 @@ export interface SaveProviderParams {
 export async function saveProvider(host: ModelServiceHost, params: SaveProviderParams): Promise<SaveProviderResult> {
   const { draft, revision, existing, refGuard } = params
 
-  // ① provider key 预检：仅新建（编辑时 key 就是既有 route 本身，查重必然自命中）。
-  if (draft.isNew) {
+  // ① provider key 预检：仅新建的全表单（编辑时 key 就是既有 route 本身，查重必然自命中；
+  // 窄表单新建的 key = 内置目录 route——该 route 已由 pi-ai 目录注册，预检必然撞名，而窄表单
+  // 的意图恰是为既有目录 route 写配置而非注册新 route，跳过预检）。
+  if (draft.isNew && !draft.narrow) {
     const routes = await listRegisteredRoutes(host.llm)
     if (checkRouteConflict(draft.key, routes)) {
       return { kind: 'refused-route', message: `provider key「${draft.key}」与已注册 route 同名，请更换显示名后保存` }

@@ -348,6 +348,7 @@
   border-bottom: 0.5px dashed var(--dsw-alias-border-l1);
 }
 
+/* 模型卡：id / 显示名 / 上下文 三列一行，最大输出随后；模态与档位组窄屏折行到下一行。 */
 .ms-model-edit {
   display: flex;
   flex: 1;
@@ -356,40 +357,205 @@
   align-items: center;
 }
 
-.ms-model-edit-id { width: 150px; }
-.ms-model-edit-name { width: 150px; }
-.ms-model-edit-context { width: 90px; }
+.ms-model-edit-id { width: 170px; }
+.ms-model-edit-name { width: 170px; }
+.ms-model-edit-context { width: 110px; }
+.ms-model-edit-context-custom { width: 110px; }
 .ms-model-edit-max { width: 90px; }
 
+/* 输入模态 chip（文本/图像多选点选；选中态 = 主题 token 派生）。 */
 .ms-model-edit-modalities {
   display: inline-flex;
-  gap: 8px;
+  gap: 4px;
+  align-items: center;
 }
 
-.ms-model-edit-thinking {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-layer-1);
-}
-
-.ms-segment {
+.ms-chip {
   appearance: none;
-  border: none;
+  border: 1px solid var(--dsw-alias-border-l2);
   background: transparent;
-  padding: 2px 8px;
-  border-radius: var(--dsw-radius-xs);
+  color: var(--dsw-alias-label-secondary);
+  border-radius: 999px;
+  padding: 1px 10px;
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-secondary);
   cursor: pointer;
 }
 
-.ms-segment-active {
+.ms-chip-active {
+  background: var(--taiji-brand-soft);
+  color: var(--taiji-ink);
+  border-color: var(--taiji-brand-ring);
+}
+
+/* 思考档位组：整行铺满（badge 组 + 自定义档输入需要的宽度），窄屏自然折行。 */
+.ms-model-edit-thinking-wrap {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+}
+
+.ms-model-levels {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* 已选档位 badge：soft 底 + ring 描边 + × 移除钮。 */
+.ms-level-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px 1px 8px;
+  border-radius: 999px;
   background: var(--taiji-brand-soft);
   color: var(--taiji-ink);
   box-shadow: inset 0 0 0 1px var(--taiji-brand-ring);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.ms-level-remove {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--taiji-ink);
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+/* 未选档位 pill：虚线描边 + 「+ 档名」。 */
+.ms-level-pill {
+  appearance: none;
+  border: 1px dashed var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.ms-level-pill:hover {
+  border-color: var(--taiji-brand-ring);
+  color: var(--dsw-alias-label-primary);
+}
+
+.ms-level-input { width: 90px; }
+
+.ms-level-error {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--taiji-ink-err);
+}
+
+.ms-model-preserved {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--taiji-ink-warn);
+}
+
+/* 窄表单（内置目录型）：说明条 + 身份行（只读名 + 目录徽章 + 标识/凭据引用）。 */
+.ms-narrow-note {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--taiji-brand-soft);
+  border: 1px solid var(--taiji-brand-ring);
+  border-radius: var(--dsw-radius-sm);
+  padding: 6px 8px;
+}
+
+.ms-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 添加流程：choose 两卡 + pick-builtin 候选列表。 */
+.ms-addflow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+}
+
+.ms-addflow-cards {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ms-addflow-card {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  flex: 1;
+  min-width: 180px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  border-radius: var(--dsw-radius-md);
+  text-align: start;
+  cursor: pointer;
+}
+
+.ms-addflow-card:hover {
+  border-color: var(--taiji-brand-ring);
+}
+
+.ms-addflow-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.ms-addflow-card-note {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.ms-addflow-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.ms-addflow-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+.ms-addflow-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.ms-addflow-item-note {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.ms-addflow-actions {
+  display: flex;
+  gap: 8px;
 }
 
 /* 目录默认态的目录模型只读清单。 */

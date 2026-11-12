@@ -1,15 +1,22 @@
 /**
  * client/settings/model-service/provider-edit-body.tsx —— 供应商展开体（dsh-model-service
- * §3.3 D3/D6/D7/D11，M1）。
+ * §3.3 D3/D6/D7/D11，M1；供应商接入交互重设计后双形态）。
  *
  * 结构（与 projects/store.ts 同款「纯 TS 模型 + 薄渲染」）：ProviderEditModel 持全部表单与
  * 交互状态（测试夹具的 useRef/useState 每次渲染重置，真相必须在模型里），ProviderEditBody
  * 只读快照渲染、动作转回模型。
  *
+ * 表单两形态（target.narrow，交互重设计）：
+ *   · 窄表单（内置目录型：目录型新增与目录型编辑）——顶部说明「API 端点与协议由内置目录
+ *     解析」；供应商名只读展示 + 目录型徽章；保存标识与凭据引用行；API 密钥输入；模型区。
+ *     不渲染 displayName / API 端点 / 协议 / compat 六项编辑区；保存时这四者不进写入面
+ *     （profileFromDraft 不写、profileDiffOps 不发 op——见 settings-client 的 narrow 字段）。
+ *   · 全表单（自定义型：非目录 provider 与自定义新建）——完整字段面，同原形态。
+ *
  * 模型区两互斥态（D11，宿主 resolveRouteModels 硬语义 AX10）：
- *   · 目录默认态——models 草案为空：目录模型经 discoverModels 目录分支只读展示（零网络），
- *     「保持目录默认」说明；保存时 models 字段不出现在写入值（既有 models[] 经 unset op
- *     清除 = 恢复目录默认）。仅目录型 provider（目录清单 declared=false）适用。
+ *   · 目录默认态——models 草案为空：目录模型经 discoverModels 目录分支只读展示（零网络，
+ *     通道只返回 id/显示名/输入模态——摘要不虚构其余字段），「保持目录默认」说明；保存时
+ *     models 字段不出现在写入值（既有 models[] 经 unset op 清除 = 恢复目录默认）。
  *   · 自定义清单态——models 草案非空：逐条可编辑，「目录默认已被替换」明示；保存整组写入。
  *   · modelOverrides 第三态（有覆盖无 models）：「目录默认 + 覆盖」只读展示，M1 不开放编辑。
  *   · 自定义 provider（declared=true，非目录）：只有自定义清单一态，保存前置 = 至少一条
@@ -41,15 +48,17 @@ import {
   deriveProviderKey,
 } from '../../model-service/provider-key'
 import {
+  modelToDraft,
+  prettifyId,
   saveProvider,
-  thinkingEffortsOf,
+  THINKING_LEVELS,
   undeclaredFieldPaths,
   type HostProviderProfile,
   type ModelDraft,
   type ModelServiceHost,
   type ProviderDraft,
 } from '../../model-service/settings-client'
-import { ModelEdit, type Translate } from './model-edit'
+import { DEFAULT_CONTEXT_WINDOW, ModelEdit, type Translate } from './model-edit'
 
 // ── 常量（宿主契约字段集，逐字面对照 dsh-llm-pi-ai/lib/index.js）─────────────
 
@@ -136,6 +145,10 @@ export interface ProviderEditSnapshot {
   baseURL: string
   api: string
   apiKeyValue: string
+  /** 窄表单（内置目录型）：端点/协议/显示名/compat 不渲染、不进写入面。 */
+  narrow: boolean
+  /** 内置目录条目的目录显示名（窄表单身份行的回落源；存量 displayName 优先）。 */
+  catalogName: string | undefined
   /** 派生预览（displayName 空时 undefined）。 */
   keyPreview: string | undefined
   refPreview: string | undefined
@@ -168,8 +181,12 @@ export interface ProviderEditSnapshot {
 export interface ProviderEditModelDeps {
   remote: ModelServiceHost
   t: Translate
-  /** 编辑目标：key 固定；isNew = 新建；customOnly = 非目录 provider（declared=true）。 */
-  target: { key: string; isNew: boolean; customOnly: boolean }
+  /**
+   * 编辑目标：key 固定；isNew = 新建；customOnly = 非目录 provider（declared=true）；
+   * narrow = 内置目录型（窄表单：目录型新增与目录型编辑）；catalogName = 目录显示名
+   * （窄表单身份行回落源，新增时唯一来源）。
+   */
+  target: { key: string; isNew: boolean; customOnly: boolean; narrow: boolean; catalogName?: string }
   /** 打开时快照（D3：revision 随之持有，保存不重取；existing 是存量 profile）。 */
   revision: number | undefined
   existing: HostProviderProfile | undefined
@@ -216,6 +233,8 @@ export class ProviderEditModel {
       baseURL: typeof existing?.baseURL === 'string' ? existing.baseURL : '',
       api: typeof existing?.api === 'string' && (PROTOCOLS as readonly string[]).includes(existing.api) ? existing.api : 'openai-completions',
       apiKeyValue: '',
+      narrow: deps.target.narrow,
+      catalogName: deps.target.catalogName,
       keyPreview: undefined,
       refPreview: undefined,
       compat: { ...this.storedCompat },
@@ -295,9 +314,19 @@ export class ProviderEditModel {
 
   // ── 模型区 ──
 
-  /** 手动添加一条空白模型草案（转自定义清单态；清单变更即退出恢复目录的确认态）。 */
+  /** 手动添加一条空白模型草案（转自定义清单态；清单变更即退出恢复目录的确认态）。
+   * 上下文 1M / 双模态 / 支持思考 + 全档位是产品默认（发现通道不返回这些字段，同默认）。 */
   addModel(): void {
-    const blank: ModelDraft = { id: '', name: '', contextWindow: undefined, maxTokens: undefined, input: ['text'], thinkingStrategy: 'none' }
+    const blank: ModelDraft = {
+      id: '',
+      name: '',
+      contextWindow: DEFAULT_CONTEXT_WINDOW,
+      maxTokens: undefined,
+      input: ['text', 'image'],
+      thinkingEnabled: true,
+      levels: [...THINKING_LEVELS],
+      preserve: false,
+    }
     const models = [...this.state.models, blank]
     this.state = { ...this.state, models, directoryMode: false, blockedMessage: undefined, restoreArmed: false }
     this.notify()
@@ -449,9 +478,11 @@ export class ProviderEditModel {
     this.notify()
 
     const draft: ProviderDraft = {
-      // 新建：key 由显示名即时派生（AX11）；编辑：key 固定为既有 route。
-      key: this.target.isNew ? deriveProviderKey(this.state.displayName.trim()) : this.target.key,
+      // 新建全表单：key 由显示名即时派生（AX11）；编辑与窄表单：key 固定——窄表单新建的
+      // key = 所选目录 route（条目身份由目录决定，不经显示名派生）。
+      key: this.target.isNew && !this.state.narrow ? deriveProviderKey(this.state.displayName.trim()) : this.target.key,
       isNew: this.target.isNew,
+      narrow: this.state.narrow,
       displayName: this.state.displayName.trim(),
       baseURL: this.state.baseURL.trim(),
       api: this.state.api,
@@ -519,11 +550,14 @@ export class ProviderEditModel {
 
   private refreshKeyPreview(): void {
     const name = this.state.displayName.trim()
-    const key = this.target.isNew && name !== '' ? deriveProviderKey(name) : this.target.key
+    const key = this.target.isNew && !this.state.narrow && name !== '' ? deriveProviderKey(name) : this.target.key
+    // 凭据引用预览：编辑既有条目显示其真实 apiKeyEnv（保存目标就是它——D7 写入目标同源）；
+    // 仅新建（无既有条目）显示将派生的 ref。一律显示派生值会把既有条目的真实引用显示错。
+    const existingRef = typeof this.diffBase?.apiKeyEnv === 'string' ? this.diffBase.apiKeyEnv : undefined
     this.state = {
       ...this.state,
       keyPreview: key !== '' ? key : undefined,
-      refPreview: key !== '' ? credentialRefFor(key) : undefined,
+      refPreview: existingRef ?? (key !== '' ? credentialRefFor(key) : undefined),
     }
   }
 
@@ -554,95 +588,124 @@ export function ProviderEditBody({ t, model, focusModel, onCancel }: ProviderEdi
   const compatWritable = COMPAT_AVAILABILITY[state.api] ?? {}
   return (
     <div className="ms-edit-body">
-      {/* 基本字段 */}
-      <label className="ms-field">
-        <span className="ms-field-label">{t('provider.displayName')}</span>
-        <input
-          className="ms-input"
-          defaultValue={state.displayName}
-          onChange={(event: { target: { value: string } }) => { model.setDisplayName(event.target.value) }}
-        />
-        {state.keyPreview !== undefined && (
-          <span className="ms-field-hint">
-            {t('provider.keyPreview', { key: state.keyPreview })}
-            {state.refPreview !== undefined ? ` · ${t('provider.refPreview', { ref: state.refPreview })}` : ''}
-          </span>
-        )}
-      </label>
-      <label className="ms-field">
-        <span className="ms-field-label">{t('provider.baseURL')}</span>
-        <input
-          className="ms-input"
-          defaultValue={state.baseURL}
-          placeholder="https://api.example.com/v1"
-          onChange={(event: { target: { value: string } }) => { model.setBaseURL(event.target.value) }}
-        />
-      </label>
-      <label className="ms-field">
-        <span className="ms-field-label">{t('provider.api')}</span>
-        <select
-          className="ms-select"
-          value={state.api}
-          onChange={(event: { target: { value: string } }) => { model.setApi(event.target.value) }}
-        >
-          {PROTOCOLS.map((protocol) => (
-            <option key={protocol} value={protocol}>{t(protocolKey(protocol))}</option>
-          ))}
-        </select>
-      </label>
-      <label className="ms-field">
-        <span className="ms-field-label">{t('provider.apiKey')}</span>
-        <input
-          className="ms-input"
-          type="password"
-          defaultValue={state.apiKeyValue}
-          onChange={(event: { target: { value: string } }) => { model.setApiKeyValue(event.target.value) }}
-        />
-      </label>
+      {state.narrow ? (
+        <>
+          {/* 窄表单（内置目录型）：说明条 + 身份行（只读名 + 目录徽章 + 标识/凭据引用）+ 密钥输入。
+              端点 / 协议 / compat 编辑面不渲染——由内置目录解析，写入面同样排除（settings-client narrow）。 */}
+          <div className="ms-narrow-note">{t('provider.narrowNote')}</div>
+          <div className="ms-identity">
+            <span className="ms-row-name">{state.displayName !== '' ? state.displayName : state.catalogName ?? model.key}</span>
+            <span className="ms-badge ms-badge-catalog">{t('providers.catalogBadge')}</span>
+            {state.keyPreview !== undefined && (
+              <span className="ms-field-hint">
+                {t('provider.keyPreview', { key: state.keyPreview })}
+                {state.refPreview !== undefined ? ` · ${t('provider.refPreview', { ref: state.refPreview })}` : ''}
+              </span>
+            )}
+          </div>
+          <label className="ms-field">
+            <span className="ms-field-label">{t('provider.apiKey')}</span>
+            <input
+              className="ms-input"
+              type="password"
+              defaultValue={state.apiKeyValue}
+              onChange={(event: { target: { value: string } }) => { model.setApiKeyValue(event.target.value) }}
+            />
+          </label>
+        </>
+      ) : (
+        <>
+          {/* 基本字段 */}
+          <label className="ms-field">
+            <span className="ms-field-label">{t('provider.displayName')}</span>
+            <input
+              className="ms-input"
+              defaultValue={state.displayName}
+              onChange={(event: { target: { value: string } }) => { model.setDisplayName(event.target.value) }}
+            />
+            {state.keyPreview !== undefined && (
+              <span className="ms-field-hint">
+                {t('provider.keyPreview', { key: state.keyPreview })}
+                {state.refPreview !== undefined ? ` · ${t('provider.refPreview', { ref: state.refPreview })}` : ''}
+              </span>
+            )}
+          </label>
+          <label className="ms-field">
+            <span className="ms-field-label">{t('provider.baseURL')}</span>
+            <input
+              className="ms-input"
+              defaultValue={state.baseURL}
+              placeholder="https://api.example.com/v1"
+              onChange={(event: { target: { value: string } }) => { model.setBaseURL(event.target.value) }}
+            />
+          </label>
+          <label className="ms-field">
+            <span className="ms-field-label">{t('provider.api')}</span>
+            <select
+              className="ms-select"
+              value={state.api}
+              onChange={(event: { target: { value: string } }) => { model.setApi(event.target.value) }}
+            >
+              {PROTOCOLS.map((protocol) => (
+                <option key={protocol} value={protocol}>{t(protocolKey(protocol))}</option>
+              ))}
+            </select>
+          </label>
+          <label className="ms-field">
+            <span className="ms-field-label">{t('provider.apiKey')}</span>
+            <input
+              className="ms-input"
+              type="password"
+              defaultValue={state.apiKeyValue}
+              onChange={(event: { target: { value: string } }) => { model.setApiKeyValue(event.target.value) }}
+            />
+          </label>
 
-      {/* compat 6 项（D6：essential 常显 + advanced 一期开放 3；协议不提供的标一期不开放） */}
-      <div className="ms-compat">
-        <div className="ms-compat-head">{t('provider.compat')}</div>
-        {COMPAT_FIELDS.map((spec) => {
-          const available = compatWritable[spec.field] === true
-          return (
-            <div key={spec.field} className="ms-compat-field">
-              <span className="ms-field-label">{t(spec.labelKey)}</span>
-              {spec.field === 'thinkingFormat' ? (
-                <select
-                  className="ms-select"
-                  value={typeof state.compat.thinkingFormat === 'string' ? state.compat.thinkingFormat : ''}
-                  disabled={!available}
-                  onChange={(event: { target: { value: string } }) => { model.setCompatThinkingFormat(event.target.value) }}
-                >
-                  <option value="">—</option>
-                  {THINKING_FORMATS.map((format) => (
-                    <option key={format} value={format}>{format}</option>
-                  ))}
-                </select>
-              ) : (
-                <select
-                  className="ms-select"
-                  value={state.compat[spec.field] === true ? 'yes' : state.compat[spec.field] === false ? 'no' : ''}
-                  disabled={!available}
-                  onChange={(event: { target: { value: string } }) => {
-                    model.setCompatBoolean(spec.field, event.target.value === '' ? undefined : event.target.value === 'yes')
-                  }}
-                >
-                  <option value="">—</option>
-                  <option value="yes">true</option>
-                  <option value="no">false</option>
-                </select>
-              )}
-              {!available && <span className="ms-compat-unavailable">{t('compat.unavailable')}</span>}
-              {!spec.essential && <span className="ms-compat-tag">advanced</span>}
+          {/* compat 6 项（D6：essential 常显 + advanced 一期开放 3；协议不提供的标一期不开放） */}
+          <div className="ms-compat">
+            <div className="ms-compat-head">{t('provider.compat')}</div>
+            {COMPAT_FIELDS.map((spec) => {
+              const available = compatWritable[spec.field] === true
+              return (
+                <div key={spec.field} className="ms-compat-field">
+                  <span className="ms-field-label">{t(spec.labelKey)}</span>
+                  {spec.field === 'thinkingFormat' ? (
+                    <select
+                      className="ms-select"
+                      value={typeof state.compat.thinkingFormat === 'string' ? state.compat.thinkingFormat : ''}
+                      disabled={!available}
+                      onChange={(event: { target: { value: string } }) => { model.setCompatThinkingFormat(event.target.value) }}
+                    >
+                      <option value="">—</option>
+                      {THINKING_FORMATS.map((format) => (
+                        <option key={format} value={format}>{format}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select
+                      className="ms-select"
+                      value={state.compat[spec.field] === true ? 'yes' : state.compat[spec.field] === false ? 'no' : ''}
+                      disabled={!available}
+                      onChange={(event: { target: { value: string } }) => {
+                        model.setCompatBoolean(spec.field, event.target.value === '' ? undefined : event.target.value === 'yes')
+                      }}
+                    >
+                      <option value="">—</option>
+                      <option value="yes">true</option>
+                      <option value="no">false</option>
+                    </select>
+                  )}
+                  {!available && <span className="ms-compat-unavailable">{t('compat.unavailable')}</span>}
+                  {!spec.essential && <span className="ms-compat-tag">advanced</span>}
+                </div>
+              )
+            })}
+            <div className="ms-compat-groups">
+              <span>{t('compat.groupEssential')}</span>
             </div>
-          )
-        })}
-        <div className="ms-compat-groups">
-          <span>{t('compat.groupEssential')}</span>
-        </div>
-      </div>
+          </div>
+        </>
+      )}
 
       {/* 模型区：两互斥态 + modelOverrides 第三态（D11） */}
       <div className="ms-models-block">
@@ -660,8 +723,9 @@ export function ProviderEditBody({ t, model, focusModel, onCancel }: ProviderEdi
             <div className="ms-note">{t('models.catalogNote')}</div>
             {state.directoryModels.map((model) => (
               <div key={model.id} className={`ms-directory-row${focusModel === model.id ? ' ms-row-focus' : ''}`}>
-                <span className="ms-directory-name">{model.name ?? model.id}</span>
-                <span className="ms-directory-id">{model.id}</span>
+                {/* 目录通道只返回 id/显示名/输入模态（无上下文与思考档位）——摘要不虚构其余字段。 */}
+                <span className="ms-directory-name">{model.id}{model.name !== undefined && model.name !== '' ? `（${model.name}）` : ''}</span>
+                <span className="ms-directory-id">{modalityWords(model.inputModalities, t)}</span>
               </div>
             ))}
           </div>
@@ -786,55 +850,29 @@ function writableCompat(compat: Record<string, unknown>, api: string): Record<st
 }
 
 /**
- * 存量 models[] 条目 → 编辑草案（未知字段不进草案——它们由字段级 diff 之外的读改写保留面保证）。
- *
- * reasoningEfforts 归档（D3 读改写保真）：字典与 D6 三档映射**精确相等**才归档对应策略
- * （写回值与既有值逐字段一致，用户未编辑推理档位时 models 无 diff）；不匹配的字典 / 布尔与
- * 字典之外的形态 → preserve 原样保留态（草案携带原始值，写回逐字透传，不静默改写宿主权威
- * 数据——宿主「模型」分区可编辑推理等级，非三档形态可达）。
+ * 目录条目的输入模态中文词（通道只返回 inputModalities；缺失/空 = 空串不显示——不虚构字段）。
  */
-function modelToDraft(model: Record<string, unknown>): ModelDraft {
-  const efforts = model.reasoningEfforts
-  let thinkingStrategy: ModelDraft['thinkingStrategy']
-  let reasoningEffortsRaw: ModelDraft['reasoningEffortsRaw']
-  if (isRecord(efforts) && matchesStrategy(efforts, 'high-max')) thinkingStrategy = 'high-max'
-  else if (isRecord(efforts) && matchesStrategy(efforts, 'on-off')) thinkingStrategy = 'on-off'
-  else if (isRecord(efforts) && matchesStrategy(efforts, 'all')) thinkingStrategy = 'all'
-  else if (efforts === false) thinkingStrategy = 'none' // 写回 false，与既有值一致（无损）
-  else {
-    // 非三档字典（含 off 值为空串的字典）、省略该字段（宿主语义 = 沿用目录能力）或其他
-    // 未知形态：原样保留，写回逐字透传。
-    thinkingStrategy = 'preserve'
-    reasoningEffortsRaw = efforts
-  }
-  return {
-    id: typeof model.id === 'string' ? model.id : '',
-    name: typeof model.name === 'string' ? model.name : '',
-    contextWindow: typeof model.contextWindow === 'number' ? model.contextWindow : undefined,
-    maxTokens: typeof model.maxTokens === 'number' ? model.maxTokens : undefined,
-    input: Array.isArray(model.input) ? model.input.filter((item): item is 'text' | 'image' => item === 'text' || item === 'image') : [],
-    thinkingStrategy,
-    ...(reasoningEffortsRaw !== undefined ? { reasoningEffortsRaw } : {}),
-  }
+function modalityWords(modalities: ('text' | 'image')[] | undefined, t: Translate): string {
+  if (modalities === undefined || modalities.length === 0) return ''
+  return modalities.map((modality) => t(modality === 'text' ? 'input.text' : 'input.image')).join('+')
 }
 
-/** reasoningEfforts 字典与 D6 三档映射的精确比对（键集与值全等；无损归档的判据）。 */
-function matchesStrategy(efforts: Record<string, unknown>, strategy: Exclude<ModelDraft['thinkingStrategy'], 'none' | 'preserve'>): boolean {
-  const target = thinkingEffortsOf(strategy)
-  const keys = Object.keys(efforts)
-  return keys.length === Object.keys(target).length && keys.every((key) => efforts[key] === target[key])
-}
-
-/** 发现结果 → 模型草案（目录分支字段齐备时带上下文/输入类型；缺失留空）。 */
+/**
+ * 发现结果 → 模型草案：上下文缺失默认 1M、思考开启 + 全档位（发现通道不返回这些字段，
+ * 这是产品默认、用户可改）；显示名缺失按 id 自动生成（prettifyId，nameEdited 未置位 =
+ * 后续跟随 id 编辑联动）。
+ */
 function discoveredToDraft(model: DiscoveredModel): ModelDraft[] {
   if (model === undefined || typeof model.id !== 'string' || model.id === '') return []
   return [{
     id: model.id,
-    name: model.name ?? model.id,
-    contextWindow: typeof model.contextWindow === 'number' ? model.contextWindow : undefined,
+    name: model.name ?? prettifyId(model.id),
+    contextWindow: typeof model.contextWindow === 'number' ? model.contextWindow : DEFAULT_CONTEXT_WINDOW,
     maxTokens: typeof model.maxTokens === 'number' ? model.maxTokens : undefined,
     input: model.inputModalities ?? ['text'],
-    thinkingStrategy: 'none',
+    thinkingEnabled: true,
+    levels: [...THINKING_LEVELS],
+    preserve: false,
   }]
 }
 

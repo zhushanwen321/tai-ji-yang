@@ -1,11 +1,17 @@
 /**
- * client/settings/model-service/providers-view.tsx —— 供应商视图（dsh-model-service M1/D2/D3/D7）。
+ * client/settings/model-service/providers-view.tsx —— 供应商视图（dsh-model-service M1/D2/D3/D7；
+ * 供应商接入交互重设计后清单口径反转）。
  *
- * 列表读 listConfigurableProviders 全量目录（AS 已核实：目录 = pi-ai 安装目录全部 route +
- * 当前 profiles 声明的 route，declared=false = 目录型）：
- *   · llm-pi-ai 行可编辑（展开体 = provider-edit-body）；
- *   · 其余行（deepseek-account / deepseek-official 等宿主包注册的托管 provider）只读，注明
- *     由宿主管理、凭据编辑指向宿主「模型」分区（AX2：插件只读展示、不写）。
+ * 清单口径：llm-pi-ai 命名空间的行源 = readLlmPiAi 快照 providers 里**已存在**的条目（含
+ * 宿主侧创建的仅 apiKeyEnv 条目）——未接入的目录 route 不再直出。listProviderDirectory
+ * 仍拉取，用于：(a) 每行的 catalogType 判定（declared !== true）与目录显示名回落；
+ * (b) 托管只读行（settingsNs 非 llm-pi-ai 的目录行，宿主包注册的 deepseek-account /
+ * deepseek-official 等，注明由宿主管理，AX2：插件只读展示、不写）；(c) 添加流程的内置
+ * 目录候选。快照有而目录无的 key = 自定义型（保留独立循环）。
+ *
+ * 添加流程（三步）：「添加供应商」→ choose（两张卡：内置 / 自定义）→ 内置 → pick-builtin
+ * （列出目录中 llm-pi-ai 命名空间、未被快照 providers 占用的条目）→ 选定打开窄表单；
+ * 自定义 → 现行全表单。步骤可返回上一级；弹层语义与展开体互斥（同一时间只有一个表单挂载）。
  *
  * 凭据徽章（configured / missing）经 credentials.describe 批量读；快照 unavailable（宿主没装
  * dsh-llm-pi-ai）→ 显式降级文案。空态矩阵（V9）：无任何 provider → 「尚未接入任何供应商」+
@@ -60,6 +66,15 @@ export interface ProviderRow {
   overrideOnly: boolean
 }
 
+/** 添加流程 pick-builtin 步骤的候选条目（目录显示名 + route key 注记）。 */
+export interface BuiltinCandidate {
+  key: string
+  /** 目录显示名（listConfigurableProviders 的 displayName）。 */
+  name: string
+  /** 目录型（declared !== true）——候选行的徽章判定。 */
+  catalogType: boolean
+}
+
 /** 供应商视图快照（引用稳定）。 */
 export interface ProvidersListSnapshot {
   status: 'loading' | 'ready' | 'unavailable'
@@ -68,6 +83,14 @@ export interface ProvidersListSnapshot {
   editing: ProviderEditModel | undefined
   /** 当前编辑是否新建。 */
   addingNew: boolean
+  /**
+   * 添加流程步骤态：choose = 选接入方式（内置/自定义两卡）；pick-builtin = 内置目录候选
+   * 列表；undefined = 不在添加流（编辑体挂载或纯列表）。与 editing 互斥（同一时间只有
+   * 一个表单挂载）。
+   */
+  addingStep: 'choose' | 'pick-builtin' | undefined
+  /** pick-builtin 步骤的候选清单（进入该步骤时计算）。 */
+  builtinCandidates: BuiltinCandidate[]
   /** 删除确认态（两段确认第一击后；routes = 受影响路由名——D3 删除流程的警告数据源）。 */
   deleteArmed: { key: string; crossProfile: boolean; ref: string | undefined; name: string; routes: string[] } | undefined
   notice: string | undefined
@@ -92,6 +115,8 @@ export class ProvidersListModel {
   private state: ProvidersListSnapshot
   /** 打开时的 llm-pi-ai 快照（展开体构造的输入；刷新后更新）。 */
   private snapshot: Awaited<ReturnType<typeof readLlmPiAi>> | undefined
+  /** 最近一次目录读结果（添加流程候选与 expand 的目录名回落源；刷新后更新）。 */
+  private directory: ConfigurableProviderRow[] = []
   /** 构造时启动的首读（测试用 await model.pending 等待就绪）。 */
   readonly pending: Promise<void>
   /** 跳转聚焦的模型 id（展开体渲染高亮用）。 */
@@ -99,7 +124,17 @@ export class ProvidersListModel {
 
   constructor(deps: ProvidersListModelDeps) {
     this.deps = deps
-    this.state = { status: 'loading', rows: [], editing: undefined, addingNew: false, deleteArmed: undefined, notice: undefined, error: undefined }
+    this.state = {
+      status: 'loading',
+      rows: [],
+      editing: undefined,
+      addingNew: false,
+      addingStep: undefined,
+      builtinCandidates: [],
+      deleteArmed: undefined,
+      notice: undefined,
+      error: undefined,
+    }
     this.pending = this.load()
   }
 
@@ -124,6 +159,7 @@ export class ProvidersListModel {
       return
     }
     this.snapshot = snapshot
+    this.directory = directory
     const rows = this.buildRows(directory, snapshot.providers)
     // 凭据徽章：批量 describe（refs ≤ 64 上限内；本视图行数远小于该界）。Result 解包失败转
     // rejection，由 .catch 降级为空表（徽章全 missing）。
@@ -139,14 +175,22 @@ export class ProvidersListModel {
     this.notify()
   }
 
-  /** 展开既有 provider 的编辑体（跳转定位与列表「编辑」共用）。 */
+  /** 展开既有 provider 的编辑体（跳转定位与列表「编辑」共用；目录型走窄表单）。 */
   expand(key: string, focusModel?: string): void {
     const row = this.state.rows.find((candidate) => candidate.key === key)
     if (row === undefined || !row.editable || this.snapshot === undefined) return
+    // 目录显示名（窄表单身份行的回落源；快照 displayName 缺失时内置目录条目只有目录名可显）。
+    const directoryEntry = this.directory.find((candidate) => candidate.provider === key && candidate.settingsNs === LLM_PI_AI_NS)
     const editing = new ProviderEditModel({
       remote: this.deps.remote,
       t: this.deps.t,
-      target: { key, isNew: false, customOnly: !row.catalogType },
+      target: {
+        key,
+        isNew: false,
+        customOnly: !row.catalogType,
+        narrow: row.catalogType,
+        ...(directoryEntry !== undefined ? { catalogName: directoryEntry.displayName } : {}),
+      },
       revision: this.snapshot.revision,
       existing: row.profile,
       providers: this.snapshot.providers,
@@ -156,17 +200,50 @@ export class ProvidersListModel {
       onSaved: () => { void this.reloadKeepingEditing(editing) },
     })
     this.focusModelId = focusModel
-    this.state = { ...this.state, editing, addingNew: false, deleteArmed: undefined }
+    this.state = { ...this.state, editing, addingNew: false, addingStep: undefined, builtinCandidates: [], deleteArmed: undefined }
     this.notify()
   }
 
-  /** 新建供应商（展开体 key 随显示名派生；保存前置 = 至少一条模型）。 */
-  startAdd(): void {
+  /** 添加流程第一步（选接入方式）：内置卡 → pick-builtin；自定义卡 → 全表单新建。 */
+  startAddFlow(): void {
+    if (this.snapshot === undefined) return
+    this.focusModelId = undefined
+    this.state = { ...this.state, editing: undefined, addingNew: false, addingStep: 'choose', builtinCandidates: [], deleteArmed: undefined }
+    this.notify()
+  }
+
+  /** 添加流程第二步（内置目录候选）：列出目录中 llm-pi-ai 命名空间、未被快照 providers 占用的条目。 */
+  pickBuiltin(): void {
+    if (this.snapshot === undefined) return
+    const occupied = new Set(Object.keys(this.snapshot.providers))
+    const builtinCandidates: BuiltinCandidate[] = this.directory
+      .filter((entry) => entry.settingsNs === LLM_PI_AI_NS && !occupied.has(entry.provider))
+      .map((entry) => ({ key: entry.provider, name: entry.displayName, catalogType: entry.declared !== true }))
+    this.focusModelId = undefined
+    this.state = { ...this.state, editing: undefined, addingNew: false, addingStep: 'pick-builtin', builtinCandidates, deleteArmed: undefined }
+    this.notify()
+  }
+
+  /** 添加流程返回第一步（候选清单丢弃）。 */
+  backToChoose(): void {
+    if (this.state.addingStep === undefined) return
+    this.state = { ...this.state, addingStep: 'choose', builtinCandidates: [] }
+    this.notify()
+  }
+
+  /** 退出添加流程（不落任何草稿）。 */
+  cancelAddFlow(): void {
+    this.state = { ...this.state, addingStep: undefined, builtinCandidates: [] }
+    this.notify()
+  }
+
+  /** 选定内置条目：窄表单新建（key = 目录 route；端点/协议/显示名由目录解析，只填密钥）。 */
+  startNarrowAdd(key: string, name: string): void {
     if (this.snapshot === undefined) return
     const editing = new ProviderEditModel({
       remote: this.deps.remote,
       t: this.deps.t,
-      target: { key: '', isNew: true, customOnly: true },
+      target: { key, isNew: true, customOnly: false, narrow: true, catalogName: name },
       revision: this.snapshot.revision,
       existing: undefined,
       providers: this.snapshot.providers,
@@ -175,13 +252,32 @@ export class ProvidersListModel {
       onSaved: () => { void this.reloadKeepingEditing(editing) },
     })
     this.focusModelId = undefined
-    this.state = { ...this.state, editing, addingNew: true, deleteArmed: undefined }
+    this.state = { ...this.state, editing, addingNew: true, addingStep: undefined, builtinCandidates: [], deleteArmed: undefined }
+    this.notify()
+  }
+
+  /** 新建自定义供应商（添加流程「自定义」卡；全表单，展开体 key 随显示名派生）。 */
+  startAdd(): void {
+    if (this.snapshot === undefined) return
+    const editing = new ProviderEditModel({
+      remote: this.deps.remote,
+      t: this.deps.t,
+      target: { key: '', isNew: true, customOnly: true, narrow: false },
+      revision: this.snapshot.revision,
+      existing: undefined,
+      providers: this.snapshot.providers,
+      // 与编辑流同形：保存成功保持展开——回执（已保存/凭据警告）可见可读，用户经「取消」
+      // 返回列表（立即收起会让成功回执在渲染后几十毫秒内随卸载消失，任何人都看不到）。
+      onSaved: () => { void this.reloadKeepingEditing(editing) },
+    })
+    this.focusModelId = undefined
+    this.state = { ...this.state, editing, addingNew: true, addingStep: undefined, builtinCandidates: [], deleteArmed: undefined }
     this.notify()
   }
 
   /** 收起编辑体（不落任何草稿）。 */
   collapse(): void {
-    this.state = { ...this.state, editing: undefined, addingNew: false }
+    this.state = { ...this.state, editing: undefined, addingNew: false, addingStep: undefined, builtinCandidates: [] }
     this.notify()
   }
 
@@ -250,34 +346,37 @@ export class ProvidersListModel {
     this.deps.onSaved?.()
   }
 
-  /** 目录行 + 快照 providers → 视图行（union：快照有而目录未刷新的 route 也列出）。 */
+  /**
+   * 视图行（清单口径反转）：llm-pi-ai 命名空间的行源 = 快照 providers 里已存在的条目
+   * （含宿主侧创建的仅 apiKeyEnv 条目）——未接入的目录 route 不直出。目录数据只用于
+   * 托管只读行、catalogType 判定与显示名回落；快照有而目录无的 key = 自定义型。
+   */
   private buildRows(directory: ConfigurableProviderRow[], providers: Record<string, HostProviderProfile>): ProviderRow[] {
     const rows = new Map<string, ProviderRow>()
+    // 托管只读行：目录中 settingsNs 非 llm-pi-ai 的条目（宿主包注册的托管 provider），现行只读形态直出。
     for (const entry of directory) {
-      const editable = entry.settingsNs === LLM_PI_AI_NS
-      const profile = editable ? asRecord(providers[entry.provider]) : undefined
+      if (entry.settingsNs === LLM_PI_AI_NS) continue
       rows.set(entry.provider, {
         key: entry.provider,
-        name: typeof profile?.displayName === 'string' && profile.displayName !== '' ? profile.displayName : entry.displayName,
-        editable,
+        name: entry.displayName,
+        editable: false,
         catalogType: entry.declared !== true,
         sourceNs: entry.settingsNs,
-        profile,
-        ref: typeof profile?.apiKeyEnv === 'string' ? profile.apiKeyEnv : undefined,
+        profile: undefined,
+        ref: undefined,
         credentialConfigured: false,
-        modelCount: Array.isArray(profile?.models) ? profile.models.length : 0,
-        overrideOnly: profile !== undefined
-          && !(Array.isArray(profile.models) && profile.models.length > 0)
-          && isNonEmptyRecord(profile.modelOverrides),
+        modelCount: 0,
+        overrideOnly: false,
       })
     }
+    // 已接入行：快照 providers（权威 = 宿主设置文档的 llm-pi-ai 命名空间）。
     for (const [key, profile] of Object.entries(providers)) {
-      if (rows.has(key)) continue
+      const entry = directory.find((candidate) => candidate.provider === key && candidate.settingsNs === LLM_PI_AI_NS)
       rows.set(key, {
         key,
-        name: typeof profile.displayName === 'string' && profile.displayName !== '' ? profile.displayName : key,
+        name: typeof profile.displayName === 'string' && profile.displayName !== '' ? profile.displayName : entry?.displayName ?? key,
         editable: true,
-        catalogType: false,
+        catalogType: entry !== undefined && entry.declared !== true,
         sourceNs: LLM_PI_AI_NS,
         profile,
         ref: typeof profile.apiKeyEnv === 'string' ? profile.apiKeyEnv : undefined,
@@ -330,7 +429,7 @@ export function ProvidersView({ t, model, jumpTarget, onJumpConsumed }: Provider
       {state.rows.length === 0 && (
         <div className="ms-empty">
           <div className="ms-empty-title">{t('providers.empty')}</div>
-          <button type="button" className="ms-button ms-button-primary" onClick={() => { model.startAdd() }}>
+          <button type="button" className="ms-button ms-button-primary" onClick={() => { model.startAddFlow() }}>
             {t('providers.emptyAddGuide')}
           </button>
         </div>
@@ -338,16 +437,62 @@ export function ProvidersView({ t, model, jumpTarget, onJumpConsumed }: Provider
       {state.rows.length > 0 && editableRows.length === 0 && (
         <div className="ms-empty">
           <div className="ms-empty-title">{t('providers.emptyManagedOnly')}</div>
-          <button type="button" className="ms-button ms-button-primary" onClick={() => { model.startAdd() }}>
+          <button type="button" className="ms-button ms-button-primary" onClick={() => { model.startAddFlow() }}>
             {t('providers.emptyAddGuide')}
           </button>
         </div>
       )}
       {editableRows.length > 0 && (
         <div className="ms-providers-actions">
-          <button type="button" className="ms-button ms-button-primary" onClick={() => { model.startAdd() }}>
+          <button type="button" className="ms-button ms-button-primary" onClick={() => { model.startAddFlow() }}>
             {t('action.addProvider')}
           </button>
+        </div>
+      )}
+      {/* 添加流程（choose / pick-builtin）：与编辑体互斥挂载——同一时间只有一个表单在树上。 */}
+      {state.addingStep === 'choose' && (
+        <div className="ms-addflow">
+          <div className="ms-addflow-cards">
+            <button type="button" className="ms-addflow-card" onClick={() => { model.pickBuiltin() }}>
+              <span className="ms-addflow-card-title">{t('addflow.builtinTitle')}</span>
+              <span className="ms-addflow-card-note">{t('addflow.builtinNote')}</span>
+            </button>
+            <button type="button" className="ms-addflow-card" onClick={() => { model.startAdd() }}>
+              <span className="ms-addflow-card-title">{t('addflow.customTitle')}</span>
+              <span className="ms-addflow-card-note">{t('addflow.customNote')}</span>
+            </button>
+          </div>
+          <div className="ms-addflow-actions">
+            <button type="button" className="ms-button" onClick={() => { model.cancelAddFlow() }}>{t('action.cancel')}</button>
+          </div>
+        </div>
+      )}
+      {state.addingStep === 'pick-builtin' && (
+        <div className="ms-addflow">
+          <div className="ms-compat-head">{t('addflow.pickTitle')}</div>
+          <div className="ms-note">{t('addflow.pickNote')}</div>
+          {state.builtinCandidates.length === 0 && <div className="ms-note">{t('addflow.pickEmpty')}</div>}
+          <div className="ms-addflow-list">
+            {state.builtinCandidates.map((candidate) => (
+              <div key={candidate.key} className="ms-addflow-item">
+                <span className="ms-addflow-item-name">{candidate.name}</span>
+                <span className="ms-addflow-item-note">{candidate.key}</span>
+                <span className="ms-row-actions">
+                  <button
+                    type="button"
+                    className="ms-button ms-button-primary"
+                    onClick={() => { model.startNarrowAdd(candidate.key, candidate.name) }}
+                  >
+                    {t('addflow.connect')}
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="ms-addflow-actions">
+            <button type="button" className="ms-button" onClick={() => { model.backToChoose() }}>{t('addflow.back')}</button>
+            <button type="button" className="ms-button" onClick={() => { model.cancelAddFlow() }}>{t('action.cancel')}</button>
+          </div>
         </div>
       )}
       {/* 新建供应商（addingNew）：编辑体独立挂载点。行循环内 expanded 条件含 !addingNew 对新建
@@ -428,11 +573,6 @@ export function ProvidersView({ t, model, jumpTarget, onJumpConsumed }: Provider
   )
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : undefined
-}
-
 function isNonEmptyRecord(value: unknown): boolean {
-  const record = asRecord(value)
-  return record !== undefined && Object.keys(record).length > 0
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length > 0
 }

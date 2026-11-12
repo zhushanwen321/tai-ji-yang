@@ -1,23 +1,27 @@
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { createTsxLoader } from '../../testing/load-tsx'
+import { collectElements, createTsxLoader, textOf, type FakeElement } from '../../testing/load-tsx'
 import { modelServiceZh } from '../../locale'
-import type { ProviderEditModel, ProviderEditModelDeps } from './provider-edit-body'
+import type { ProviderEditBodyProps, ProviderEditModel, ProviderEditModelDeps } from './provider-edit-body'
 
 /**
- * 供应商展开体模型单测（一致性修复 r1：U6 恢复目录默认两段确认 / U10 reasoningEfforts
- * 无损归档）。锁死 ProviderEditModel 的可机器化行为（快照状态流，不经渲染）：
+ * 供应商展开体模型单测（一致性修复 r1：U6 恢复目录默认两段确认；供应商接入交互重设计：
+ * 窄表单 / refPreview 真实值 / U10 reasoningEfforts 自由选集归档）。锁死 ProviderEditModel
+ * 的可机器化行为（快照状态流，不经渲染）：
  *   · U6：「恢复目录默认」第一击进入确认态（restoreArmed）→ 警示键 models.restoreDirectoryWarning
  *     由渲染层消费（此处断言状态流：进入确认态/取消/确认/清单变更退出确认态）；
- *   · U10：存量 models[] 读入草案时 reasoningEfforts 与 D6 三档映射精确相等才归档策略，
- *     不匹配 → preserve 原样保留态（携带原始值，写回逐字透传——见 settings-client.test 的
- *     写入侧用例），用户未编辑推理档位不产生 models diff。
+ *   · U10：存量 models[] 读入草案时 reasoningEfforts 按新语义归档——键值完全同名 → 自由选集
+ *     （enabled + levels），显式 false → 非思考，其他一切形态 → preserve 原样保留态（携带
+ *     原始值，写回逐字透传——见 settings-client.test 的写入侧用例）；
+ *   · 窄表单：target.narrow 进快照，渲染面无端点/协议/compat 编辑；
+ *   · refPreview：编辑既有条目显示真实 apiKeyEnv（缺陷修复），仅新建显示派生 ref。
  */
 
 const BODY_PATH = fileURLToPath(new URL('./provider-edit-body.tsx', import.meta.url))
 
 interface BodyModule {
   ProviderEditModel: new (deps: ProviderEditModelDeps) => ProviderEditModel
+  ProviderEditBody: (props: ProviderEditBodyProps) => unknown
 }
 
 const loader = createTsxLoader()
@@ -50,7 +54,7 @@ function makeModel(existingModels: Record<string, unknown>[], overrides: Partial
   return new bodyModule.ProviderEditModel({
     remote: fakeRemote(),
     t,
-    target: { key: 'yanshi', isNew: false, customOnly: false },
+    target: { key: 'yanshi', isNew: false, customOnly: false, narrow: false },
     revision: 1,
     existing: { displayName: 'Yanshi', api: 'openai-completions', baseURL: 'http://y/v1', models: existingModels },
     providers: {},
@@ -60,6 +64,11 @@ function makeModel(existingModels: Record<string, unknown>[], overrides: Partial
 }
 
 const FULL_LEVELS = { off: 'off', minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' }
+
+/** 组件树 → 元素清单（collectElements 的入参收窄）。 */
+function elementsOf(root: unknown): FakeElement[] {
+  return collectElements(root as FakeElement)
+}
 
 describe('既有目录型 provider 的测试连接（终态同步 F1-19，AS7 短路归一）', () => {
   /** 捕获 discoverModels 请求的假 remote（宿主 typert 网关真实形态包 RemoteResult）。 */
@@ -100,40 +109,105 @@ describe('既有目录型 provider 的测试连接（终态同步 F1-19，AS7 �
   })
 })
 
-describe('存量 models[] 读入草案：reasoningEfforts 无损归档（U10，D3 读改写保真）', () => {
-  it('三档形态精确匹配才归档：全集七档 = all / {off,high} = on-off / {off,high,max:xhigh} = high-max', () => {
+describe('存量 models[] 读入草案：reasoningEfforts 自由选集归档（U10，D3 读改写保真）', () => {
+  it('键值完全同名的字典归自由选集（全集与子集都 enabled，levels=键集合；不携带 raw）', () => {
     const model = makeModel([
       { id: 'a', name: 'A', input: ['text'], reasoningEfforts: FULL_LEVELS },
       { id: 'b', name: 'B', input: ['text'], reasoningEfforts: { off: 'off', high: 'high' } },
-      { id: 'c', name: 'C', input: ['text'], reasoningEfforts: { off: 'off', high: 'high', max: 'xhigh' } },
     ]).getSnapshot().models
-    expect(model.map((draft) => draft.thinkingStrategy)).toEqual(['all', 'on-off', 'high-max'])
-    expect(model[0].reasoningEffortsRaw).toBeUndefined()
+    expect(model[0].thinkingEnabled).toBe(true)
+    expect(model[0].levels).toEqual(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+    expect(model[0].preserve).toBe(false)
+    expect(model[1].thinkingEnabled).toBe(true)
+    expect(model[1].levels).toEqual(['off', 'high'])
+    expect(model[1].preserve).toBe(false)
   })
 
-  it('非三档形态归 preserve 并携带原始值：子集字典 / off 值空串的字典 / 值拼写不同的字典', () => {
-    const subset = { off: 'off', low: 'low' }
+  it('值≠键的字典归 preserve 并携带原始值（off 值空串 / 值拼写不同）', () => {
     const emptyOff = { off: '', high: 'high' }
-    const alienSpelling = { off: 'off', high: 'high', max: 'max' } // 三键但 max 拼写非 xhigh
+    const alienSpelling = { off: 'off', high: 'high', max: 'xhigh' } // 三键但 max 值≠键（历史「高·最高」映射形态）
     const model = makeModel([
-      { id: 'a', name: 'A', input: ['text'], reasoningEfforts: subset },
-      { id: 'b', name: 'B', input: ['text'], reasoningEfforts: emptyOff },
+      { id: 'a', name: 'A', input: ['text'], reasoningEfforts: emptyOff },
       { id: 'c', name: 'C', input: ['text'], reasoningEfforts: alienSpelling },
     ]).getSnapshot().models
-    expect(model.map((draft) => draft.thinkingStrategy)).toEqual(['preserve', 'preserve', 'preserve'])
-    expect(model[0].reasoningEffortsRaw).toEqual(subset)
-    expect(model[1].reasoningEffortsRaw).toEqual(emptyOff)
-    expect(model[2].reasoningEffortsRaw).toEqual(alienSpelling)
+    expect(model.map((draft) => draft.preserve)).toEqual([true, true])
+    expect(model[0].preserveRaw).toEqual(emptyOff)
+    expect(model[1].preserveRaw).toEqual(alienSpelling)
   })
 
-  it('省略 reasoningEfforts（宿主语义 = 沿用目录能力）与 false（非思考）分别归 preserve 省略态与 none', () => {
+  it('省略 reasoningEfforts（宿主语义 = 沿用目录能力）与 false（非思考）分别归 preserve 省略态与非思考', () => {
     const model = makeModel([
       { id: 'a', name: 'A', input: ['text'] },
       { id: 'b', name: 'B', input: ['text'], reasoningEfforts: false },
     ]).getSnapshot().models
-    expect(model[0].thinkingStrategy).toBe('preserve')
-    expect(model[0].reasoningEffortsRaw).toBeUndefined() // 写回时同样省略该字段
-    expect(model[1].thinkingStrategy).toBe('none')
+    expect(model[0].preserve).toBe(true)
+    expect(model[0].preserveRaw).toBeUndefined() // 写回时同样省略该字段
+    expect(model[1].preserve).toBe(false)
+    expect(model[1].thinkingEnabled).toBe(false)
+    expect(model[1].levels).toEqual([])
+  })
+})
+
+describe('窄表单（内置目录型：目录型新增与目录型编辑）', () => {
+  it('target.narrow 进快照；存量 apiKeyEnv 的 refPreview 显示真实值（缺陷修复：不再一律显示派生 ref）', () => {
+    const model = makeModel([], {
+      target: { key: 'deepseek-official', isNew: false, customOnly: false, narrow: true, catalogName: 'DeepSeek Official' },
+      existing: { apiKeyEnv: 'DEEPSEEK_OFFICIAL_API_KEY', models: [] },
+    })
+    const snapshot = model.getSnapshot()
+    expect(snapshot.narrow).toBe(true)
+    expect(snapshot.catalogName).toBe('DeepSeek Official')
+    expect(snapshot.refPreview).toBe('DEEPSEEK_OFFICIAL_API_KEY')
+    expect(snapshot.keyPreview).toBe('deepseek-official')
+  })
+
+  it('新建（无既有条目）的 refPreview 显示派生 ref；目录名进快照', () => {
+    const model = makeModel([], {
+      target: { key: 'deepseek-official', isNew: true, customOnly: false, narrow: true, catalogName: 'DeepSeek Official' },
+      existing: undefined,
+    })
+    const snapshot = model.getSnapshot()
+    expect(snapshot.narrow).toBe(true)
+    expect(snapshot.refPreview).toBe('TAIJI_DEEPSEEK_OFFICIAL_KEY')
+  })
+
+  it('全表单编辑既有条目：refPreview 同样显示真实 apiKeyEnv（缺陷修复作用于两种形态）', () => {
+    const model = makeModel([], {
+      existing: { apiKeyEnv: 'YANSHI_API_KEY', displayName: 'Yanshi', models: [] },
+    })
+    expect(model.getSnapshot().refPreview).toBe('YANSHI_API_KEY')
+  })
+
+  it('窄表单渲染：无「API 端点 / 协议 / 协议兼容」编辑面；说明条、目录徽章、密钥输入在场', () => {
+    const model = makeModel([], {
+      target: { key: 'deepseek-official', isNew: false, customOnly: false, narrow: true, catalogName: 'DeepSeek Official' },
+      existing: { apiKeyEnv: 'DEEPSEEK_OFFICIAL_API_KEY', models: [] },
+    })
+    const props: ProviderEditBodyProps = { t, model, focusModel: undefined, onCancel: () => {} }
+    const tree = bodyModule.ProviderEditBody(props) as Parameters<typeof collectElements>[0]
+    const elements = elementsOf(tree)
+    const texts = elements.map(textOf).join('\n')
+    expect(texts).toContain(modelServiceZh['provider.narrowNote'])
+    expect(texts).toContain('DeepSeek Official')
+    expect(texts).toContain(modelServiceZh['providers.catalogBadge'])
+    // 可编辑字段只剩 API 密钥一个（端点/协议/显示名三个 ms-field 不渲染）；
+    // 「协议」二字命中说明条文本，编辑面缺席用字段数与 compat 头文案判定。
+    const fields = elements.filter((element) => {
+      const className = element.props.className
+      return typeof className === 'string' && className.split(/\s+/).includes('ms-field')
+    })
+    expect(fields).toHaveLength(1)
+    expect(texts).not.toContain(modelServiceZh['provider.compat'])
+    expect(elements.filter((element) => element.props.type === 'password')).toHaveLength(1)
+  })
+
+  it('全表单渲染：端点 / 协议 / compat 编辑面在场（形态对照）', () => {
+    const model = makeModel([{ id: 'a', name: 'A', input: ['text'], reasoningEfforts: false }])
+    const props: ProviderEditBodyProps = { t, model, focusModel: undefined, onCancel: () => {} }
+    const tree = bodyModule.ProviderEditBody(props) as Parameters<typeof collectElements>[0]
+    const texts = elementsOf(tree).map(textOf).join('\n')
+    expect(texts).toContain(modelServiceZh['provider.baseURL'])
+    expect(texts).toContain(modelServiceZh['provider.compat'])
   })
 })
 

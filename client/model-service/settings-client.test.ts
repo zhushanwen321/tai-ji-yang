@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
   deleteProvider,
+  levelsToEfforts,
   listProviderDirectory,
   listRegisteredRoutes,
   modelFromDraft,
+  modelToDraft,
+  prettifyId,
   profileDiffOps,
   profileFromDraft,
   readLlmPiAi,
   routeReferencesOf,
   saveProvider,
-  thinkingEffortsOf,
+  THINKING_LEVELS,
   undeclaredFieldPaths,
   type CredentialsRemoteLike,
   type LlmRemoteLike,
@@ -26,12 +29,14 @@ import type { RouteEntry } from './route-evaluate'
 /**
  * settings-client 单测（dsh-model-service 检查点 U1 的机器化部分）：
  *   · 保存顺序：provider key 预检 → 凭据 ref 查重 → settings.mutate → credentials.set；
- *     查重拒绝时后两环节零执行（决策 7 查重句时点锚定）。
+ *     查重拒绝时后两环节零执行（决策 7 查重句时点锚定）；窄表单新建跳过 route 预检。
  *   · settings/conflict 的重读一次重试一次（非盲重试，RL3 单进程分支）；连续失败四段式。
- *   · 读改写字段级 diff：只发编辑字段、不碰 apiKeyEnv/headers（V1 步骤 10 不丢字段）。
- *   · 思考策略三档映射按宿主 THINKING_LEVELS 与 wire spelling 逐档核对（AS15）。
+ *   · 读改写字段级 diff：只发编辑字段、不碰 apiKeyEnv/headers（V1 步骤 10 不丢字段）；
+ *     窄表单只 diff models（displayName/api/baseURL/compat 不发 op）。
+ *   · 思考档位 levels↔reasoningEfforts 写读往返保真：同名映射 / false / preserve 三分支
+ *     （AS15 逐档核对：值 ∈ THINKING_LEVELS 词表）。
  *   · 回读校验 undeclaredFieldPaths（AS17「宿主不消费」）。
- *   · provider-key 消费方集成：route 预检查重、ref 派生（AX11）。
+ *   · provider-key 消费方集成：route 预检查重、ref 派生（AX11）；prettifyId 显示名规则。
  */
 
 /** 事件记录面（保存链路的调用序断言载体）。 */
@@ -131,12 +136,13 @@ function makeHost(parts: { settings?: SettingsRemoteLike; llm?: LlmRemoteLike; c
 const baseDraft = {
   key: 'verify-a',
   isNew: true,
+  narrow: false,
   displayName: 'Verify A',
   baseURL: 'http://127.0.0.1:9/v1',
   api: 'openai-completions',
   apiKeyValue: 'sk-test-value',
   compat: {},
-  models: [{ id: 'm1', name: 'M1', contextWindow: 8192, maxTokens: 4096, input: ['text' as const], thinkingStrategy: 'on-off' as const }],
+  models: [{ id: 'm1', name: 'M1', contextWindow: 8192, maxTokens: 4096, input: ['text' as const], thinkingEnabled: true, levels: ['off', 'high'], preserve: false }],
 }
 
 describe('saveProvider 保存顺序（检查点 U1）', () => {
@@ -200,6 +206,33 @@ describe('saveProvider 保存顺序（检查点 U1）', () => {
     expect(result.kind).toBe('refused-route')
     expect(recorder.calls).toEqual(['precheck.listProviders'])
     expect(settings.mutations).toHaveLength(0)
+  })
+
+  it('窄表单新建（key = 内置目录 route）跳过 route 预检：目录 route 必然已注册，写配置而非注册新 route', async () => {
+    const recorder = makeRecorder()
+    const settings = fakeSettings()
+    const originalMutate = settings.mutate.bind(settings)
+    settings.mutate = async (ns, ops, rev) => { recorder.mark('settings.mutate'); return originalMutate(ns, ops, rev) }
+    const llm = fakeLlm(['deepseek-official']) // 目录 route 已注册：全表单新建同名必被拒
+    const originalList = llm.listProviders
+    llm.listProviders = async () => { recorder.mark('precheck.listProviders'); return originalList.call(llm) }
+    const credentials = fakeCredentials([], recorder)
+    const host = makeHost({ settings, llm, credentials })
+
+    const result = await saveProvider(host, {
+      draft: { ...baseDraft, key: 'deepseek-official', narrow: true },
+      revision: 7,
+      existing: undefined,
+      refGuard: async () => { recorder.mark('refGuard'); return { ok: true } },
+    })
+    expect(result.kind).toBe('saved')
+    expect(recorder.calls).toEqual(['refGuard', 'settings.mutate', 'credentials.set']) // 无预检句
+    // 写入值无 displayName/api/baseURL（narrow 写入面）。
+    const ops = settings.mutations[0]?.ops ?? []
+    const value = ops[0]?.value as Record<string, unknown>
+    expect('displayName' in value).toBe(false)
+    expect('baseURL' in value).toBe(false)
+    expect('api' in value).toBe(false)
   })
 
   it('不写密钥（重填重试豁免形态外）时跳过凭据查重与 set：只发 settings.mutate', async () => {
@@ -319,12 +352,13 @@ describe('读改写字段级 diff（V1 步骤 10）', () => {
     const ops = profileDiffOps(existing, {
       key: 'verify-a',
       isNew: false,
+      narrow: false,
       displayName: 'New Name',
       baseURL: 'http://new/v1',
       api: 'openai-completions',
       apiKeyValue: '', // 不重填密钥：保留既有 apiKeyEnv
       compat: {},
-      models: [{ id: 'm1', name: 'M1', contextWindow: 16384, maxTokens: 4096, input: ['text'], thinkingStrategy: 'none' }],
+      models: [{ id: 'm1', name: 'M1', contextWindow: 16384, maxTokens: 4096, input: ['text'], thinkingEnabled: false, levels: [], preserve: false }],
     }, 'verify-a')
     const paths = ops.map((op) => op.path.join('.'))
     expect(paths.sort()).toEqual(['providers.verify-a.baseURL', 'providers.verify-a.displayName', 'providers.verify-a.models'])
@@ -335,12 +369,13 @@ describe('读改写字段级 diff（V1 步骤 10）', () => {
     const ops = profileDiffOps(existing, {
       key: 'verify-a',
       isNew: false,
+      narrow: false,
       displayName: 'Old Name',
       baseURL: 'http://old/v1',
       api: 'openai-completions',
       apiKeyValue: '',
       compat: {},
-      models: [{ id: 'm1', name: 'M1', contextWindow: 8192, maxTokens: 4096, input: ['text'], thinkingStrategy: 'none' }],
+      models: [{ id: 'm1', name: 'M1', contextWindow: 8192, maxTokens: 4096, input: ['text'], thinkingEnabled: false, levels: [], preserve: false }],
     }, 'verify-a')
     expect(ops).toHaveLength(0)
   })
@@ -349,6 +384,7 @@ describe('读改写字段级 diff（V1 步骤 10）', () => {
     const ops = profileDiffOps(existing, {
       key: 'verify-a',
       isNew: false,
+      narrow: false,
       displayName: 'Old Name',
       baseURL: 'http://old/v1',
       api: 'openai-completions',
@@ -359,14 +395,49 @@ describe('读改写字段级 diff（V1 步骤 10）', () => {
     expect(ops).toEqual([{ op: 'unset', path: ['providers', 'verify-a', 'models'] }])
   })
 
+  it('窄表单编辑：只 diff models——displayName/api/baseURL/compat 不发 op（宿主侧既有值原样保留）', () => {
+    const existingFull = {
+      ...existing,
+      compat: { supportsDeveloperRole: true },
+    }
+    const ops = profileDiffOps(existingFull, {
+      key: 'verify-a',
+      isNew: false,
+      narrow: true,
+      displayName: 'Ignored', // 窄表单不携带显示名/端点/协议编辑，值进不了写入面
+      baseURL: 'http://ignored/v1',
+      api: 'openai-completions',
+      apiKeyValue: '',
+      compat: { supportsDeveloperRole: true },
+      models: [{ id: 'm1', name: 'M1', contextWindow: 16384, maxTokens: 4096, input: ['text'], thinkingEnabled: false, levels: [], preserve: false }],
+    }, 'verify-a')
+    const paths = ops.map((op) => op.path.join('.'))
+    expect(paths).toEqual(['providers.verify-a.models'])
+  })
+
+  it('窄表单编辑且 models 未变：零 op（跳过三字段与 compat 的 diff，宿主侧值原样保留）', () => {
+    const ops = profileDiffOps(existing, {
+      key: 'verify-a',
+      isNew: false,
+      narrow: true,
+      displayName: 'Ignored',
+      baseURL: 'http://ignored/v1',
+      api: 'openai-completions',
+      apiKeyValue: '',
+      compat: {},
+      models: [{ id: 'm1', name: 'M1', contextWindow: 8192, maxTokens: 4096, input: ['text'], thinkingEnabled: false, levels: [], preserve: false }],
+    }, 'verify-a')
+    expect(ops).toHaveLength(0)
+  })
+
   it('保存成功回执刷新 diff 基线由调用方持有（ProviderEditModel 职责）；本层返回 written profile 供其采纳', async () => {
     const settings = fakeSettings({ providers: { 'verify-a': existing } })
     const host = makeHost({ settings })
     const result = await saveProvider(host, {
       draft: {
-        key: 'verify-a', isNew: false, displayName: 'New Name', baseURL: 'http://new/v1',
+        key: 'verify-a', isNew: false, narrow: false, displayName: 'New Name', baseURL: 'http://new/v1',
         api: 'openai-completions', apiKeyValue: '', compat: {},
-        models: [{ id: 'm1', name: 'M1', contextWindow: 8192, maxTokens: 4096, input: ['text'], thinkingStrategy: 'none' }],
+        models: [{ id: 'm1', name: 'M1', contextWindow: 8192, maxTokens: 4096, input: ['text'], thinkingEnabled: false, levels: [], preserve: false }],
       },
       revision: 7,
       existing,
@@ -377,32 +448,115 @@ describe('读改写字段级 diff（V1 步骤 10）', () => {
   })
 })
 
-describe('思考策略映射（AS15 逐档核对）', () => {
-  it('开·关 = {off, high}；高·最高 = {off, high, max:xhigh}；全部档位 = THINKING_LEVELS 全集七档', () => {
-    expect(thinkingEffortsOf('on-off')).toEqual({ off: 'off', high: 'high' })
-    expect(thinkingEffortsOf('high-max')).toEqual({ off: 'off', high: 'high', max: 'xhigh' })
-    expect(thinkingEffortsOf('all')).toEqual({
+describe('思考档位映射（AS15 逐档核对：值 ∈ THINKING_LEVELS 词表）', () => {
+  it('levels 逐档同名映射：全集七档 = THINKING_LEVELS 全集逐档；子集 = 声明子集，未声明档不写键', () => {
+    expect(levelsToEfforts([...THINKING_LEVELS])).toEqual({
       off: 'off', minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max',
     })
-    // 宿主校验规则：非 off 档 wire 值非空串、至少一个 off 以外档位——三档映射都满足。
-    for (const strategy of ['on-off', 'high-max', 'all'] as const) {
-      const efforts = thinkingEffortsOf(strategy)
-      expect(Object.keys(efforts).length).toBeGreaterThan(1)
-      for (const [level, wire] of Object.entries(efforts)) {
-        expect(wire.length, `${strategy}.${level} wire 非空`).toBeGreaterThan(0)
-      }
+    expect(levelsToEfforts(['off', 'high'])).toEqual({ off: 'off', high: 'high' })
+    // 宿主校验规则：非 off 档 wire 值非空串、至少一个 off 以外档位——同名映射天然满足。
+    for (const [level, wire] of Object.entries(levelsToEfforts([...THINKING_LEVELS]))) {
+      expect(wire.length, `${level} wire 非空`).toBeGreaterThan(0)
+      expect(THINKING_LEVELS).toContain(wire)
     }
   })
 
-  it('无思考模型写 reasoningEfforts:false（宿主 resolveModelReasoning 的 false 分支）', () => {
-    const entry = profileFromDraft({ ...baseDraft, models: [{ id: 'm', name: 'M', contextWindow: 1, maxTokens: 1, input: [], thinkingStrategy: 'none' }] })
-    const model = entry.models as { reasoningEfforts: unknown }[]
-    expect(model[0].reasoningEfforts).toBe(false)
+  it('enabled=false 写 reasoningEfforts:false；enabled=true 写同名映射字典；preserve 逐字透传（modelFromDraft 三分支）', () => {
+    const off = modelFromDraft({ id: 'm', name: 'M', contextWindow: 1, maxTokens: 1, input: [], thinkingEnabled: false, levels: [], preserve: false })
+    expect(off.reasoningEfforts).toBe(false)
+    const on = modelFromDraft({ id: 'm', name: 'M', contextWindow: 1, maxTokens: 1, input: [], thinkingEnabled: true, levels: ['low', 'xhigh'], preserve: false })
+    expect(on.reasoningEfforts).toEqual({ low: 'low', xhigh: 'xhigh' })
+    const raw = { off: '', high: 'high' }
+    const kept = modelFromDraft({ id: 'm', name: 'M', contextWindow: 1, maxTokens: 1, input: [], thinkingEnabled: false, levels: [], preserve: true, preserveRaw: raw })
+    expect(kept.reasoningEfforts).toBe(raw)
   })
 
   it('目录默认态草案不写 models 键（保持目录默认的写入面）', () => {
     const profile = profileFromDraft({ ...baseDraft, models: [] })
     expect('models' in profile).toBe(false)
+  })
+
+  it('窄表单新建整条 set：displayName/api/baseURL 不在写入值（端点/协议/显示名由内置目录解析）', () => {
+    const profile = profileFromDraft({
+      ...baseDraft,
+      narrow: true,
+      models: [{ id: 'm', name: 'M', contextWindow: 1048576, maxTokens: 4096, input: ['text'], thinkingEnabled: true, levels: ['high'], preserve: false }],
+    }, 'TAIJI_VERIFY_A_KEY')
+    expect('displayName' in profile).toBe(false)
+    expect('api' in profile).toBe(false)
+    expect('baseURL' in profile).toBe(false)
+    expect(profile.apiKeyEnv).toBe('TAIJI_VERIFY_A_KEY')
+    expect(Array.isArray(profile.models)).toBe(true)
+  })
+})
+
+describe('modelToDraft 读侧归档（levels↔reasoningEfforts 往返保真）', () => {
+  it('键值完全同名的字典 → enabled + levels=键集合（全集与子集都归自由选集，写回逐字一致）', () => {
+    const full = modelToDraft({ id: 'a', name: 'A', input: ['text'], reasoningEfforts: levelsToEfforts([...THINKING_LEVELS]) })
+    expect(full.thinkingEnabled).toBe(true)
+    expect(full.preserve).toBe(false)
+    expect(full.levels).toEqual([...THINKING_LEVELS])
+    const subset = modelToDraft({ id: 'b', name: 'B', input: ['text'], reasoningEfforts: { off: 'off', low: 'low' } })
+    expect(subset.thinkingEnabled).toBe(true)
+    expect(subset.preserve).toBe(false)
+    expect(subset.levels).toEqual(['off', 'low'])
+    // 往返：读侧归档 → 写侧映射，与既有值逐字段一致（无损）。
+    expect(modelFromDraft(subset).reasoningEfforts).toEqual({ off: 'off', low: 'low' })
+    expect(modelFromDraft(full).reasoningEfforts).toEqual(levelsToEfforts([...THINKING_LEVELS]))
+  })
+
+  it('显式 false → enabled=false + levels=[]，写回 false（无损）', () => {
+    const draft = modelToDraft({ id: 'a', name: 'A', input: ['text'], reasoningEfforts: false })
+    expect(draft.thinkingEnabled).toBe(false)
+    expect(draft.levels).toEqual([])
+    expect(draft.preserve).toBe(false)
+    expect(modelFromDraft(draft).reasoningEfforts).toBe(false)
+  })
+
+  it('值≠键的字典 / 省略字段 / 未知结构 → preserve（携带原始值，写回逐字透传）', () => {
+    const emptyOff = { off: '', high: 'high' }
+    const alienKey = { custom: 'low' }
+    const drafts = [
+      modelToDraft({ id: 'a', name: 'A', input: ['text'], reasoningEfforts: emptyOff }),
+      modelToDraft({ id: 'b', name: 'B', input: ['text'], reasoningEfforts: alienKey }),
+      modelToDraft({ id: 'c', name: 'C', input: ['text'], reasoningEfforts: 'unknown-shape' }),
+      modelToDraft({ id: 'd', name: 'D', input: ['text'] }), // 省略字段：preserve 省略态（写回同样省略）
+    ]
+    for (const draft of drafts) {
+      expect(draft.preserve).toBe(true)
+      expect(draft.thinkingEnabled).toBe(false)
+    }
+    expect(drafts[0].preserveRaw).toEqual(emptyOff)
+    expect(drafts[1].preserveRaw).toEqual(alienKey)
+    expect(drafts[2].preserveRaw).toBe('unknown-shape')
+    expect(drafts[3].preserveRaw).toBeUndefined()
+    // 写回：raw 字典逐字透传；省略态同样省略字段。
+    expect(modelFromDraft(drafts[0]).reasoningEfforts).toEqual(emptyOff)
+    expect(modelFromDraft(drafts[2]).reasoningEfforts).toBe('unknown-shape')
+    expect('reasoningEfforts' in modelFromDraft(drafts[3])).toBe(false)
+  })
+
+  it('上下文窗口非档位数字（宿主侧既有值如 1000000）读入与写回无损', () => {
+    const draft = modelToDraft({ id: 'a', name: 'A', input: ['text'], contextWindow: 1000000, reasoningEfforts: false })
+    expect(draft.contextWindow).toBe(1000000)
+    expect(modelFromDraft(draft).contextWindow).toBe(1000000)
+  })
+})
+
+describe('prettifyId 显示名自动生成规则', () => {
+  it('全小写段：每段首字母大写化（my-model-v1 → My Model V1）', () => {
+    expect(prettifyId('my-model-v1')).toBe('My Model V1')
+    expect(prettifyId('step-5-preview')).toBe('Step 5 Preview')
+  })
+
+  it('任一段含大写：整体只换连字符保持原大小写（GLM-5.3 → GLM 5.3）', () => {
+    expect(prettifyId('GLM-5.3')).toBe('GLM 5.3')
+    expect(prettifyId('o3-Mini-High')).toBe('o3 Mini High')
+  })
+
+  it('空 id 与空段：返回空串/空段不抛错', () => {
+    expect(prettifyId('')).toBe('')
+    expect(prettifyId('a--b')).toBe('A  B')
   })
 })
 
@@ -590,23 +744,23 @@ describe('编辑既有 provider 重填密钥的写入目标（D7：保留既有 
   })
 })
 
-describe('preserve 原样保留（D3 读改写保真：非三档 reasoningEfforts 不被改写）', () => {
+describe('preserve 原样保留（D3 读改写保真：非同名映射 reasoningEfforts 不被改写）', () => {
   it('modelFromDraft preserve：原始字典逐字写回；raw undefined = 写回省略该字段（沿用目录能力语义）', () => {
-    const raw = { off: 'off', low: 'low' }
-    const entry = modelFromDraft({ id: 'm', name: 'M', contextWindow: undefined, maxTokens: undefined, input: ['text'], thinkingStrategy: 'preserve', reasoningEffortsRaw: raw })
+    const raw = { off: '', low: 'low' }
+    const entry = modelFromDraft({ id: 'm', name: 'M', contextWindow: undefined, maxTokens: undefined, input: ['text'], thinkingEnabled: false, levels: [], preserve: true, preserveRaw: raw })
     expect(entry.reasoningEfforts).toEqual(raw)
-    const omitted = modelFromDraft({ id: 'm', name: 'M', contextWindow: undefined, maxTokens: undefined, input: ['text'], thinkingStrategy: 'preserve' })
+    const omitted = modelFromDraft({ id: 'm', name: 'M', contextWindow: undefined, maxTokens: undefined, input: ['text'], thinkingEnabled: false, levels: [], preserve: true })
     expect('reasoningEfforts' in omitted).toBe(false)
   })
 
   it('打开展开体直接保存（preserve 草案原样回写）：profileDiffOps 零 op——用户未编辑推理档位不发 models set', () => {
     const existing = {
       displayName: 'Yanshi', api: 'openai-completions', baseURL: 'http://y/v1',
-      models: [{ id: 'm', name: 'M', input: ['text'], reasoningEfforts: { off: 'off', low: 'low' } }],
+      models: [{ id: 'm', name: 'M', input: ['text'], reasoningEfforts: { off: '', low: 'low' } }],
     }
-    const draft: ModelDraft = { id: 'm', name: 'M', contextWindow: undefined, maxTokens: undefined, input: ['text'], thinkingStrategy: 'preserve', reasoningEffortsRaw: { off: 'off', low: 'low' } }
+    const draft: ModelDraft = { id: 'm', name: 'M', contextWindow: undefined, maxTokens: undefined, input: ['text'], thinkingEnabled: false, levels: [], preserve: true, preserveRaw: { off: '', low: 'low' } }
     const ops = profileDiffOps(existing, {
-      key: 'yanshi', isNew: false, displayName: 'Yanshi', baseURL: 'http://y/v1', api: 'openai-completions',
+      key: 'yanshi', isNew: false, narrow: false, displayName: 'Yanshi', baseURL: 'http://y/v1', api: 'openai-completions',
       apiKeyValue: '', compat: {}, models: [draft],
     }, 'yanshi')
     expect(ops).toHaveLength(0)

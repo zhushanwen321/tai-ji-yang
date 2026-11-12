@@ -10,12 +10,13 @@
  * 断言范围：
  *  V3（追加分区，RL4）：设置导航「模型」与「模型服务」并存；点模型服务渲染插件页（三视图
  *    切换条）；点宿主「模型」渲染宿主原生页（无串页——.ms-section 收起）。
- *  V1（接入全流程）：全新隔离 home 先断言供应商视图为目录列表形态（V9 步骤 1——宿主
- *    pi-ai bundle 自带内置目录，非空态）；随后经插件分区添加供应商：
- *    零模型保存被拒并给「至少添加一个模型或先执行发现」指引（保存前置）；手动添加模型后保存
- *    成功，设置文档出现 providers.<key>（apiKeyEnv 为 ref 名、无明文密钥）+ 凭据文件出现
- *    对应 ref（先设置后凭据的两处落盘，V1 步骤 5/6）；不重启宿主（页面无 reload 标记不变）
- *    宿主「模型」分区可见该供应商（pi-ai 目录热重算，V1 步骤 7/9/RL2）。
+ *  V1（接入全流程）：全新隔离 home 先断言供应商视图为空态（V9 步骤 1——清单只显示已接入
+ *    条目，未接入的内置目录 route 不直出）；随后经插件分区添加供应商：
+ *    添加是三步流程——内置支断言候选列表与窄表单（端点/协议编辑面不存在、只填密钥）；
+ *    自定义支走全表单：零模型保存被拒并给「至少添加一个模型或先执行发现」指引（保存前置）；
+ *    手动添加模型后保存成功，设置文档出现 providers.<key>（apiKeyEnv 为 ref 名、无明文密钥）
+ *    + 凭据文件出现对应 ref（先设置后凭据的两处落盘，V1 步骤 5/6）；不重启宿主（页面无
+ *    reload 标记不变）宿主「模型」分区可见该供应商（pi-ai 目录热重算，V1 步骤 7/9/RL2）。
  *  V1 步骤 11 / RL3（冲突重试）：第一个客户端保持展开体打开（不重新打开）；第二个客户端
  *    （同 URL 新标签页，同一宿主进程的第二个 web 连接）编辑同一供应商的显示名并保存成功
  *    （revision 前移）；回到第一个客户端在仍打开的展开体上加模型保存——settings/conflict
@@ -141,6 +142,17 @@ async function clickNav(page, label) {
   return true
 }
 
+/**
+ * 进入自定义供应商全表单：添加入口 → choose 卡选「自定义」（添加是两步流程：先选接入方式，
+ * 再进表单）。清单口径反转后「添加供应商」打开的是接入方式选择卡，全表单创建必须走此入口。
+ */
+async function openCustomAddForm(page) {
+  await page.locator('.ms-section .ms-button-primary', { hasText: '添加供应商' }).first().click()
+  await page.waitForTimeout(300)
+  await page.locator('.ms-section .ms-addflow-card', { hasText: '自定义' }).first().click()
+  await page.waitForTimeout(300)
+}
+
 /** 当前高亮导航条目文本（无串页断言的对照面）。 */
 async function activeNavLabel(page) {
   return page.locator('[data-shortcut-modal="settings"] nav button[aria-current="true"]').first()
@@ -248,13 +260,16 @@ export async function run(ctx) {
   const tabCount = await page.locator('.ms-section .ms-viewbar-button').count()
   ev.assert('V3/三视图切换条齐备', tabCount === 3, { expected: '3', actual: String(tabCount) })
 
-  // V9 步骤 1 = 全新实例目录列表形态：宿主 dsh-llm-pi-ai 把 pi-ai bundle 内置 provider 全量
-  // 声明进目录（settingsNs 恒 "llm-pi-ai"），目录行全 editable → providers-view 的两个空态
-  // 分支在宿主 web profile 下永不渲染；空态矩阵意图由路由视图空态与模型清单筛选空态覆盖。
-  const rowCount = await page.locator('.ms-section .ms-provider-item').count()
-  ev.assert('V9/全新实例供应商视图渲染内置目录列表', rowCount > 0, {
-    expected: '目录行 > 0（宿主 pi-ai bundle 自带目录）',
-    actual: String(rowCount),
+  // V9 步骤 1 = 全新实例清单只显示已接入条目：宿主 pi-ai bundle 把内置 provider 全量声明进
+  // 目录（settingsNs 恒 "llm-pi-ai"），但全新 home 的 providers 段为空——清单口径反转后未
+  // 接入的目录 route 不直出，供应商视图呈空态矩阵（「尚未接入任何供应商」；若隔离实例有
+  // 宿主托管行则呈「暂无可编辑供应商」——两支都是反转口径的可观察事实）。
+  const emptyTitle = await page.locator('.ms-section .ms-empty-title').first().textContent().catch(() => null)
+  const emptyMatrixShown = emptyTitle !== null && (emptyTitle.includes('尚未接入') || emptyTitle.includes('暂无可编辑'))
+  const unconnectedRowCount = await page.locator('.ms-section .ms-provider-item').count()
+  ev.assert('V9/全新实例供应商视图呈空态（未接入目录 route 不直出）', emptyMatrixShown, {
+    expected: '空态标题（尚未接入 / 暂无可编辑）',
+    actual: `title=${String(emptyTitle)} rows=${String(unconnectedRowCount)}`,
   })
 
   // V3/无串页：点宿主「模型」条目，宿主原生页渲染、插件页收起。
@@ -281,8 +296,41 @@ export async function run(ctx) {
     ev.attach('console.txt', recorder.text())
     return
   }
+  // 添加流程第一步（选接入方式）：内置支 → pick-builtin 候选列表 → 窄表单断言后取消；
+  // 随后走自定义支（全表单）完成 V1 的设置文档/凭据文件落盘断言。
   await addButtons.first().click()
   await page.waitForTimeout(300)
+  const builtinCard = page.locator('.ms-section .ms-addflow-card', { hasText: '内置' })
+  if (!(await builtinCard.isVisible().catch(() => false))) {
+    ev.degrade('添加流程「接入方式」两卡未渲染（choose 步骤缺失？）',
+      '核对 ProvidersView 的 addingStep 渲染分支与 locale 键 addflow.builtinTitle/addflow.customTitle')
+    ev.attach('console.txt', recorder.text())
+    return
+  }
+  await builtinCard.click()
+  await page.waitForTimeout(300)
+  const candidateCount = await page.locator('.ms-section .ms-addflow-item').count()
+  ev.assert('V1/添加流程内置支：候选列表列出内置目录中未接入条目', candidateCount > 0, {
+    expected: 'ms-addflow-item > 0（全新 home 全部内置条目未接入）',
+    actual: String(candidateCount),
+  })
+  await page.locator('.ms-section .ms-addflow-item .ms-button', { hasText: '接入' }).first().click()
+  await page.waitForTimeout(300)
+  const narrowBody = page.locator('.ms-edit-body').first()
+  const narrowNoteVisible = await narrowBody.locator('.ms-narrow-note').isVisible().catch(() => false)
+  const endpointFieldAbsent = !(await narrowBody.locator('.ms-field', { hasText: 'API 端点' }).isVisible().catch(() => false))
+  const protocolFieldAbsent = !(await narrowBody.locator('.ms-field', { hasText: '协议' }).isVisible().catch(() => false))
+  const narrowPasswordVisible = await narrowBody.locator('input[type="password"]').first().isVisible().catch(() => false)
+  ev.assert('V1/窄表单（内置目录型）：说明条在场、端点与协议编辑面不存在、密钥输入在场',
+    narrowNoteVisible && endpointFieldAbsent && protocolFieldAbsent && narrowPasswordVisible, {
+      expected: 'narrow-note + 密钥输入在场；端点/协议 ms-field 缺席',
+      actual: `note=${String(narrowNoteVisible)} endpointAbsent=${String(endpointFieldAbsent)} protocolAbsent=${String(protocolFieldAbsent)} password=${String(narrowPasswordVisible)}`,
+    })
+  await narrowBody.locator('.ms-button', { hasText: '取消' }).first().click()
+  await page.waitForTimeout(300)
+
+  // 自定义支：全表单创建（端点/协议/显示名手动填写）。
+  await openCustomAddForm(page)
 
   const fillField = async (label, value) => {
     const field = page.locator('.ms-edit-body .ms-field', { hasText: label }).first()
@@ -304,6 +352,13 @@ export async function run(ctx) {
   // 手动添加一条模型后保存。
   await page.locator('.ms-edit-body .ms-button', { hasText: '手动添加模型' }).first().click()
   await page.waitForTimeout(200)
+  // 模型卡新交互锚点：空白草案默认 = 上下文 1M 档（1048576）+ 支持思考勾选（产品默认，可改）。
+  const contextDefault = await page.locator('.ms-model-edit-context').first().inputValue().catch(() => null)
+  const thinkingDefault = await page.locator('.ms-model-edit-thinking-wrap input[type="checkbox"]').first().isChecked().catch(() => false)
+  ev.assert('V1/模型卡空白草案默认：上下文 1M 档 + 支持思考勾选', contextDefault === '1048576' && thinkingDefault === true, {
+    expected: "select value='1048576' + checkbox checked",
+    actual: `context=${String(contextDefault)} thinking=${String(thinkingDefault)}`,
+  })
   await page.locator('.ms-model-edit-id').first().fill('verify-model')
   await page.locator('.ms-model-edit-name').first().fill('Verify Model')
   await page.locator('.ms-edit-body .ms-button-primary', { hasText: '保存并接入' }).first().click()
@@ -405,8 +460,7 @@ export async function run(ctx) {
 
   // 同名供应商二次保存 → route 预检拒绝 + 设置文档零写入（检查点顺序的可自动化部分）。
   if (!(await clickNav(page, '模型服务'))) return
-  await page.locator('.ms-section .ms-button-primary', { hasText: '添加供应商' }).first().click()
-  await page.waitForTimeout(300)
+  await openCustomAddForm(page)
   await page.locator('.ms-edit-body .ms-field', { hasText: '显示名称' }).first().locator('input').fill(providerName)
   await page.locator('.ms-edit-body .ms-field', { hasText: 'API 端点' }).first().locator('input').fill('http://127.0.0.1:9/v1')
   await page.locator('.ms-edit-body .ms-button', { hasText: '手动添加模型' }).first().click()
@@ -439,8 +493,7 @@ export async function run(ctx) {
   ev.step({ step: 'v4.refCheckB', stats: { lonelyName, lonelyKey, lonelyRef } })
   appendCredentialRef(credentialsFile, lonelyRef, `sk-lonely-${stamp}`)
   await page.waitForTimeout(1500) // watcher 热加载（debounce 100ms + awaitWriteFinish）留足裕量
-  await page.locator('.ms-section .ms-button-primary', { hasText: '添加供应商' }).first().click()
-  await page.waitForTimeout(300)
+  await openCustomAddForm(page)
   await page.locator('.ms-edit-body .ms-field', { hasText: '显示名称' }).first().locator('input').fill(lonelyName)
   await page.locator('.ms-edit-body .ms-field', { hasText: 'API 端点' }).first().locator('input').fill('http://127.0.0.1:9/v1')
   // 输入密钥（触发保存链路的凭据查重环节）；provider key 与已注册 route 不同名，不触发预检，
@@ -544,8 +597,7 @@ export async function run(ctx) {
 
   // M2 前置：创建一个供应商 + 一条模型（路由成员引用它；端点不可达不影响配置写入）。
   if (!(await clickNav(page, '模型服务'))) return
-  await page.locator('.ms-section .ms-button-primary', { hasText: '添加供应商' }).first().click()
-  await page.waitForTimeout(300)
+  await openCustomAddForm(page)
   await page.locator('.ms-edit-body .ms-field', { hasText: '显示名称' }).first().locator('input').fill(m2ProviderName)
   await page.locator('.ms-edit-body .ms-field', { hasText: 'API 端点' }).first().locator('input').fill('http://127.0.0.1:9/v1')
   await page.locator('.ms-edit-body .ms-button', { hasText: '手动添加模型' }).first().click()

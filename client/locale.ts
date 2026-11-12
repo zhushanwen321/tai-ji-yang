@@ -270,15 +270,14 @@ export function installLocale(host: LocaleInstallHost): void {
 export const TAIJI_MODEL_SERVICE_LOCALE_NS = 'taiji.model-service'
 
 /**
- * 模型服务分区简体中文字典（u-foundation 骨架 30 键 + M1 填充 + M2 增键，当前 171 键）。
+ * 模型服务分区简体中文字典（u-foundation 骨架 30 键 + M1 填充 + M2 增键，当前 192 键）。
  *
  * 键集分段（与下方注释分段一致）：分区与三视图 / 供应商表单字段 / 凭据徽章 / 模型区
  * 来源态 / 空态文案 / 路由视图与三层时间窗 / 通用动作 / 供应商视图 / 展开体表单与发现 /
  * 保存与删除结果文案。措辞来源：空态文案与来源态抄设计包空态矩阵与 D11 的界面语义原文；
- * 字段名对齐宿主 provider schema 字段语义。骨架键值不被后续填充改动，由 locale.test.ts
- * 的骨架用例断言看守；骨架期占位词条 routes.emptyM1 与 M1 期占位词条 routes.emptyM1Next
- * 已按设计 §3.1 增量项⑥的中间态声明在 M2 交付后清理移除（当前 171 键 = 骨架现存 29 +
- * 增量键 142；沿革 git 可追溯）。
+ * 字段名对齐宿主 provider schema 字段语义；思考档位/添加流程/窄表单词条对齐供应商接入
+ * 交互重设计。骨架键值不被后续填充改动，由 locale.test.ts 的骨架用例断言看守；骨架期
+ * 占位词条与被替换语义的旧词条（D6 三档策略按钮）已清理移除（沿革 git 可追溯）。
  */
 export const modelServiceZh = {
   /* ── 分区与三视图 ── */
@@ -293,16 +292,39 @@ export const modelServiceZh = {
   'provider.baseURL': 'API 端点',
   'provider.api': '协议',
   'provider.apiKey': 'API 密钥',
+  /** 窄表单说明条（内置目录型：端点/协议由目录解析，表单只填密钥）。 */
+  'provider.narrowNote': 'API 端点与协议由内置目录解析，无需填写',
   /** 模型区标题（供应商展开体内按两来源态呈现的区块）。 */
   'provider.modelsSection': '模型',
   /** 协议兼容分组标题（D6：essential 常显 + advanced 折叠）。 */
   'provider.compat': '协议兼容',
   'model.id': '模型 ID',
   'model.displayName': '显示名称',
+  /** 显示名自动生成说明（nameEdited 未置位时显示名跟随模型 ID 生成/联动）。 */
+  'model.nameAutoHint': '未手动修改时，显示名跟随模型 ID 自动生成',
   'model.contextWindow': '上下文窗口',
+  /** 上下文窗口档位 select 的自定义回落项与提示（档位外的数字走数字输入，无损写回）。 */
+  'model.contextCustom': '自定义…',
   'model.maxTokens': '最大输出',
   'model.inputModalities': '输入类型',
-  'model.thinkingStrategy': '思考策略',
+  /** 思考档位组（「支持思考」checkbox + 档位 badge 自由组合；宿主 reasoningEfforts 的 7 档词表）。 */
+  'model.thinkingLevels': '思考档位',
+  'model.thinkingEnabled': '支持思考',
+  /** preserve 态标注（既有 reasoningEfforts 非同名映射形态：原样保留、写回逐字透传）。 */
+  'model.thinkingPreserved': '既有值原样保留',
+  /** 自定义档输入（仅接受宿主 THINKING_LEVELS 词表内的档名；自由键名会写出非法 wire 值）。 */
+  'model.levelCustom': '自定义档位',
+  'model.levelCustomPlaceholder': '档位名',
+  'model.levelInvalid': '仅支持 off / minimal / low / medium / high / xhigh / max',
+  'model.levelRemove': '移除档位',
+  /** 宿主 THINKING_LEVELS 七档的界面文案（badge/pill 标签；自定义档校验提示另见 model.levelInvalid）。 */
+  'thinking.level.off': '关闭',
+  'thinking.level.minimal': '极简',
+  'thinking.level.low': '低',
+  'thinking.level.medium': '中',
+  'thinking.level.high': '高',
+  'thinking.level.xhigh': '超高',
+  'thinking.level.max': '最高',
 
   /* ── 凭据徽章（credentials describe 两态）── */
   'credential.configured': '已配置',
@@ -421,6 +443,17 @@ export const modelServiceZh = {
   'route.special.remove': '删除日期',
   'route.special.maskHint': '点击格子调整当日生效时段（不设置 = 全天生效/剔除）。',
 
+  /* ── 添加流程（选接入方式两卡 / 内置目录候选列表）── */
+  'addflow.builtinTitle': '接入内置供应商',
+  'addflow.builtinNote': '从内置目录选择条目，只需填写 API 密钥',
+  'addflow.customTitle': '接入自定义供应商',
+  'addflow.customNote': '自行填写 API 端点与协议，手动维护模型清单',
+  'addflow.pickTitle': '选择内置供应商',
+  'addflow.pickNote': '以下为内置目录中尚未接入的条目',
+  'addflow.pickEmpty': '内置目录条目均已接入',
+  'addflow.back': '返回',
+  'addflow.connect': '接入',
+
   /* ── 动作（M1 填充：展开体 / 列表 / 清单的通用动作）── */
   'action.save': '保存并接入',
   'action.cancel': '取消',
@@ -468,10 +501,6 @@ export const modelServiceZh = {
   'models.sourceDirectory': '目录默认',
   'models.sourceCustom': '自定义清单',
   'models.sourceOverride': '目录默认 + 覆盖',
-  'thinking.all': '全部档位',
-  'thinking.on-off': '开·关',
-  'thinking.high-max': '高·最高',
-  'thinking.none': '无思考',
   'input.text': '文本',
   'input.image': '图像',
   'discovery.running': '正在探测端点…',
@@ -507,14 +536,30 @@ export const modelServiceEn = {
   'provider.baseURL': 'API endpoint',
   'provider.api': 'Protocol',
   'provider.apiKey': 'API key',
+  'provider.narrowNote': 'API endpoint and protocol are resolved from the built-in catalog; nothing to fill in',
   'provider.modelsSection': 'Models',
   'provider.compat': 'Protocol compatibility',
   'model.id': 'Model ID',
   'model.displayName': 'Display name',
+  'model.nameAutoHint': 'Until edited manually, the display name follows the model ID',
   'model.contextWindow': 'Context window',
+  'model.contextCustom': 'Custom…',
   'model.maxTokens': 'Max output',
   'model.inputModalities': 'Input types',
-  'model.thinkingStrategy': 'Thinking strategy',
+  'model.thinkingLevels': 'Thinking levels',
+  'model.thinkingEnabled': 'Supports thinking',
+  'model.thinkingPreserved': 'Existing value kept as is',
+  'model.levelCustom': 'Custom level',
+  'model.levelCustomPlaceholder': 'Level name',
+  'model.levelInvalid': 'Only off / minimal / low / medium / high / xhigh / max are supported',
+  'model.levelRemove': 'Remove level',
+  'thinking.level.off': 'Off',
+  'thinking.level.minimal': 'Minimal',
+  'thinking.level.low': 'Low',
+  'thinking.level.medium': 'Medium',
+  'thinking.level.high': 'High',
+  'thinking.level.xhigh': 'Ultra high',
+  'thinking.level.max': 'Max',
 
   'credential.configured': 'Configured',
   'credential.missing': 'Not configured',
@@ -616,6 +661,17 @@ export const modelServiceEn = {
   'route.special.remove': 'Delete date',
   'route.special.maskHint': 'Click cells to adjust the active slots for that day (unset = whole day include/exclude).',
 
+  /* ── Add flow (choose cards / built-in catalog candidates) ── */
+  'addflow.builtinTitle': 'Connect a built-in provider',
+  'addflow.builtinNote': 'Pick an entry from the built-in catalog; only the API key is needed',
+  'addflow.customTitle': 'Connect a custom provider',
+  'addflow.customNote': 'Fill in the API endpoint and protocol yourself; maintain the model list manually',
+  'addflow.pickTitle': 'Choose a built-in provider',
+  'addflow.pickNote': 'Built-in catalog entries that are not connected yet',
+  'addflow.pickEmpty': 'All built-in catalog entries are connected',
+  'addflow.back': 'Back',
+  'addflow.connect': 'Connect',
+
   'action.save': 'Save & connect',
   'action.cancel': 'Cancel',
   'action.deleteProvider': 'Delete provider',
@@ -659,10 +715,6 @@ export const modelServiceEn = {
   'models.sourceDirectory': 'Directory defaults',
   'models.sourceCustom': 'Custom list',
   'models.sourceOverride': 'Directory defaults + overrides',
-  'thinking.all': 'All levels',
-  'thinking.on-off': 'On·Off',
-  'thinking.high-max': 'High·Max',
-  'thinking.none': 'No thinking',
   'input.text': 'Text',
   'input.image': 'Image',
   'discovery.running': 'Probing endpoint…',
