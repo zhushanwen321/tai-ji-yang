@@ -70,6 +70,8 @@ export interface RoutesSnapshot {
   hanging: string[]
   /** 注册未生效的路由 id（期望 taiji-route-<id> 不在宿主注册表——V7 状态条）。 */
   registrationFailed: string[]
+  /** 注册失败诊断（Node 半场 ensureRouteRegistration 透传的原始拒绝原因；undefined = 无失败或旧 profile 无此字段）。 */
+  registrationError: { routeIds: string[]; origin: string; detail: string } | undefined
   /** 「当前命中」预览（routeId → 命中成员 | undefined；打开视图时算一次）。 */
   hits: Map<string, RouteMember | undefined>
   /** 成员可用性标注（键 = `${provider}/${model}`；G18）。 */
@@ -249,7 +251,8 @@ export class RoutesListModel {
         ? Object.keys(llmPiAi.providers).filter((key) => key.startsWith(ROUTE_PROVIDER_PREFIX))
         : [],
     )
-    const registrationFailed = routes
+
+const registrationFailed = routes
       .map((route) => route.id)
       .filter((id) => {
         const expected = `${ROUTE_PROVIDER_PREFIX}${id}`
@@ -278,9 +281,15 @@ export class RoutesListModel {
             })
         : []
     const availability = this.buildMemberAvailability(routes, llmPiAi, credentials)
+    // 注册诊断从 Config 快照现取（probeDerived 不持有 load 的快照引用；getSnapshot 为同步零成本读）。
+    const formSnapshot = this.deps.configForm.getSnapshot()
+    const rawRegistrationError = formSnapshot.status === 'ready' && typeof formSnapshot.value === 'object' && formSnapshot.value !== null
+      ? (formSnapshot.value as Record<string, unknown>).routeRegistrationError
+      : undefined
     this.state = {
       ...this.state,
       registrationFailed,
+      registrationError: parseRegistrationError(rawRegistrationError),
       selectableProviders,
       memberAvailability: availability,
       hits: evaluateRoutesAt(routes, new Date()),
@@ -551,6 +560,7 @@ function emptySnapshot(): RoutesSnapshot {
     whitelist: [],
     hanging: [],
     registrationFailed: [],
+    registrationError: undefined,
     hits: new Map(),
     memberAvailability: new Map(),
     selectableProviders: [],
@@ -569,4 +579,19 @@ function contentKey(routes: RouteEntry[], whitelist: string[]): string {
 function computeHanging(routes: RouteEntry[], whitelist: string[]): string[] {
   const routeIds = new Set(routes.map((route) => route.id))
   return whitelist.filter((id) => !routeIds.has(id))
+}
+
+
+/** 注册失败诊断解析（Node 半场写入形态「origin scope: detail」；形态不符时原文进 detail）。 */
+export function parseRegistrationError(
+  raw: unknown,
+): { routeIds: string[]; origin: string; detail: string } | undefined {
+  if (typeof raw !== 'string' || raw.trim() === '') return undefined
+  const match = raw.match(/^(\S+) (\S+): ([\s\S]*)$/)
+  if (match === null) return { routeIds: [], origin: '', detail: raw }
+  const routeIds = match[2]
+  .split(',')
+  .map((piece) => piece.replace(new RegExp(`^${ROUTE_PROVIDER_PREFIX}`), ''))
+  .filter((id) => id !== '')
+  return { routeIds, origin: match[1], detail: match[3] }
 }

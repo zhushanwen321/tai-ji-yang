@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { moveMember, RoutesListModel, ROUTES_FIELD, WHITELIST_FIELD } from './route-store'
+import { moveMember, RoutesListModel, ROUTES_FIELD, WHITELIST_FIELD , parseRegistrationError } from './route-store'
 import type { PluginConfigFormLike } from './credentials-client'
 import type { ConfigFormSnapshotLike } from '../persist'
 import type { RouteEntry } from './route-evaluate'
@@ -444,5 +444,41 @@ describe('内容级回放守卫（共享 revision 计数下滞后内容蒙混栅
     expect(model.getSnapshot().routes).toEqual([])
     // 删除已乐观生效：hanging = whitelist ∖ routes 立即呈现（镜像滞后/毒回放不再吞掉它）。
     expect(model.getSnapshot().hanging).toEqual(['verify-route'])
+  })
+})
+
+
+describe('parseRegistrationError（Node 半场诊断透传的解析）', () => {
+  it('标准形态：origin + provider id 集 + detail，id 剥 taiji-route- 前缀', () => {
+    expect(
+      parseRegistrationError('initial taiji-route-desktop-demo: an adapter for provider "x" is already registered'),
+    ).toEqual({
+      routeIds: ['desktop-demo'],
+      origin: 'initial',
+      detail: 'an adapter for provider "x" is already registered',
+    })
+  })
+
+  it('多 provider 集合逐个剥前缀、detail 保留换行', () => {
+    expect(
+      parseRegistrationError('config-update taiji-route-a,taiji-route-b: line1\nline2'),
+    ).toEqual({
+      routeIds: ['a', 'b'],
+      origin: 'config-update',
+      detail: 'line1\nline2',
+    })
+  })
+
+  it('形态不符（无 origin/scope 结构）原文进 detail', () => {
+    expect(parseRegistrationError('some raw error text')).toEqual({
+      routeIds: [],
+      origin: '',
+      detail: 'some raw error text',
+    })
+  })
+
+  it('undefined / 空串返回 undefined', () => {
+    expect(parseRegistrationError(undefined)).toBeUndefined()
+    expect(parseRegistrationError('')).toBeUndefined()
   })
 })

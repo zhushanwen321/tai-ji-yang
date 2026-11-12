@@ -424,6 +424,11 @@ export function RouteCardBody({ t, route, state, model, onToast, onRenamed }: Ro
       {registrationFailed && (
         <div className="ms-route-fix" role="alert">
           <div className="ms-note ms-note-warn">{t('route.registrationFailed', { routes: route.name })}</div>
+          {state.registrationError?.routeIds.includes(route.id) && (
+            <div className="ms-row-note">
+              {t('route.registrationErrorDetail')}: {state.registrationError.origin} / {state.registrationError.detail}
+            </div>
+          )}
           <div className="ms-row-note">{t('route.registrationFailedNext')}</div>
           <div className="ms-route-fix-actions">
             <input
