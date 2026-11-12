@@ -76,10 +76,11 @@ function materializeProfile(profile: unknown): unknown {
   if (!isPlainRecord(profile)) return profile
   const projected: Record<string, unknown> = { ...MATERIALIZED_PROFILE_DEFAULTS, ...profile }
   if (projected.models === undefined) projected.models = []
-  // 顶层 compat 缺席物化为空对象（对齐真实宿主物化键集，MF-3-1：schemastery 把文档侧
-  // 缺席的 compat 补 {}——存量缺席条目的 describe 视图恒在场空形态，是 unset 假失败
-  // 回归用例的真值底座）。
-  if (projected.compat === undefined) projected.compat = {}
+  // 顶层 compat 缺席物化为嵌套空容器键形态（对齐真实宿主物化键集——真机插桩实证
+  // （V1-11）：schemastery 把文档侧缺席的 compat 物化为 {chatTemplateKwargs:{},
+  // chatTemplateArgs:{}}，键集非空但键值全为空容器；存量缺席条目的 describe 视图恒
+  // 在场该形态，是 unset 假失败回归用例的真值底座）。
+  if (projected.compat === undefined) projected.compat = { chatTemplateKwargs: {}, chatTemplateArgs: {} }
   if (Array.isArray(projected.models)) {
     projected.models = projected.models.map((entry) => {
       if (!isPlainRecord(entry)) return entry
@@ -1216,7 +1217,7 @@ describe('存量物化空形态的 unset 假失败（MF-3-1）', () => {
     const existing = (await readLlmPiAi(settings)).providers['deepseek-official']
     // fake 物化表对齐真实宿主键集：缺席 models/compat 在物化视图恒在场空形态。
     expect(existing?.models).toEqual([])
-    expect(existing?.compat).toEqual({})
+    expect(existing?.compat).toEqual({ chatTemplateKwargs: {}, chatTemplateArgs: {} })
     const result = await saveProvider(makeHost({ settings, credentials }), {
       draft: {
         key: 'deepseek-official', isNew: false, narrow: true,
@@ -1238,7 +1239,7 @@ describe('存量物化空形态的 unset 假失败（MF-3-1）', () => {
     const settings = fakeSettings({ providers: { yanshi: { displayName: 'Yanshi', api: 'openai-completions', baseURL: 'http://old/v1', apiKeyEnv: 'TAIJI_YANSHI_KEY' } }, revision: 7 })
     const existing = (await readLlmPiAi(settings)).providers.yanshi
     expect(existing?.models).toEqual([]) // 物化空形态在场
-    expect(existing?.compat).toEqual({})
+    expect(existing?.compat).toEqual({ chatTemplateKwargs: {}, chatTemplateArgs: {} })
     const result = await saveProvider(makeHost({ settings }), {
       draft: {
         key: 'yanshi', isNew: false, narrow: false,
@@ -1261,5 +1262,39 @@ describe('存量物化空形态的 unset 假失败（MF-3-1）', () => {
     const result = await writeProviderModels(makeHost({ settings }), 'yanshi', [])
     expect(result.kind).toBe('saved')
     expect(settings.mutations[0].ops).toEqual([{ op: 'unset', path: ['providers', 'yanshi', 'models'] }])
+  })
+
+  it('全表单编辑 compat 物化为嵌套空容器键形态的条目仅改 displayName：零 compat op、saved（V1-11 真机回归）', async () => {
+    // 真机插桩实证：写者二编辑改名时 draft.compat 经 writableCompat 协议 gate 过滤为 {}
+    // （宿主物化键 chatTemplateKwargs/chatTemplateArgs 不在六项 gate 清单）→ diff 侧
+    // after=undefined、before=物化嵌套空形态——修复前 isEmptyContainer 只认「空数组/
+    // 空对象字面」，嵌套形态判「非空」→ 发 compat unset op → 回执物化又补回同形态 →
+    // verifyWrittenOps 的 deepEqual 恒命中 → rejected 假失败（改名实际已落盘，UI 却
+    // 报回执不符）。修复后：键值全为空容器的嵌套形态同为物化空 → 不发 op → saved。
+    const settings = fakeSettings({ providers: { p1: { displayName: '冲突验证', api: 'openai-completions', baseURL: 'http://x/v1', apiKeyEnv: 'TAIJI_P1_KEY' } }, revision: 7 })
+    const existing = (await readLlmPiAi(settings)).providers.p1
+    expect(existing?.compat).toEqual({ chatTemplateKwargs: {}, chatTemplateArgs: {} })
+    const result = await saveProvider(makeHost({ settings }), {
+      draft: {
+        key: 'p1', isNew: false, narrow: false,
+        displayName: '冲突验证-b', baseURL: 'http://x/v1', api: 'openai-completions',
+        apiKeyValue: '', compat: {}, models: [],
+      },
+      revision: 7,
+      existing,
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('saved')
+    expect(settings.mutations[0].ops).toEqual([{ op: 'set', path: ['providers', 'p1', 'displayName'], value: '冲突验证-b' }])
+  })
+
+  it('判定层放行：兼容形态直发 compat unset（嵌套空容器键）也不判不符——幂等空 unset 无实质产物', async () => {
+    // diff 层修复消除主路径的误发 op；无法从源头消除的 compat unset（明确清除意图的
+    // 路径）由判定层兜底：存量 compat 为嵌套空容器物化形态时，unset 后回执物化补回
+    // 同形态 = deepEqual 命中——修复前恒 rejected；修复前半句（isEmptyContainer 递归
+    // 化）后该形态判空 → 放行。走 writeProviderModels 的同构代理路径验证判定层。
+    const settings = fakeSettings({ providers: { yanshi: { displayName: 'Yanshi', compat: { chatTemplateKwargs: {}, chatTemplateArgs: {} } } }, revision: 3 })
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', [])
+    expect(result.kind).toBe('saved')
   })
 })

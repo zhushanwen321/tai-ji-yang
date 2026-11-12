@@ -581,6 +581,47 @@ describe('注册探测降级（读取失败不标注 + 近期写入宽限）', (
     }
   })
 
+  it('宽限吞掉的候选失败由延时重探定时器补标：无后续事件也出现红徽（真机 V7 回归）+ dispose 撤销补探', async () => {
+    // 真实宿主注册失败链（注册失败 → 写诊断 → Config 变更 → load）亚秒级全部落在宽限
+    // 窗内被吞，且窗过期后无事件再触发探测（probeDerived 仅事件驱动）——诊断通道
+    // （volatile 字段经 settings.mutate）真机不落盘不可见，宽限例外不可达。被吞的候选
+    // 失败必须由一次性定时器在宽限刚过期时补探，否则注册失败红徽永不出现。
+    // 同时 fake Date 与 setTimeout（补探定时器本体）；advanceTimersByTimeAsync 顺带
+    // flush fire-and-forget 补探 promise 的 microtask 链。
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    try {
+      const remote = fakeRemote() // 注册表恒空 = 差集恒在
+      const form = fakeConfigForm(routesSnapshot([], []))
+      const model = new RoutesListModel({ remote, configForm: form })
+      await model.pending
+      await model.createRoute('Fresh')
+      // 宽限窗内：候选失败被吞，不标注。
+      expect(model.getSnapshot().registrationFailed).toEqual([])
+      // 无任何后续事件（load/commit 均不发生），仅推进时间：定时点（宽限 + 50ms）补探。
+      await vi.advanceTimersByTimeAsync(5200)
+      expect(model.getSnapshot().registrationFailed).toEqual(['fresh'])
+      model.dispose()
+    } finally {
+      vi.useRealTimers()
+    }
+    // dispose 撤销补探定时器：新建路由（宽限吞掉候选失败）后立即 dispose，推进时间不再
+    // 补探——分区卸载后不得再有探测写入 state。
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    try {
+      const remote = fakeRemote()
+      const form = fakeConfigForm(routesSnapshot([], []))
+      const model = new RoutesListModel({ remote, configForm: form })
+      await model.pending
+      await model.createRoute('Fresh')
+      expect(model.getSnapshot().registrationFailed).toEqual([])
+      model.dispose()
+      await vi.advanceTimersByTimeAsync(5200)
+      expect(model.getSnapshot().registrationFailed).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('whitelist 写入不重置既有失败路由标注（宽限锚定 routes 写入时刻，MF-2-2）', async () => {
     const remote = fakeRemote() // 注册表恒空 = 注册恒失败
     // 初始路由非本会话写入（lastWritten 无 routes 写入历史，无宽限）：pending 后标注在场。

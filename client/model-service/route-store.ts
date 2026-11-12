@@ -127,6 +127,14 @@ export class RoutesListModel {
   /** 收敛重写调用链内的递归防护：同一次 load 链内不再收敛（防 set 持续被拒时收敛-重读
    * 无限循环）；外部新投递（subscribe/commit 触发的 load）不受限。 */
   private reconcileLoopGuard = false
+  /**
+   * 宽限吞掉候选失败后的一次性延时重探定时器（真机验收回归）：probeDerived 仅事件驱动
+   * （load/commit 链），注册失败链（注册失败 → 写诊断 → Config 变更 → load）亚秒级全部
+   * 落在宽限窗内被吞，窗过期后无事件再触发探测 → 注册失败红徽在真实宿主永不出现。被吞
+   * 的候选失败由本定时器在宽限刚过期时补一次探测；已有定时器时不重复安排（保留最早
+   * 触发点），dispose 撤销。
+   */
+  private graceRecheckTimer: ReturnType<typeof setTimeout> | undefined
   /** 构造时启动的首读（测试 await model.pending 等待就绪）。 */
   readonly pending: Promise<void>
   private unsubscribe: (() => void) | undefined
@@ -144,6 +152,26 @@ export class RoutesListModel {
   dispose(): void {
     this.unsubscribe?.()
     this.unsubscribe = undefined
+    if (this.graceRecheckTimer !== undefined) {
+      clearTimeout(this.graceRecheckTimer)
+      this.graceRecheckTimer = undefined
+    }
+  }
+
+  /**
+   * 宽限刚过期时补一次探测：probeDerived 仅事件驱动，被宽限吞掉的候选失败若无人补探
+   * 将永不标注。定时点 = 宽限窗结束 + 50ms 余量（窗边界竞态防抖）；已安排则保留最早
+   * 触发点（后续轮次可能改判 clean，多探一次无害——探测只读宿主 remote）。
+   */
+  private scheduleGraceRecheck(): void {
+    if (this.graceRecheckTimer !== undefined) return
+    const writtenAt = this.lastWritten?.routesWrittenAt
+    if (writtenAt === undefined) return
+    const delay = Math.max(REGISTRATION_PROBE_GRACE_MS - (Date.now() - writtenAt), 0) + 50
+    this.graceRecheckTimer = setTimeout(() => {
+      this.graceRecheckTimer = undefined
+      void this.probeDerived(this.state.routes).catch(() => {})
+    }, delay)
   }
 
   getSnapshot(): RoutesSnapshot {
@@ -304,15 +332,25 @@ export class RoutesListModel {
       && Date.now() - this.lastWritten.routesWrittenAt <= REGISTRATION_PROBE_GRACE_MS
       ? new Set(this.lastWritten.routes.map((route) => route.id))
       : undefined
+    // 宽限吞掉的候选失败（差集判定本会标失败、因宽限跳过且诊断例外未命中）：真实宿主
+    // 诊断通道（volatile 字段经 settings.mutate）不落盘不可见，注册失败链全部落在宽限
+    // 窗内且窗过期后无事件再触发探测——被吞的候选失败必须由定时器补探（见
+    // graceRecheckTimer），否则红徽永不出现（真机验收 V7 回归）。
+    let graceSwallowedFailures = 0
     const registrationFailed = registeredRouteProviders === undefined
       ? []
       : routes
         .map((route) => route.id)
         .filter((id) => {
-          if (recentWriteGrace?.has(id) && !registrationError?.routeIds.includes(id)) return false
           const expected = `${ROUTE_PROVIDER_PREFIX}${id}`
-          return squattedIds.has(expected) || !registeredRouteProviders.has(expected)
+          const wouldFail = squattedIds.has(expected) || !registeredRouteProviders.has(expected)
+          if (recentWriteGrace?.has(id) && !registrationError?.routeIds.includes(id)) {
+            if (wouldFail) graceSwallowedFailures += 1
+            return false
+          }
+          return wouldFail
         })
+    if (graceSwallowedFailures > 0) this.scheduleGraceRecheck()
     // 成员供应商下拉口径（路由交互定稿 A4）：providers 快照里已存在的条目（含自定义 route；
     // 未接入的目录 route 不直出）。displayName 目录名回落（快照条目未写 displayName 时）。
     const selectableProviders =

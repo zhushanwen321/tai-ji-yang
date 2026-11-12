@@ -863,9 +863,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * models/compat 补为此形态，与用户显式写入的空形态在投影视图上不可区分——diff 侧对它
  * 不发 unset、判定层对它不判不符，两层共用本判定。
  */
+/**
+ * 物化空形态判定（真机验收回归 V1-11 扩展）：空数组 / 空对象之外，宿主物化投影还会把
+ * 文档缺席的 compat 物化为「键集非空但键值全为空容器」的嵌套形态（实测
+ * {chatTemplateKwargs:{}, chatTemplateArgs:{}}）——该形态与「用户真实写入的值」不可区分
+ * 于存储层，对它 unset 是幂等空操作（文档侧本就缺席），diff 层不发、判定层放行，两层
+ * 共用本判定。递归口径：容器内全部值都是物化空形态（含基元缺失即键值只有空容器）才算；
+ * 任何非容器原值（boolean/string/number）出现 = 用户真实配置，照常参与比对。
+ */
 function isEmptyContainer(value: unknown): boolean {
   if (Array.isArray(value)) return value.length === 0
-  return isRecord(value) && Object.keys(value).length === 0
+  if (!isRecord(value)) return false
+  return Object.values(value).every((item) => isEmptyContainer(item))
 }
 
 /** JSON 形态的深比较（宿主存储是 JSON 值域；undefined 视为缺席）。 */
