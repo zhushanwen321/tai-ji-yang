@@ -27,6 +27,7 @@ import {
   COMMENTS_API_BASE_PATH,
   COMMENT_DELIVERY_STATES,
   COMMENT_THREAD_STATUSES,
+  type CommentAnchor,
   type CommentDelivery,
   type CommentThread,
   type CommentThreadStatus,
@@ -42,11 +43,17 @@ export type CommentMutationOutcome =
   | { ok: true; thread: CommentThread }
   | { ok: false; status?: number }
 
-/** POST .create 的载荷（D2：评论挂当前预览产物，面板自动携带 artifactPath——D8 文件级挂靠）。 */
+/**
+ * POST .create 的载荷（D2：评论挂当前预览产物，面板自动携带 artifactPath）。
+ * anchor 可选（opendesign-comment-anchor D1/UD2：拾取首评携带元素锚点，缺省向后兼容——
+ * 旧客户端无 anchor 请求照常合法；载荷形状校验在服务端 .create 分支，缺 anchor 不影响
+ * 既有校验）。载荷经拾取桥的 picked 落点补齐（resolvePickTarget）构造。
+ */
 export interface CommentCreateInput {
   readonly sessionId: string
   readonly artifactPath: string
   readonly text: string
+  readonly anchor?: CommentAnchor
 }
 
 /** POST .reply 的载荷（resolved 线程追加自动回 open——重开语义在服务端状态机，D5 转移④）。 */

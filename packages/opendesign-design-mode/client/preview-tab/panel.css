@@ -91,7 +91,7 @@
   background: color-mix(in srgb, currentColor 8%, transparent);
 }
 
-/* 小号动作钮（重载 / 返回列表）：只描边填充，不写背景色主题值 */
+/* 小号动作钮（重载 / 返回列表 / 评论模式开关 / 定位 / 追加）：只描边填充，不写背景色主题值 */
 .odp-button {
   padding: 4px 10px;
   border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
@@ -104,6 +104,18 @@
 
 .odp-button:hover {
   background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+/* 禁用态（就绪前的评论模式开关 / 失效条目的定位钮等）：降透明度、去 hover 反馈 */
+.odp-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+  background: transparent;
+}
+
+/* 评论模式开关的按下态（aria-pressed；底色区分开/关） */
+.odp-button[aria-pressed='true'] {
+  background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
 /* ── 评论侧栏（opendesign-comment-loop §3.1 面板 UI 段）─────────────────────
@@ -256,35 +268,37 @@
   font: inherit;
 }
 
-/* 底部新评论输入区：textarea 占余量，发送钮随行 */
-.odp-comments-composer {
+/* 条目锚点行（D1）：级别名 + 选择器原样（字族字号全部继承宿主） */
+.odp-thread-anchor {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: baseline;
   gap: 6px;
-  flex: 0 0 auto;
-  padding: 10px 12px;
-  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
 }
 
-.odp-comment-input {
-  resize: none;
-  min-height: 56px;
-  padding: 6px 8px;
+.odp-thread-anchor-level {
+  padding: 0 8px;
   border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.odp-thread-anchor-sel {
   font: inherit;
-  line-height: 1.5;
+  opacity: 0.75;
+  overflow-wrap: anywhere;
 }
 
-.odp-comments-composer .odp-button {
-  align-self: flex-end;
+/* 锚点失效态（D8(b)）：整条降透明度 + 独立失效标注（定位按钮禁用由 disabled 态呈现） */
+.odp-thread--missed {
+  opacity: 0.6;
 }
 
-.odp-comments-composer .odp-button:disabled {
-  cursor: default;
-  background: transparent;
+.odp-anchor-missed {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  white-space: nowrap;
 }
 
 /* 产物列表行的评论计数徽标（.odp-row 内右对齐；名称占余量） */

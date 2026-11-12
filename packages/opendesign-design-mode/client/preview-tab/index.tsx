@@ -13,6 +13,11 @@
  *      即按它路由）；槽位声明 `locale:` 让渲染机理合成 t 座位，组件只用本地状态、不设
  *      store。面板体两模式：地址可解析为产物 → iframe 视图；否则（guide 页面地址）→
  *      产物列表兜底，行点击在本面板内载入 iframe。
+ *   3. 拾取桥接线（opendesign-comment-anchor U4）：面板体是桥的宿主侧端点与评论编排方——
+ *      picked → resolvePickTarget 补齐 artifactPath/sessionId → commentsApi.create →
+ *      submit-result 回执；就绪态管理（ready 前评论模式开关与定位按钮禁用）、anchors
+ *      下发（线程 id+序号+sel）与 locate/anchors-status（misses 标侧栏条目失效态）。
+ *      桥报文判定与控制器在 pick-bridge.ts（react-free，单测直驱）。
  *
  * 装配序（本包纪律）：locale 字典先于 tab 类型与面板槽位的注册（t 座位按 (命名空间,
  * revision) 合成，缺字典 fail-loud）。贡献点（字典 / tab 类型 / 槽位）一律经 ctx.effect
@@ -22,14 +27,14 @@
  * （PreviewApplyContext），产物 require 字面量 ⊆ 宿主模块基线（check-require-baseline）。
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import type { CommentThread } from '../lib/comments/contract'
 import {
   DESIGN_PANEL_LOCALE_NS,
   GENERIC_PREVIEW_KIND,
   OPENDESIGN_TAB_ID,
   OPENDESIGN_TAB_KIND,
-  artifactPathOf,
   artifactRouteUrlFor,
   artifactRouteUrlForPath,
   artifactSessionIdOf,
@@ -42,6 +47,13 @@ import { ArtifactIframeView, type PanelTranslate } from './iframe-view'
 import { ArtifactList, type ArtifactLister } from './artifact-list'
 import { CommentsSidebar } from '../comments/panel'
 import { createCommentsApi, type CommentsApi } from '../comments/api'
+import {
+  anchorsOfThreads,
+  createPickBridge,
+  resolvePickTarget,
+  type PickBridge,
+  type PickTarget,
+} from './pick-bridge'
 import { en, zh } from './locales'
 import './panel.css'
 
@@ -187,6 +199,17 @@ function createDesignPanelBody(
     const [designSession, setDesignSession] = useState<boolean | undefined>(undefined)
     // 各产物的评论线程数（列表行徽标；仅设计会话拉取，失败缺省无徽标不打扰列表主功能）
     const [commentCounts, setCommentCounts] = useState<ReadonlyMap<string, number> | undefined>(undefined)
+    // ── 拾取桥接线（U4：面板 = 桥宿主侧端点 + 评论编排方，opendesign-comment-anchor D5/D8）──
+    // frameReady：脚本 ready 握手终态（ready 前评论模式开关与定位按钮禁用，D8(a)）
+    const [frameReady, setFrameReady] = useState(false)
+    // pickMode：评论模式开关当前态（经桥 pick-mode 出站驱动 iframe 内拾取交互）
+    const [pickMode, setPickMode] = useState(false)
+    // missedThreadIds：anchors-status 回报的锚点失效线程集（侧栏条目失效态数据源，D8(b)）
+    const [missedThreadIds, setMissedThreadIds] = useState<ReadonlySet<string>>(() => new Set<string>())
+    // threads：当前产物的线程列表（侧栏拉取后上报；anchors 下发集由它现算）
+    const [threads, setThreads] = useState<readonly CommentThread[]>([])
+    // commentReloadToken：拾取提交成功后的侧栏重拉信号（重拉 → threads 变化 → anchors 重发）
+    const [commentReloadToken, setCommentReloadToken] = useState(0)
 
     const address = tab.navigation.address
     const routeUrl = artifactRouteUrlFor(address)
@@ -195,12 +218,11 @@ function createDesignPanelBody(
       : fallback !== undefined
         ? { url: artifactRouteUrlForPath(sessionId, fallback.path), name: fallback.name }
         : undefined
-    // 评论挂靠的当前产物（D8 文件级）：地址解析路径 / 兜底选中路径；列表模式无当前产物
-    const artifactPath = routeUrl !== undefined
-      ? artifactPathOf(address)
-      : fallback !== undefined ? fallback.path : undefined
-    // 评论 API 的会话维度跟产物走（地址可解析时以地址的 sessionId 为准，兜底用面板会话）
-    const commentsSessionId = artifactSessionIdOf(address) ?? sessionId
+    // 评论落点补齐（U4：地址解析路径优先、兜底选中路径，与现直发同源——resolvePickTarget
+    // 是唯一裁决点，单测直驱）；列表模式无当前产物 → null（评论侧栏与拾取桥都不挂载）
+    const pickTarget = resolvePickTarget(address, fallback, sessionId)
+    const artifactPath = pickTarget?.artifactPath
+    const commentsSessionId = pickTarget?.sessionId ?? sessionId
 
     // 会话探测（乐观认领的最终裁决 + 评论元素挂载条件）：非设计会话在产物地址模式
     // 原位弹回通用文件预览。依赖 tab.id——replaceTab 以本 tab 为落点，弹回即关闭本
@@ -238,6 +260,64 @@ function createDesignPanelBody(
       return () => controller.abort()
     }, [routeUrl, designSession, sessionId, commentsApi])
 
+    // 桥控制器（懒初始化，实例随面板体生命周期）：picked 落点在渲染期已定案（pickTarget），
+    // 闭包经 latest-ref 读当次值——控制器不随渲染重建，就绪态/模式态/锚点集不因重渲染丢失。
+    const bridgeContextRef = useRef<{ pickTarget: PickTarget | null; t: PanelTranslate }>({ pickTarget, t })
+    bridgeContextRef.current = { pickTarget, t }
+    const bridgeRef = useRef<PickBridge | undefined>(undefined)
+    if (bridgeRef.current === undefined) {
+      bridgeRef.current = createPickBridge({
+        submitPick: async ({ anchor, text }) => {
+          const { pickTarget: target, t: translate } = bridgeContextRef.current
+          if (target === null) return { ok: false, reason: translate('comments.sendError') }
+          // 补齐同源（resolvePickTarget）：sessionId/artifactPath 与侧栏挂载用同一份现算值
+          const outcome = await commentsApi.create({
+            sessionId: target.sessionId,
+            artifactPath: target.artifactPath,
+            text,
+            anchor,
+          })
+          if (!outcome.ok) return { ok: false, reason: translate('comments.sendError') }
+          // 成功 → 侧栏重拉 → threads 变化 → anchors 重发（新线程徽章随重发到达，D8(a)）
+          setCommentReloadToken(token => token + 1)
+          return { ok: true, threadId: outcome.thread.id }
+        },
+        onReady: () => { setFrameReady(true) },
+        onMisses: (misses) => { setMissedThreadIds(new Set(misses.map(miss => miss.threadId))) },
+      })
+    }
+    const bridge = bridgeRef.current
+
+    // anchors 随线程变化下发（D8(a)：ready 前由桥记态、握手 flush 补发；线程增删后重发，
+    // 徽章随之重建——面板无需区分「首发」与「重发」两种时序）
+    useEffect(() => {
+      bridge.setAnchors(anchorsOfThreads(threads))
+    }, [bridge, threads])
+
+    // 切换产物（iframe url 变化）：评论模式与失效态跟产物走，清空待新产物数据上报；
+    // 桥侧置态即可——新文档 ready 握手时 flush 补发（url 重挂同时使就绪态复位）
+    useEffect(() => {
+      setPickMode(false)
+      bridge.setPickMode(false)
+      setMissedThreadIds(new Set<string>())
+      setThreads([])
+    }, [bridge, iframe?.url])
+
+    const handleFrameWindow = (frameWindow: unknown): void => {
+      bridge.setFrameWindow(frameWindow)
+      // 换窗即失就绪（D8(a)）：评论模式开关与定位按钮回到禁用态，等新文档 ready 二次握手
+      setFrameReady(false)
+    }
+    const togglePickMode = (): void => {
+      const next = !pickMode
+      setPickMode(next)
+      bridge.setPickMode(next)
+    }
+    const locateThread = (thread: CommentThread): void => {
+      if (!frameReady || thread.anchor === undefined) return
+      bridge.locate(thread.anchor.sel)
+    }
+
     if (iframe === undefined) {
       return (
         <div className="odp-body">
@@ -261,10 +341,27 @@ function createDesignPanelBody(
               </button>
             </div>
           )}
-          <ArtifactIframeView url={iframe.url} name={iframe.name} t={t} />
+          <ArtifactIframeView
+            url={iframe.url}
+            name={iframe.name}
+            t={t}
+            onBridgeMessage={bridge.handleMessage}
+            onFrameWindow={handleFrameWindow}
+          />
         </div>
         {designSession === true && artifactPath !== undefined && (
-          <CommentsSidebar sessionId={commentsSessionId} artifactPath={artifactPath} t={t} />
+          <CommentsSidebar
+            sessionId={commentsSessionId}
+            artifactPath={artifactPath}
+            t={t}
+            ready={frameReady}
+            pickMode={pickMode}
+            missedThreadIds={missedThreadIds}
+            reloadToken={commentReloadToken}
+            onThreads={setThreads}
+            onTogglePickMode={togglePickMode}
+            onLocate={locateThread}
+          />
         )}
       </div>
     )
