@@ -20,22 +20,33 @@
  * 真实性口径：监听/防抖/哨兵/快照全部走真实 fs.watch 与真实写盘（RL2 的「真实写盘触发」
  * 本体）；检查函数用 lintArtifact 正源注入，回注器在第 5/7 组用真实 createQualityFeedbackHandler
  * 接线（agents 服务缺席 → 放弃回注仅落记录，恰好验证记录面）。
- * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀；opendesign-comment-loop 设计包编号带「comment-loop·」前缀（环间隔离组的 comment-loop·RL2 / comment-loop·V7 与 assets-quality 域同号 RL2/V7 语义不同：前者 = .od-comments 写入不触发质量环与两环隔离场景，后者 = 真实写盘触发与非设计会话零侵入）。
+ *
+ * 锚属性补写集成组（opendesign-anchor-backfill 设计包 §3.3；「锚补写·」前缀编号均属该包，
+ * 与上行 assets-quality 域同号编号语义不同）：资格硬边界（锚补写·RL2 / V4，G1 谓词）=
+ * 快照内无身份记录文件字节不变零补写行；防自循环二轮幂等（锚补写·RL3 / V6，D5）= 补写
+ * 写回触发的二轮事件身份行仍 1 行、回注指纹 duplicate、补写行 inserted=0；检查链次序
+ * （锚补写·RL4 / D1）= 注入的 lintArtifact 捕获入参断言 lint 恒见补写后内容；写回前并发
+ * 复核（锚补写·RL8 / D6 ③）= backfillAnchors 注入桩在 D6 窗口内同步改写文件（mtime/size
+ * 变化）断言写回放弃；resume 资格（锚补写·V8 / D2）= 有身份记录的快照内文件改稿后补写
+ * 执行。补写桩真实落盘形态：桩内 writeFileSync 保证模型窗口内写盘先于主链 stat 复核
+ * （async writeFile 与复核 stat 竞态会让防线假触发/假放行）。
+ * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀；opendesign-comment-loop 设计包编号带「comment-loop·」前缀（环间隔离组的 comment-loop·RL2 / comment-loop·V7 与 assets-quality 域同号 RL2/V7 语义不同：前者 = .od-comments 写入不触发质量环与两环隔离场景，后者 = 真实写盘触发与非设计会话零侵入）；opendesign-anchor-backfill 设计包编号带「锚补写·」前缀。
  */
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { apply } from '../../lib/index.js'
+import { backfillAnchors, type BackfillResult } from '../../lib/quality/backfill.js'
 import {
   createQualityFeedbackHandler,
   qualityReportPath,
   type QualityReportLine,
 } from '../../lib/quality/feedback.js'
-import { lintArtifact } from '../../lib/quality/lint.js'
+import { lintArtifact, type LintFinding } from '../../lib/quality/lint.js'
 import {
   DEFAULT_DEBOUNCE_MS,
   isCompleteHtml,
@@ -54,6 +65,19 @@ const SETTLE_MS = DEBOUNCE_MS * 8
 const P0_HTML =
   '<!doctype html><html><body><div style="background:linear-gradient(90deg,#a855f7,#ec4899)">x</div><h2>✨</h2></body></html>'
 const CLEAN_HTML = '<!doctype html><html><body><p>clean page</p></body></html>'
+/**
+ * 缺锚属性 section 的干净产物（锚补写集成组载体）：两个 section 均无 data-od-id /
+ * data-screen-label，无其他 lint 命中——补写后 lint 零发现（missing-section-anchor 对补写
+ * 成功的产物恒不触发，锚补写·RL4 的断言前提）。
+ */
+const UNANCHORED_SECTIONS_HTML =
+  '<!doctype html><html><body><section class="hero"><h2>Hero</h2><p>alpha copy</p></section><section class="foot"><p>beta copy</p></section></body></html>'
+/**
+ * 缺锚属性 section + P0 命中（锚补写·RL3 专用）：补写后仍剩 purple-gradient P0——第一轮
+ * 回注放弃（no-agent）、二轮回注走内容指纹 duplicate（D5 三处幂等之一可观测）。
+ */
+const UNANCHORED_P0_HTML =
+  '<!doctype html><html><body><section><div style="background:linear-gradient(90deg,#a855f7,#ec4899)">x</div></section></body></html>'
 
 const tmpRoots: string[] = []
 const liveWatchers: SessionWatcherController[] = []
@@ -80,41 +104,81 @@ interface WatcherHarness {
   events: WatchedFindingsInput[]
   destroyReasons: string[]
   warns: string[]
-  /** 等待下一次 onFindings 回调（deferred 队列；先挂后写保证不丢事件）。 */
-  nextEvent(): Promise<WatchedFindingsInput>
+  /**
+   * 等待下一次 onFindings 回调（deferred 队列；先挂后写保证不丢事件）。match 供按
+   * relativePath 对位：macOS FSEvents 对监听注册前预置的写盘存在补发事件（实测探针，
+   * 见 runlog），无参 FIFO 对位会被补发事件抢配——多文件分类断言须按 path 等待。
+   */
+  nextEvent(match?: (input: WatchedFindingsInput) => boolean): Promise<WatchedFindingsInput>
+  /**
+   * 轮询形态的事件等待（预算内轮询 events 队列按序消费）：macOS FSEvents 高频开关
+   * watch 流时偶发事件延迟/丢失（U2 实施期压力实测，见 runlog），deferred 形态
+   * （nextEvent）在事件不达时硬挂到 vitest 5s 用例超时；轮询形态 3s 预算内给出
+   * 明确报错。锚补写集成组统一走此形态。
+   */
+  waitEvent(match?: (input: WatchedFindingsInput) => boolean): Promise<WatchedFindingsInput>
 }
 
 async function startHarness(
   cwd: string,
-  opts: { debounceMs?: number; withRealFeedback?: boolean } = {},
+  opts: {
+    debounceMs?: number
+    withRealFeedback?: boolean
+    /** 回注器 ctx 注入（withRealFeedback 时生效）；缺省 {} = agents 缺席放弃回注形态。 */
+    feedbackCtx?: unknown
+    /** 检查函数注入（缺省正源 lintArtifact）；锚补写·RL4 时序用例经包装捕获 lint 入参。 */
+    lintArtifact?: (html: unknown) => LintFinding[]
+    /** 补写函数注入（缺省正源 backfillAnchors）；锚补写·RL8 并发防护用例经此注入 D6 窗口桩。 */
+    backfillAnchors?: (buffer: Buffer) => BackfillResult
+  } = {},
 ): Promise<WatcherHarness> {
   const events: WatchedFindingsInput[] = []
   const destroyReasons: string[] = []
   const warns: string[] = []
-  const resolvers: Array<(input: WatchedFindingsInput) => void> = []
+  const resolvers: Array<{ match?: (input: WatchedFindingsInput) => boolean; resolve: (input: WatchedFindingsInput) => void }> = []
   const feedback = opts.withRealFeedback === true
-    ? createQualityFeedbackHandler({ ctx: {}, sessionId: 'watcher-test', cwd })
+    ? createQualityFeedbackHandler({ ctx: opts.feedbackCtx ?? {}, sessionId: 'watcher-test', cwd })
     : undefined
   const controller = await startSessionWatcher({
     cwd,
     ...(opts.debounceMs !== undefined ? { debounceMs: opts.debounceMs } : {}),
-    lintArtifact,
+    lintArtifact: opts.lintArtifact ?? lintArtifact,
+    ...(opts.backfillAnchors !== undefined ? { backfillAnchors: opts.backfillAnchors } : {}),
     onFindings: (input) => {
       events.push(input)
       void feedback?.(input)
-      const resolve = resolvers.shift()
-      resolve?.(input)
+      // 按对位谓词分派：首个 match 命中（或无谓词）的等待者收事件；不命中者继续等
+      // （事件仍进 events 数组，信息不丢）。无谓词等待者永远首位命中 = 既有 FIFO 形态。
+      const index = resolvers.findIndex((entry) => entry.match === undefined || entry.match(input))
+      if (index >= 0) {
+        const [entry] = resolvers.splice(index, 1)
+        entry.resolve(input)
+      }
     },
     onDestroyed: (reason) => destroyReasons.push(reason),
     logger: { warn: (message: string) => warns.push(message) },
   })
   liveWatchers.push(controller)
+  const consumed = { count: 0 }
   return {
     controller,
     events,
     destroyReasons,
     warns,
-    nextEvent: () => new Promise<WatchedFindingsInput>((resolve) => resolvers.push(resolve)),
+    nextEvent: (match) =>
+      new Promise<WatchedFindingsInput>((resolve) => {
+        resolvers.push(match === undefined ? { resolve } : { match, resolve })
+      }),
+    waitEvent: async (match) => {
+      // 队头未消费事件命中 match（或无 match）即消费；不命中 = 等待的事件未到，继续轮询
+      await until(() => {
+        const head = events[consumed.count]
+        return head !== undefined && (match === undefined || match(head))
+      })
+      const input = events[consumed.count]
+      consumed.count += 1
+      return input as WatchedFindingsInput
+    },
   }
 }
 
@@ -156,9 +220,13 @@ describe('真实写盘触发（临时目录真实写盘 → 防抖后检查回�
     expect(input.content).toBe(P0_HTML)
     expect(input.findings.some((f) => f.id === 'purple-gradient')).toBe(true)
     expect(input.findings.some((f) => f.id === 'emoji-icon')).toBe(true)
-    // report.jsonl 落盘：started 行（RL9 监听器生命周期半场）
+    // report.jsonl 落盘：started 行（RL9 监听器生命周期半场）+ 锚补写 no-op 行（锚补写·D7：
+    // P0_HTML 无 section，补写器零插入也记 inserted=0 行——「检查过但无需补」可区分语义）；
+    // 回注侧零动作断言保持：零身份行、零发现行
     await until(() => reportLines(cwd).some((line) => line.type === 'watcher' && line.event === 'started'))
-    expect(await readReport(cwd)).toHaveLength(1)
+    const report = await readReport(cwd)
+    expect(report.filter((line) => line.type === 'watcher')).toHaveLength(1)
+    expect(report.filter((line) => line.type === 'artifact' || line.type === 'finding')).toHaveLength(0)
   })
 })
 
@@ -360,17 +428,18 @@ describe('快照豁免三类命中分类（resume 豁免 / 陌生既有 / 快照
     const h = await startHarness(cwd) // 启动快照 = {a.html, b.html}，豁免集 = {a.html}
 
     // ①resume 上一代产物改写（同内容重写）→ 豁免出快照、照常回注通道
-    const resumeEvent = h.nextEvent()
+    // （按 path 对位等待：FSEvents 对预置写盘有补发事件，裸 FIFO 会被 b.html 的补发检查抢配）
+    const resumeEvent = h.nextEvent((input) => input.relativePath === 'a.html')
     await writeFile(join(cwd, 'a.html'), P0_HTML, 'utf8')
     expect((await resumeEvent).kind).toBe('resume-artifact')
 
     // ②陌生既有文件触碰 → 快照内且无身份记录 → 只记录不回注
-    const strangerEvent = h.nextEvent()
+    const strangerEvent = h.nextEvent((input) => input.relativePath === 'b.html')
     await writeFile(join(cwd, 'b.html'), P0_HTML, 'utf8')
     expect((await strangerEvent).kind).toBe('unrecognized-existing')
 
     // ③快照外新写（clean 零命中形态）→ 本会话产物
-    const freshEvent = h.nextEvent()
+    const freshEvent = h.nextEvent((input) => input.relativePath === 'c.html')
     await writeFile(join(cwd, 'c.html'), CLEAN_HTML, 'utf8')
     expect((await freshEvent).kind).toBe('session-artifact')
   })
@@ -403,9 +472,11 @@ describe('快照豁免三类命中分类（resume 豁免 / 陌生既有 / 快照
     )
     await writeFile(join(cwd, 'a.html'), P0_HTML, 'utf8')
     const h = await startHarness(cwd)
-    const next = h.nextEvent()
+    // fs.watch（macOS FSEvents）流激活间隙（同锚补写·V8 用例的实测加固，见 runlog）：
+    // 注册后零间隙写盘的事件可丢失；轮询形态等待替代 deferred 硬挂（时序加固，断言语义不变）
+    await delay(100)
     await writeFile(join(cwd, 'a.html'), P0_HTML, 'utf8')
-    expect((await next).kind).toBe('resume-artifact') // 损坏行不破坏 a.html 的豁免
+    expect((await h.waitEvent((input) => input.relativePath === 'a.html')).kind).toBe('resume-artifact') // 损坏行不破坏 a.html 的豁免
   })
 })
 
@@ -552,7 +623,9 @@ describe('preset 过滤零侵入（index.js 接线：非设计 preset 零监听�
     expect(report.filter((line) => line.type === 'artifact')).toHaveLength(1)
     expect(report.some((line) => line.type === 'finding' && line.id === 'purple-gradient')).toBe(true)
     // SC7 进程级观测（回注放弃口）：no-agent 放弃一行 debug——agents 缺席 → 查无活 Agent。
-    expect(host.logs.debug.some((m) => m.includes('回注放弃（查无活 Agent'))).toBe(true)
+    // 日志打点在 feedback(input).then 里、晚于发现行落盘（index.js 接线实读）——按 until 等
+    // 待而非断言即时成立（时序加固，断言语义不变）。
+    await until(() => host.logs.debug.some((m) => m.includes('回注放弃（查无活 Agent')))
     host.disposeAll()
   })
 
@@ -571,7 +644,10 @@ describe('preset 过滤零侵入（index.js 接线：非设计 preset 零监听�
     await until(() =>
       reportLines(cwd).some((line) => line.type === 'finding' && line.path === 'err.html' && line.reason === 'inject-error'),
     )
-    expect(host.logs.warn.some((m) => m.includes('回注放弃（注入调用失败'))).toBe(true)
+    // warn 打点在 feedback(input).then 里、晚于发现行落盘（index.js 接线实读）——until 等待
+    // 而非断言即时成立（时序加固，断言语义不变）；negative 断言（debug 零命中）在 warn 到达
+    // 后检查才有效。
+    await until(() => host.logs.warn.some((m) => m.includes('回注放弃（注入调用失败')))
     expect(host.logs.debug.some((m) => m.includes('回注放弃（查无活 Agent'))).toBe(false)
     host.disposeAll()
   })
@@ -606,5 +682,199 @@ describe('preset 过滤零侵入（index.js 接线：非设计 preset 零监听�
     const report = reportLines(cwd)
     expect(report.some((line) => line.type === 'artifact' && line.path === 'after-dispose.html')).toBe(false)
     expect(report.some((line) => line.type === 'finding' && line.path === 'after-dispose.html')).toBe(false)
+  })
+})
+
+// ── 8. 锚补写集成组（opendesign-anchor-backfill 设计包；锚补写·RL2 / RL3 / RL4 / RL8 / V8）──
+
+/** 提取 report 中的 anchor-backfill 行（含类型收窄）。 */
+function backfillLines(cwd: string): Array<Extract<QualityReportLine, { type: 'anchor-backfill' }>> {
+  return reportLines(cwd).filter(
+    (line): line is Extract<QualityReportLine, { type: 'anchor-backfill' }> => line.type === 'anchor-backfill',
+  )
+}
+
+describe('锚补写资格硬边界（锚补写·RL2 / V4：unrecognized-existing 字节不变零补写行）', () => {
+  it('快照内无身份记录文件写盘：文件字节逐字节一致、report 无 anchor-backfill 行、kind 断言', async () => {
+    const cwd = await makeCwd()
+    await writeFile(join(cwd, 'user-page.html'), UNANCHORED_SECTIONS_HTML, 'utf8') // 快照内预置（无身份记录）
+    const h = await startHarness(cwd)
+    const rewritten = UNANCHORED_SECTIONS_HTML.replace('alpha copy', 'alpha edited')
+    await writeFile(join(cwd, 'user-page.html'), rewritten, 'utf8') // 用户编辑自己的文件
+    const input = await h.waitEvent((candidate) => candidate.relativePath === 'user-page.html')
+    expect(input.kind).toBe('unrecognized-existing') // G1 谓词：绝不补写
+    await delay(SETTLE_MS) // 等检查链（含潜在违规补写）全部落定
+    expect(await readFile(join(cwd, 'user-page.html'), 'utf8')).toBe(rewritten) // 逐字节一致
+    expect(backfillLines(cwd)).toEqual([]) // V4：不执行补写则不记行
+    expect(h.warns).toEqual([]) // 无补写异常降级（步骤整体跳过非异常路径）
+  })
+
+  it('对照面：同款缺属性产物快照外新写（session-artifact）正常补写——资格谓词分类驱动成立', async () => {
+    const cwd = await makeCwd()
+    const h = await startHarness(cwd)
+    await writeFile(join(cwd, 'landing.html'), UNANCHORED_SECTIONS_HTML, 'utf8')
+    const input = await h.waitEvent((candidate) => candidate.relativePath === 'landing.html')
+    expect(input.kind).toBe('session-artifact')
+    expect(input.content).toContain('data-od-id="od-sec-') // 回注载荷 = 补写后文本（锚补写·D1）
+    await until(() => backfillLines(cwd).length > 0)
+    const lines = backfillLines(cwd)
+    expect(lines[0]?.inserted).toBe(2)
+    expect(lines[0]?.skipped).toBe(0)
+    expect(await readFile(join(cwd, 'landing.html'), 'utf8')).toContain('data-od-id="od-sec-') // 已写回
+  })
+})
+
+describe('锚补写防自循环二轮幂等（锚补写·RL3 / V6：二轮检查链无重复副作用，D5 零状态收敛）', () => {
+  it('第一轮补写 inserted=1 + 写回；补写触发的二轮事件自动走全链：身份行仍 1 行、回注指纹 duplicate、补写行 inserted=0', async () => {
+    const cwd = await makeCwd()
+    // 回注 ctx 注入在册 running Agent（steer 成功）：第一轮真实送达 fed-back 并记录内容
+    // 指纹（指纹仅在投递成功后登记，feedback.ts 实读）——二轮同内容同发现走指纹 duplicate
+    // 不再投递（D5 三处幂等之「回注内容指纹 duplicate」的可观测锁值）
+    const steered: unknown[] = []
+    const h = await startHarness(cwd, {
+      withRealFeedback: true,
+      // ctx.get('agents') → agents registry（内含 get(sessionId) → Agent）双层形态（deliverFeedback 实读对齐）
+      feedbackCtx: {
+        get: () => ({ get: () => ({ status: 'running', steer: (message: unknown) => steered.push(message) }) }),
+      },
+    })
+    await writeFile(join(cwd, 'landing.html'), UNANCHORED_P0_HTML, 'utf8')
+    const first = await h.waitEvent((candidate) => candidate.relativePath === 'landing.html')
+    expect(first.kind).toBe('session-artifact')
+    // 二轮事件（补写写回触发）经防抖进链：等二轮 anchor-backfill 行（inserted=0）落盘
+    await until(() => backfillLines(cwd).length >= 2)
+    await until(() =>
+      reportLines(cwd).some((line) => line.type === 'finding' && line.path === 'landing.html' && line.reason === 'duplicate'),
+    )
+    await delay(SETTLE_MS) // 若有第三轮重复副作用在此窗口暴露
+    const lines = backfillLines(cwd)
+    expect(lines).toHaveLength(2) // 恰两轮：第一轮补写 + 二轮 no-op（D5：无第三轮写盘）
+    expect(lines[0]?.inserted).toBe(1)
+    expect(lines[1]?.inserted).toBe(0)
+    expect(lines[1]?.skipped).toBe(1) // 二轮 tagged 恒等于 sections 数（补写后全带属性）
+    // 身份行一代一行（identityWritten 去重，D5 幂等之一）
+    expect(reportLines(cwd).filter((line) => line.type === 'artifact' && line.path === 'landing.html')).toHaveLength(1)
+    // 回注不增（D5 幂等之二）：第一轮真实投递 fed-back，二轮指纹 duplicate 仅落记录不投递
+    expect(steered).toHaveLength(1) // 恰一次投递（第二轮被指纹去重拦下）
+    const findings = reportLines(cwd).filter((line) => line.type === 'finding' && line.path === 'landing.html')
+    expect(findings.some((line) => line.reason === 'fed-back')).toBe(true)
+    expect(findings.some((line) => line.reason === 'duplicate')).toBe(true)
+    // 两轮检查链都到达回注回调（events 承载；二轮内容与一轮一致是指纹 duplicate 的前提）
+    expect(h.events.length).toBeGreaterThanOrEqual(2)
+    expect(h.events[1]?.content).toBe(h.events[0]?.content)
+  })
+})
+
+describe('锚补写检查链次序（锚补写·RL4：lint 恒见补写后内容，D1 次序锁值）', () => {
+  it('缺属性产物进检查链：注入的 lintArtifact 捕获入参含 data-od-id、missing-section-anchor 零发现、回注载荷同为补写后文本', async () => {
+    const cwd = await makeCwd()
+    const lintInputs: unknown[] = []
+    const wrappedLint = (html: unknown): LintFinding[] => {
+      lintInputs.push(html)
+      return lintArtifact(html)
+    }
+    const h = await startHarness(cwd, { lintArtifact: wrappedLint })
+    await writeFile(join(cwd, 'landing.html'), UNANCHORED_SECTIONS_HTML, 'utf8')
+    const input = await h.waitEvent((candidate) => candidate.relativePath === 'landing.html')
+    // lint 收到的是补写后文本（含锚属性），非磁盘原文——D1 次序「补写在 lint 前」的直接锁值
+    expect(lintInputs.length).toBeGreaterThanOrEqual(1)
+    for (const lintInput of lintInputs) {
+      expect(typeof lintInput).toBe('string')
+      expect(String(lintInput)).toContain('data-od-id="od-sec-')
+    }
+    // 补写后 tagged 恒等于 sections 数：missing-section-anchor 零发现
+    expect(input.findings.some((finding) => finding.id === 'missing-section-anchor')).toBe(false)
+    // 回注载荷 content 同为补写后文本（二轮回注指纹一致的前提）
+    expect(input.content).toContain('data-od-id="od-sec-')
+    // 补写行如实：inserted=2 skipped=0 无防线放弃
+    await until(() => backfillLines(cwd).length > 0)
+    expect(h.warns).toEqual([])
+  })
+})
+
+describe('锚补写写回前并发复核（锚补写·RL8 / D6 ③：读-改-写竞争放弃补写保模型新内容）', () => {
+  it('读盘与写回之间文件被改写（mtime/size 变）：第一轮写回放弃、模型窗口内新写内容不被覆盖、补写行 inserted=0', async () => {
+    const cwd = await makeCwd()
+    // 模型在 D6 窗口内的新写盘：body 内注释标记区分新旧内容（标记须在 </html> 之前——
+    // 哨兵判定文末 </html>，尾后注释会把二轮检查拦成半写形态）
+    const modelRewrite = UNANCHORED_SECTIONS_HTML.replace('</body>', '<!-- model wrote during window --></body>')
+    let raceArmed = true
+    const raceStub = (buffer: Buffer): BackfillResult => {
+      // 桩 = backfillAnchors 注入点（设计 §3.3 U2 登记）：仅在第一轮（武装态）于补写计算
+      // 完成后、写回复核前的 D6 窗口内同步落盘模型新写内容（writeFileSync 保证先于主链
+      // stat 复核——async 写与复核 stat 竞态会让防线假放行），再调真实补写器返回正常结果；
+      // 二轮起解除武装走纯正源（否则窗口内写盘每轮重现，防线次次放弃永不补写）。勿用
+      // lintArtifact 惯性选桩：lint 在写回之后执行，窗口构造不出来。
+      if (raceArmed) {
+        raceArmed = false
+        writeFileSync(join(cwd, 'race.html'), modelRewrite, 'utf8')
+      }
+      return backfillAnchors(buffer)
+    }
+    const h = await startHarness(cwd, { backfillAnchors: raceStub })
+    await writeFile(join(cwd, 'race.html'), UNANCHORED_SECTIONS_HTML, 'utf8')
+    const input = await h.waitEvent((candidate) => candidate.relativePath === 'race.html')
+    expect(input.kind).toBe('session-artifact')
+    // 两轮补写行落定：第一轮放弃行（inserted=0）+ 二轮重查补写行（模型新写盘自身触发的事件）
+    await until(() => backfillLines(cwd).length >= 2)
+    await delay(SETTLE_MS)
+    const lines = backfillLines(cwd)
+    expect(lines[0]?.inserted).toBe(0) // D6 ③：复核不一致放弃，记 inserted=0 行（下次事件重查）
+    expect(lines[1]?.inserted).toBe(2) // 二轮对模型新写内容正常补写（「下次事件重查」成立）
+    // 模型新写内容存活未被第一轮旧内容覆盖：注释标记（仅存在于 modelRewrite）仍在盘上，
+    // 且已被二轮补写——反证：若第一轮写回成功，modelRewrite 会被读盘原文的补写版覆盖、标记消失
+    const final = await readFile(join(cwd, 'race.html'), 'utf8')
+    expect(final).toContain('model wrote during window')
+    expect(final).toContain('data-od-id="od-sec-')
+  })
+})
+
+describe('锚补写 resume 产物资格（锚补写·V8 / D2：第二代会话改稿补写执行）', () => {
+  it('身份记录命中的快照内文件改稿：resume-artifact 补写执行——写回 + 行落盘 + 回注载荷为补写后文本', async () => {
+    const cwd = await makeCwd()
+    await mkdir(join(cwd, '.od-quality'), { recursive: true })
+    await writeFile(
+      qualityReportPath(cwd),
+      `${JSON.stringify({ type: 'artifact', at: '2026-11-11T00:00:00.000Z', path: 'landing.html' })}\n`,
+      'utf8',
+    )
+    await writeFile(join(cwd, 'landing.html'), UNANCHORED_SECTIONS_HTML, 'utf8') // 快照内 + 身份记录 → resume
+    const h = await startHarness(cwd)
+    // fs.watch（macOS FSEvents）注册后流激活有延迟——激活前的写盘事件实测可丢失（U2 压力
+    // 实测，见 runlog），间隙给流激活留时间（生产形态：监听器启动与首写盘不会同毫秒发生）
+    await delay(100)
+    const rewritten = UNANCHORED_SECTIONS_HTML.replace('alpha copy', 'alpha v2')
+    await writeFile(join(cwd, 'landing.html'), rewritten, 'utf8') // 模型改稿重写（丢弃属性）
+    const input = await h.waitEvent((candidate) => candidate.relativePath === 'landing.html')
+    expect(input.kind).toBe('resume-artifact') // D2 第二类资格
+    expect(input.content).toContain('data-od-id="od-sec-') // 补写后内容进回注通道（session-artifact 同款链路）
+    await until(() => backfillLines(cwd).length > 0)
+    const lines = backfillLines(cwd)
+    expect(lines[0]?.inserted).toBe(2)
+    expect(lines[0]?.skipped).toBe(0)
+    expect(await readFile(join(cwd, 'landing.html'), 'utf8')).toContain('data-od-id="od-sec-') // 已写回
+    expect(h.warns).toEqual([])
+  })
+})
+
+describe('锚补写异常降级（锚补写·D6 显式新形态裁决：未预期异常不拖垮检查链）', () => {
+  it('补写步骤抛错：warn 记日志、检查链继续用原文跑 lint 与回注、不写补写行（gaveUp 词表保持封闭）', async () => {
+    const cwd = await makeCwd()
+    const h = await startHarness(cwd, {
+      // 注入桩直接抛错 = 防线之外的 bug 形态（区别于防线放弃：防线放弃记行，异常不记行）
+      backfillAnchors: () => {
+        throw new Error('boom')
+      },
+    })
+    await writeFile(join(cwd, 'boom.html'), UNANCHORED_SECTIONS_HTML, 'utf8')
+    const input = await h.waitEvent((candidate) => candidate.relativePath === 'boom.html')
+    // 检查链未中断（补写位于链中，异常处置比 lint 异常的中断先例更宽）：onFindings 照常收到
+    expect(input.kind).toBe('session-artifact')
+    expect(input.content).toBe(UNANCHORED_SECTIONS_HTML) // 原文直通（lint 与回注都消费原文）
+    expect(input.findings.some((finding) => finding.id === 'missing-section-anchor')).toBe(true) // lint 跑的是原文——补写未生效的直接证据
+    expect(h.warns.some((message) => message.includes('锚属性补写异常'))).toBe(true)
+    await delay(SETTLE_MS)
+    expect(backfillLines(cwd)).toEqual([]) // 不写 report 行（异常不是防线判定结果）
+    expect(await readFile(join(cwd, 'boom.html'), 'utf8')).toBe(UNANCHORED_SECTIONS_HTML) // 字节不变
   })
 })

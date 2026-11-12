@@ -1,6 +1,7 @@
 import { watch } from "node:fs";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { backfillAnchors } from "./backfill.js";
 import { lintArtifact } from "./lint.js";
 import { appendQualityReportLine, readArtifactIdentityPaths } from "./feedback.js";
 const WATCHED_EXTENSIONS = [".html", ".htm"];
@@ -21,6 +22,7 @@ async function startSessionWatcher(options) {
   const cwd = options.cwd;
   const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
   const lint = options.lintArtifact ?? lintArtifact;
+  const backfill = options.backfillAnchors ?? backfillAnchors;
   const timers = /* @__PURE__ */ new Map();
   let fsWatcher;
   let disposed = false;
@@ -70,14 +72,19 @@ async function startSessionWatcher(options) {
   }
   async function checkFile(absPath, relativePath, snapshot, identities) {
     if (destroyed || disposed) return;
-    let content;
+    let buffer;
     try {
-      content = await readFile(absPath, "utf8");
+      buffer = await readFile(absPath);
     } catch {
       return;
     }
+    const readStat = await stat(absPath).catch(() => void 0);
+    let content = buffer.toString("utf8");
     if (!isCompleteHtml(content)) return;
     const kind = classify(relativePath, snapshot, identities);
+    if (kind === "session-artifact" || kind === "resume-artifact") {
+      content = await runBackfillStep(absPath, relativePath, buffer, content, readStat);
+    }
     let findings;
     try {
       findings = lint(content);
@@ -89,6 +96,41 @@ async function startSessionWatcher(options) {
       await options.onFindings?.({ kind, relativePath, content, findings });
     } catch (error) {
       options.logger?.warn?.(`opendesign-design-mode: 回注处理异常（${relativePath}）：${errorMessage(error)}`);
+    }
+  }
+  async function runBackfillStep(absPath, relativePath, buffer, content, readStat) {
+    try {
+      const result = backfill(buffer);
+      if (result.gaveUp !== void 0 || result.inserted.length === 0) {
+        await recordBackfillLine(relativePath, 0, result.skipped, result.gaveUp);
+        return content;
+      }
+      const nowStat = await stat(absPath).catch(() => void 0);
+      const unchanged = nowStat !== void 0 && readStat !== void 0 && nowStat.mtimeMs === readStat.mtimeMs && nowStat.size === readStat.size;
+      if (!unchanged) {
+        await recordBackfillLine(relativePath, 0, result.skipped);
+        return content;
+      }
+      await writeFile(absPath, result.buffer);
+      await recordBackfillLine(relativePath, result.inserted.length, result.skipped);
+      return result.buffer.toString("utf8");
+    } catch (error) {
+      options.logger?.warn?.(`opendesign-design-mode: 锚属性补写异常（${relativePath}）：${errorMessage(error)}`);
+      return content;
+    }
+  }
+  async function recordBackfillLine(relativePath, inserted, skipped, gaveUp) {
+    try {
+      await appendQualityReportLine(cwd, {
+        type: "anchor-backfill",
+        at: (/* @__PURE__ */ new Date()).toISOString(),
+        path: relativePath,
+        inserted,
+        skipped,
+        gaveUp
+      });
+    } catch (error) {
+      options.logger?.warn?.(`opendesign-design-mode: 补写行写盘失败（${relativePath}）：${errorMessage(error)}`);
     }
   }
   try {

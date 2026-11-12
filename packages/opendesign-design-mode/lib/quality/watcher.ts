@@ -21,13 +21,29 @@
  * 查无活 Agent 放弃回注仅落记录；0.2.2 会话中切工作目录（working-directory/change）后监听器
  * 固定旧目录（UD7，登记不消费该事件）；Linux 内核旧版 fs.watch 无递归支持时启动自毁降级
  * （AX5 显式降级：destroyed 行 + onDestroyed 回调，不静默假活）。
+ *
+ * 锚属性补写接线（opendesign-anchor-backfill 设计包 §3.3；下文「锚补写·」前缀编号均属该包，
+ * 与上行裸编号的 assets-quality 域区分）：checkFile 检查链次序 = Buffer 读盘 → 完整性哨兵 →
+ * 三类命中分类 → 补写 → lint → 回注（锚补写·D1）；补写资格谓词（锚补写·D2 守护 G1）=
+ * session-artifact / resume-artifact 具备资格，unrecognized-existing 绝不补写（用户项目文件
+ * 字节不变硬边界，判定材料 = classify() 现算结果零旁路状态）；写回三道防线（锚补写·D6）=
+ * UTF-8 无损校验与引号配对防线在补写器 lib/quality/backfill.ts 内 + 写回前 stat mtime/size
+ * 复核封读-改-写竞争（基准 = 读盘后紧跟 stat，残余盲区 = 字节数不变且同 mtime 粒度内的连续
+ * 写，本机 APFS 亚毫秒精度实测可分辨），防线放弃或零插入时原文本直通；补写步骤未预期异常
+ * catch + warn 后检查链继续跑 lint 与回注（锚补写·D6 显式新形态裁决，比 lint 异常的中断处置
+ * 宽——补写位于链中，中断会拖垮核心检查；不写 report 行，gaveUp 词表保持封闭）；防自循环
+ * （锚补写·D5）= 不吞事件零新增状态，补写写回触发的二轮事件走全检查链靠三处既有幂等收敛
+ * （补写器无插入 + 回注内容指纹 duplicate + 身份行 identityWritten 去重）；每次补写执行
+ * （含 no-op 与放弃）经 appendQualityReportLine 记 anchor-backfill 行（锚补写·D7，schema
+ * 在 feedback.ts 词表；no-op 也记，「检查过但无需补」与「从没检查过」在 doctor 可区分）。
  * 编号口径：本文件裸编号（U/D/AX/AS/SC/RL/UD/SI/GPK 等）默认属 opendesign-assets-quality 设计包（本轮）；V1 设计包域编号带「V1 设计包 / V1·」前缀。
  */
 
 import { watch, type FSWatcher } from 'node:fs'
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import { backfillAnchors, type BackfillResult } from './backfill.js'
 import { lintArtifact, type LintFinding } from './lint.js'
 import { appendQualityReportLine, readArtifactIdentityPaths, type WatchedArtifactKind } from './feedback.js'
 
@@ -82,6 +98,12 @@ export interface SessionWatcherOptions {
   debounceMs?: number
   /** 检查函数注入；缺省 lib/quality/lint.js 的 lintArtifact。 */
   lintArtifact?: (html: unknown) => LintFinding[]
+  /**
+   * 补写函数注入；缺省 lib/quality/backfill.js 的 backfillAnchors（锚补写设计包 §3.3 U2，
+   * 仿 lintArtifact 注入形态）——RL8 并发防护用例经此注入测试桩：桩在读盘与写回的
+   * D6 窗口内先改写文件（使 mtime/size 变化）再调真实补写器，防线触发路径由此构造。
+   */
+  backfillAnchors?: (buffer: Buffer) => BackfillResult
   /** 每次防抖落定 + 哨兵通过后的检查结果回调（回注器接线点；index.js 注入 feedback handler）。 */
   onFindings?: (input: WatchedFindingsInput) => void | Promise<void>
   /** 自毁回调（SI3：watch-error / start-failed；index.js 记 logger 带恢复动作）。 */
@@ -108,6 +130,7 @@ export async function startSessionWatcher(options: SessionWatcherOptions): Promi
   const cwd = options.cwd
   const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS
   const lint = options.lintArtifact ?? lintArtifact
+  const backfill = options.backfillAnchors ?? backfillAnchors
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
   let fsWatcher: FSWatcher | undefined
   let disposed = false
@@ -162,14 +185,24 @@ export async function startSessionWatcher(options: SessionWatcherOptions): Promi
 
   async function checkFile(absPath: string, relativePath: string, snapshot: Set<string>, identities: Set<string>): Promise<void> {
     if (destroyed || disposed) return
-    let content: string
+    let buffer: Buffer
     try {
-      content = await readFile(absPath, 'utf8')
+      buffer = await readFile(absPath) // Buffer 读（锚补写·D6 ①：补写的 UTF-8 无损校验需要原始字节）
     } catch {
       return // 读取失败（写后即删/权限）：放弃本次（SI1 ①「读取失败放弃」）
     }
+    // 写回前并发复核的读侧基准（锚补写·D6 ③；读盘后 stat 取 mtime+size 的既有形态）。
+    // stat 失败 = 文件在读盘与 stat 之间被移除：基准记为 undefined，写回侧按复核材料
+    // 不全不写盘处置（保守方向——写回是增强动作，现状行为本就不写产物）。
+    const readStat = await stat(absPath).catch(() => undefined)
+    let content = buffer.toString('utf8')
     if (!isCompleteHtml(content)) return // 完整性哨兵：半写跳过，不耗额度，留待重查
     const kind = classify(relativePath, snapshot, identities)
+    // 补写步骤（锚补写·D1：哨兵后、分类后、lint 前；资格谓词 = 守护 G1，锚补写·D2）：
+    // session-artifact / resume-artifact 具备补写资格，unrecognized-existing 字节不变绝不补。
+    if (kind === 'session-artifact' || kind === 'resume-artifact') {
+      content = await runBackfillStep(absPath, relativePath, buffer, content, readStat)
+    }
     let findings: readonly LintFinding[]
     try {
       findings = lint(content)
@@ -183,6 +216,75 @@ export async function startSessionWatcher(options: SessionWatcherOptions): Promi
     } catch (error: unknown) {
       // 回注器异常不拖垮监听器；失败已由调用方（feedback）自行落记录或此处降级可见
       options.logger?.warn?.(`opendesign-design-mode: 回注处理异常（${relativePath}）：${errorMessage(error)}`)
+    }
+  }
+
+  /**
+   * 补写步骤（锚补写设计包 §3.3 D1/D6）：补写器纯函数判定（UTF-8 无损校验 + 引号配对
+   * 防线都在其内）→ 写回前 stat 并发复核 → 写盘 → anchor-backfill 行落盘。返回值恒为
+   * 后续 lint 与回注消费的内容：防线放弃或零插入时原文本直通（检查链行为与现状一致），
+   * 写回成功时更新为补写后文本。gaveUp 词表：唯一值 'utf8' 随补写结果如实落行。
+   */
+  async function runBackfillStep(
+    absPath: string,
+    relativePath: string,
+    buffer: Buffer,
+    content: string,
+    readStat: { mtimeMs: number; size: number } | undefined,
+  ): Promise<string> {
+    try {
+      const result = backfill(buffer)
+      // 防线放弃（gaveUp）或零插入（全部已带属性）：原字节不变，no-op 行也记（锚补写·D7）
+      if (result.gaveUp !== undefined || result.inserted.length === 0) {
+        await recordBackfillLine(relativePath, 0, result.skipped, result.gaveUp)
+        return content
+      }
+      // 写回前并发复核（锚补写·D6 ③）：mtime/size 与读盘基准不一致 = 读盘到写回窗口内
+      // 模型又写盘，写回会静默覆盖新改稿——放弃本次补写（记 inserted=0 行，下次事件重查）；
+      // 基准或复核 stat 缺失同按放弃处置（复核材料不全不写盘，保守方向）
+      const nowStat = await stat(absPath).catch(() => undefined)
+      const unchanged =
+        nowStat !== undefined &&
+        readStat !== undefined &&
+        nowStat.mtimeMs === readStat.mtimeMs &&
+        nowStat.size === readStat.size
+      if (!unchanged) {
+        await recordBackfillLine(relativePath, 0, result.skipped)
+        return content
+      }
+      await writeFile(absPath, result.buffer)
+      await recordBackfillLine(relativePath, result.inserted.length, result.skipped)
+      return result.buffer.toString('utf8')
+    } catch (error: unknown) {
+      // 补写步骤未预期异常（锚补写·D6 显式新形态裁决，非 lint 异常的中断先例）：warn 后
+      // 检查链继续用原文跑 lint 与回注（补写位于链中，中断会让补写 bug 拖垮核心检查）；
+      // 不写 report 行（gaveUp 词表保持封闭——异常不是防线判定结果）
+      options.logger?.warn?.(`opendesign-design-mode: 锚属性补写异常（${relativePath}）：${errorMessage(error)}`)
+      return content
+    }
+  }
+
+  /**
+   * anchor-backfill 行落盘（锚补写设计包 §3.3 D7）：每次补写执行记一行（含 no-op inserted=0
+   * 与防线放弃）；行写失败 warn 降级不拖垮检查链（降级 ≠ 吞错）。
+   */
+  async function recordBackfillLine(
+    relativePath: string,
+    inserted: number,
+    skipped: number,
+    gaveUp?: 'utf8',
+  ): Promise<void> {
+    try {
+      await appendQualityReportLine(cwd, {
+        type: 'anchor-backfill',
+        at: new Date().toISOString(),
+        path: relativePath,
+        inserted,
+        skipped,
+        gaveUp,
+      })
+    } catch (error: unknown) {
+      options.logger?.warn?.(`opendesign-design-mode: 补写行写盘失败（${relativePath}）：${errorMessage(error)}`)
     }
   }
 
