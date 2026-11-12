@@ -98,7 +98,7 @@ pnpm workflows:test          # workflow 构建与双平台结构测试
 
 - remote 名 = `github`；push 用 `git push github HEAD:<branch>`，必须用户明确授权。
 - **完成即提交**：改动验证通过后提交，不留脏工作区；只提交本次会话产生的改动；commit message 用英文。
-- **显式 pathspec 提交**：多会话 / 多包并行改动是常态，`git add` 一律给具体路径，禁 `git add -A` / `git add .`，防止把他人在途改动带进提交。
+- **显式 pathspec 提交**：多会话 / 多包并行改动是常态，`git add` 一律给具体路径，禁 `git add -A` / `git add .`，防止把他人在途改动带进提交；**`git commit` 同样带路径参数**（`git commit <路径> -m ...`）——共享 worktree 的暂存区里可能已有他人 `git add` 过的在途改动，不带路径的裸 commit 会把它们一起提交。
 - 产物目录 `.tmp/`、`.review/`、`test-results/`、`playwright-report/` 不入库（`.gitignore` 已声明），验收证据保存在技能数据目录或临时目录。
 
 ## Hooks
