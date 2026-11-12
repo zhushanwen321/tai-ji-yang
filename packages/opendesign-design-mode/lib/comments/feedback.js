@@ -13,11 +13,16 @@ function buildCommentMessage(payload) {
       threadId: payload.threadId,
       artifactPath: payload.artifactPath,
       text: payload.text,
-      createdAt: payload.createdAt
+      createdAt: payload.createdAt,
+      ...payload.anchor === void 0 ? {} : { anchor: payload.anchor }
     },
     null,
     2
   );
+  const anchorLines = payload.anchor === void 0 ? [] : [
+    "anchor.sel 为 CSS 选择器，可在产物 HTML 源码中据此定位元素（id 级最可靠）",
+    "改稿写盘时保留既有元素的 id 与 data-od-id / data-screen-label 锚属性值，使已有评论不失效"
+  ];
   const text = [
     "[opendesign-design-mode 面板评论] 设计面板收到用户对产物的评论，非用户聊天发言",
     "",
@@ -25,7 +30,8 @@ function buildCommentMessage(payload) {
     fencedJson,
     "```",
     "",
-    "请读该产物源码按评论修改，写盘即完成交付，无需回复本消息"
+    "请读该产物源码按评论修改，写盘即完成交付，无需回复本消息",
+    ...anchorLines
   ].join("\n");
   return {
     id: randomUUID(),
@@ -53,7 +59,8 @@ function commentMessagePayloadOf(thread) {
     threadId: thread.id,
     artifactPath: thread.artifactPath,
     text: latestReply !== void 0 ? latestReply.text : thread.text,
-    createdAt: thread.createdAt
+    createdAt: thread.createdAt,
+    ...thread.anchor === void 0 ? {} : { anchor: thread.anchor }
   };
 }
 export {

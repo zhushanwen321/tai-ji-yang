@@ -1,22 +1,26 @@
 /**
- * 评论回注服务单测（U3；RL1 / RL6 + D4 / D6 消息契约）。
+ * 评论回注服务单测（U3；RL1 / RL6 + D4 / D6 消息契约 + 元素锚点 D7 载荷扩展）。
  *
  * 断言结构：
- * 1. 消息构造三段（D6）：自报身份行 / 围栏 JSON 载荷可解析且恰四字段 / 改稿指引行；
- *    source 五字段（D3：kind + form:'notice' + summary 首句截断 + artifactPath + threadId；
- *    RL1：kind = COMMENT_SOURCE_KIND，≠ 'user'，≠ 质量环 LINT_SOURCE_KIND）；id 唯一
- *    （randomUUID）。
+ * 1. 消息构造三段（D6）：自报身份行 / 围栏 JSON 载荷可解析且恰四字段（无锚点）/ 改稿
+ *    指引行；source 五字段（D3：kind + form:'notice' + summary 首句截断 + artifactPath +
+ *    threadId；RL1：kind = COMMENT_SOURCE_KIND，≠ 'user'，≠ 质量环 LINT_SOURCE_KIND）；
+ *    id 唯一（randomUUID）。锚点扩展（D7）：载荷带 anchor 时围栏 JSON 恰五字段且指令
+ *    文本追加锚点语义说明与保留锚点指令两句——source 五字段零结构变更。
  * 2. deliverComment 双通道与回写对账（RL6）：running → steer、idle → followup（两者返回
  *    delivered）；查无活 Agent 与 agents 服务缺席 → no-agent；steer / followup 抛错 →
  *    inject-error——每分支断言「返回值 === 读盘 thread.delivery」（含 deliveredAt 有无）。
  * 3. 投递周期内容：.create 载荷 text = 首评、.reply 载荷 text = 末条追加（D6「.reply 追加
- *    的载荷含线程 id 与追加文本」）、.retry 与首评同走 deliverComment 同一分流（D4）。
+ *    的载荷含线程 id 与追加文本」）、.retry 与首评同走 deliverComment 同一分流（D4）；
+ *    带锚点线程的 reply 载荷恒带首评锚点（D7——锚点首评定案不可变，D1）。
  * 4. 边界（AX3 fail-fast）：对已 delivered 线程重复投递 = 状态机表外，deliverComment 在
  *    回写点抛 CommentTransitionError，盘上状态不变。
  *
  * store 侧用真文件（mkdtemp 临时会话目录）走真实落盘链路——RL6 对账的落盘侧必须读盘
  * 验证，mock 不得替身。agents 双打沿用质量环 feedback.test.ts 同款脚手架形态。
- * 编号口径：本文件裸编号（D/AX/RL 等）属 opendesign-comment-loop 设计包。
+ * 编号口径：裸编号分域归属——既有段落（回注消息 / 投递分流）的 D/AX/RL 属
+ * opendesign-comment-loop 包；元素锚点段的 D1 / D7 属 opendesign-comment-anchor 包
+ * （本设计包）；引用其他设计包的同形编号须带域前缀。
  */
 
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -31,7 +35,7 @@ import {
   type CommentMessagePayload,
   type DeliverCommentInput,
 } from '../../lib/comments/feedback.js'
-import { COMMENT_SOURCE_KIND, type CommentThread } from '../../lib/comments/contract.js'
+import { COMMENT_SOURCE_KIND, type CommentAnchor, type CommentThread } from '../../lib/comments/contract.js'
 import {
   appendCommentReply,
   createCommentThread,
@@ -103,9 +107,9 @@ function deliver(ctx: unknown, cwd: string, thread: CommentThread, at?: string) 
   return deliverComment(input)
 }
 
-/** 经真实 store 建线程（首评默认文案、产物 index.html、时刻 AT）。 */
-async function createThread(cwd: string, text = FIRST_COMMENT): Promise<CommentThread> {
-  return createCommentThread(cwd, { artifactPath: 'index.html', text }, AT)
+/** 经真实 store 建线程（首评默认文案、产物 index.html、时刻 AT；anchor 可选，D7 锚点场景）。 */
+async function createThread(cwd: string, text = FIRST_COMMENT, anchor?: CommentAnchor): Promise<CommentThread> {
+  return createCommentThread(cwd, { artifactPath: 'index.html', text, ...(anchor === undefined ? {} : { anchor }) }, AT)
 }
 
 /** 读盘取线程（RL6 落盘侧对账的唯一可信源——不读内存对象）。 */
@@ -199,6 +203,26 @@ describe('消息构造三段与来源标记（D6 / RL1）', () => {
 
   it('id 唯一（randomUUID）：同载荷两次构造 id 不同', () => {
     expect(buildCommentMessage(PAYLOAD).id).not.toBe(buildCommentMessage(PAYLOAD).id)
+  })
+
+  it('D7：首评带锚点时围栏 JSON 恰五字段（+ anchor）且指令文本追加锚点语义与保留锚点两句', () => {
+    const anchor: CommentAnchor = { level: 'id', sel: '#hero-title' }
+    const message = buildCommentMessage({ ...PAYLOAD, anchor })
+
+    // source 五字段零结构变更：anchor 只进围栏载荷，不进 source
+    expect(Object.keys(message.source).sort()).toEqual(['artifactPath', 'form', 'kind', 'summary', 'threadId'])
+
+    // 围栏 JSON：恰五字段（四字段 + anchor），anchor 值原样透传
+    const parsed = parseFencedPayload(messageText(message))
+    expect(Object.keys(parsed).sort()).toEqual(['anchor', 'artifactPath', 'createdAt', 'text', 'threadId'])
+    expect(parsed.anchor).toEqual(anchor)
+
+    // 指令文本追加两句（改稿指引行之后）：锚点语义说明 + 保留锚点指令
+    const lines = messageText(message).split('\n')
+    const guideIndex = lines.indexOf('请读该产物源码按评论修改，写盘即完成交付，无需回复本消息')
+    expect(guideIndex).toBeGreaterThan(-1)
+    expect(lines[guideIndex + 1]).toBe('anchor.sel 为 CSS 选择器，可在产物 HTML 源码中据此定位元素（id 级最可靠）')
+    expect(lines[guideIndex + 2]).toBe('改稿写盘时保留既有元素的 id 与 data-od-id / data-screen-label 锚属性值，使已有评论不失效')
   })
 })
 
@@ -332,6 +356,27 @@ describe('投递周期内容与同一分流（D4 / D6）', () => {
     expect(persisted.delivery).toBe('delivered')
     expect(persisted.replies).toEqual([{ text: '标题字号太大', at: AT2 }])
     expect(persisted.deliveredAt).toBe(AT2)
+  })
+
+  it('D7：带锚点线程的 reply 投递载荷恒带首评锚点（追加不改写，D1 不可变）', async () => {
+    const anchor: CommentAnchor = { level: 'data', sel: '[data-od-id="hero-banner"]' }
+    const agent = makeAgent('idle')
+    const { cwd, registry } = await makeHarness({ registry: new Map([[SESSION_ID, agent]]) })
+    const created = await createThread(cwd, FIRST_COMMENT, anchor)
+    expect(await deliver(makeCtx(registry), cwd, created, AT)).toBe('delivered')
+
+    const appended = await appendCommentReply(cwd, created.id, '标题字号太大', AT2)
+    expect(appended.anchor).toEqual(anchor) // 追加不改写首评锚点（D1 不可变不变量）
+    const outcome = await deliver(makeCtx(registry), cwd, appended, AT2)
+
+    expect(outcome).toBe('delivered')
+    expect(agent.followup).toHaveBeenCalledTimes(2)
+    // reply 载荷：text = 末条追加文本，anchor 恒为线程首评锚点（D7——每轮回注都可定位）
+    const payload = parseFencedPayload(messageText(injectedMessage(agent, 'followup')))
+    expect(payload.text).toBe('标题字号太大')
+    expect(payload.anchor).toEqual(anchor)
+    const persisted = await persistedThread(cwd, created.id)
+    expect(persisted.anchor).toEqual(anchor)
   })
 
   it('.retry 重投走同一分流：no-agent 失败态重投后 delivered，载荷 text = 首评原文（D4）', async () => {
