@@ -18,6 +18,12 @@
  *      submit-result 回执；就绪态管理（ready 前评论模式开关与定位按钮禁用）、anchors
  *      下发（线程 id+序号+sel）与 locate/anchors-status（misses 标侧栏条目失效态）。
  *      桥报文判定与控制器在 pick-bridge.ts（react-free，单测直驱）。
+ *   4. 布局联动（opendesign-comment-anchor U5，D2/SC1）：面板挂载生命周期内首次进入
+ *      iframe 模式 × 设计会话终态为真时经宿主 ctx.layout.toggleSidebar 自动收起侧栏并
+ *      记还原义务（SC1，一次性闸防列表↔iframe 往返重放）；面板实例卸载（关 tab；
+ *      keepMounted 保活下切走不算）时义务在位则反向切换还原；面板头部「侧栏」手动开关
+ *      （按下即清除还原义务——手动接管后面板不再自动还原）。宿主 face 无侧栏状态读取
+ *      （AS2 穷举核实）：自动切换与还原都是盲切换，宽度比例不可编程（已接受代价）。
  *
  * 装配序（本包纪律）：locale 字典先于 tab 类型与面板槽位的注册（t 座位按 (命名空间,
  * revision) 合成，缺字典 fail-loud）。贡献点（字典 / tab 类型 / 槽位）一律经 ctx.effect
@@ -61,7 +67,7 @@ import './panel.css'
  * 本包浏览器半场消费的宿主服务名（fiber inject 声明；ctx.<name> 未声明即读即抛——
  * 根包 apply.ts 的 2026-11-07 真机教训）。取值 = apply 实际读到的 ctx 面，不多写。
  */
-export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'locale', 'remote', 'remote.workspaceFiles'] as const
+export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'locale', 'remote', 'remote.workspaceFiles', 'layout'] as const
 
 /** workspaceFiles.list 的目录列举返回（dsh-api-workspace-files 公开 wire 类型的局部同构）。 */
 interface WorkspaceListing {
@@ -128,6 +134,15 @@ export interface PreviewApplyContext {
       list(scope: string, path: string, signal: AbortSignal): Promise<WorkspaceListing>
     }
   }
+  /**
+   * 布局服务（ui-layout ILayout 的局部同构；只取布局联动消费的成员，零宿主包依赖红线）。
+   * face 上不存在侧栏展开态读取（AS2 穷举核实）——toggleSidebar 是无状态读取的盲切换，
+   * 侧栏当前态与宽度比例都不可编程（D2 穷举矩阵的已接受硬边界）。
+   */
+  layout: {
+    /** 翻转左侧边栏展开/收起态（宽屏翻折叠态，窄屏抽屉态翻 narrowExpanded，语义同构）。 */
+    toggleSidebar(): void
+  }
 }
 
 /** 面板体读到的 tab 信息面（ui-sidebar-right tab-info 的局部同构；只取本包消费的字段）。 */
@@ -167,7 +182,7 @@ function createArtifactLister(ctx: PreviewApplyContext): ArtifactLister {
 }
 
 /**
- * 构造面板体组件（闭包携带列表器、弹回通道与评论写通道）。
+ * 构造面板体组件（闭包携带列表器、弹回通道、评论写通道与宿主布局动作）。
  *
  * 模式分发（唯一裁决 = present-card-link 的地址解析）：navigation.address 可解析为产物
  * → iframe 视图（openResource 与交付卡片点击路由到的形态）；否则（guide 打开的页面地址
@@ -185,6 +200,9 @@ function createDesignPanelBody(
   listArtifacts: ArtifactLister,
   bounceToGenericPreview: (address: string, tabId: string) => void,
   commentsApi: CommentsApi,
+  // 布局联动（U5）的宿主动作：闭包捕获不经槽 props（本文件装配纪律）；apply 侧用箭头
+  // 包装（不传方法引用——宿主实现若依赖 this，解绑调用会丢上下文），引用随装配期固定。
+  toggleSidebar: () => void,
 ) {
   return function DesignPreviewTab(props: {
     useTabInfo: () => DesignTabInfo
@@ -239,6 +257,57 @@ function createDesignPanelBody(
       })
       return () => { cancelled = true }
     }, [address, routeUrl, sessionId, tab.id, bounceToGenericPreview])
+
+    // ── 布局联动（U5：D2 自动切换 + SC1 还原义务记账）────────────────────────
+    // 还原义务标记（SC1）：true = 本挂载生命周期内自动收起已生效、欠一次反向还原。
+    // 不复制宿主侧栏状态（face 无读取通道，AS2），只表达面板自身义务；单向只写——
+    // 自动切换成功置真、手动按钮按下清除、卸载还原执行后清除。
+    const sidebarDebtRef = useRef(false)
+    // 自动切换一次性闸（挂载生命周期粒度，D2 触发点定义）：首次「iframe 模式 × 设计
+    // 会话终态为真」触发一次；此后列表↔iframe 往返不重放（重复 toggle 会把已收起的
+    // 侧栏反向展开）。keepMounted 保活下切走再切回也不重放（闸随面板实例存活）。
+    const sidebarToggledRef = useRef(false)
+    const inIframeMode = iframe !== undefined
+
+    // 自动切换（D2）：探测在途（undefined）不触发、列表兜底模式不触发——从列表行
+    // 点击进入 iframe 的那一刻即该生命周期的首次进入。切换失败（face 不可达，宿主
+    // 异常态）不置还原义务：切换没生效，卸载就不能反向多切一次；闸照常落下，同一
+    // 生命周期内不再自动重试（辅助功能降级，不重放噪声）。
+    useEffect(() => {
+      if (!inIframeMode || designSession !== true || sidebarToggledRef.current) return
+      sidebarToggledRef.current = true
+      try {
+        toggleSidebar()
+      } catch {
+        return
+      }
+      sidebarDebtRef.current = true
+    }, [inIframeMode, designSession, toggleSidebar])
+
+    // 还原（SC1 触发点 = 面板实例卸载）：义务在位则反向切换一次并清标记。keepMounted
+    // 保活下切走不卸载、不还原（D2 已核实语义：切走即还原会让对话/预览往返时侧栏反复
+    // 横跳）。卸载若发生在插件停用的撤除链上，宿主 face 可能已撤——还原尽力而为，
+    // 不把错误抛进撤除链（辅助故障不拖垮核心的分级纪律）。
+    useEffect(() => {
+      return () => {
+        if (!sidebarDebtRef.current) return
+        sidebarDebtRef.current = false
+        try {
+          toggleSidebar()
+        } catch {
+          // face 不可达（停用竞态）：还原义务就地作废，无处呈现也不该打断卸载
+        }
+      }
+    }, [toggleSidebar])
+
+    // 手动开关（D2）：清除还原义务 + 调一次宿主翻转动作——用户手动接管后，面板卸载
+    // 不再自动翻转侧栏（V5 步⑥ 断言的执行点）。义务先清再翻：按下即接管，动作成败
+    // 不影响「此后不自动还原」。不设 aria-pressed 按下态：face 无侧栏状态读取（AS2），
+    // 按下态会是伪造状态。
+    const handleToggleSidebar = (): void => {
+      sidebarDebtRef.current = false
+      toggleSidebar()
+    }
 
     // 列表兜底模式的设计会话评论计数（iframe 模式不拉——侧栏自己按当前产物拉全量）。
     // 失败（含数据损坏）静默缺省：列表是兜底主功能，徽标不出现即可，错误态由侧栏承载。
@@ -334,13 +403,22 @@ function createDesignPanelBody(
     return (
       <div className="odp-body odp-body--split">
         <div className="odp-main">
-          {routeUrl === undefined && (
-            <div className="odp-note">
+          {/* 面板头部行（U5）：返回钮（仅列表兜底路径）+ 宿主左侧栏开关（恒在位） */}
+          <div className="odp-note">
+            {routeUrl === undefined && (
               <button type="button" className="odp-button" onClick={() => { setFallback(undefined) }}>
                 {t('list.back')}
               </button>
-            </div>
-          )}
+            )}
+            <button
+              type="button"
+              className="odp-button"
+              title={t('layout.sidebarTitle')}
+              onClick={handleToggleSidebar}
+            >
+              {t('layout.sidebar')}
+            </button>
+          </div>
           <ArtifactIframeView
             url={iframe.url}
             name={iframe.name}
@@ -371,7 +449,7 @@ function createDesignPanelBody(
 /**
  * 浏览器半场装配入口（factory 壳物化时执行）。
  *
- * @param ctx - 宿主 client context（inject 声明的五项服务）。
+ * @param ctx - 宿主 client context（inject 声明的六项服务，含 remote 的嵌套键）。
  */
 export function apply(ctx: PreviewApplyContext): void {
   const t = ctx.locale.bind(DESIGN_PANEL_LOCALE_NS)
@@ -411,6 +489,8 @@ export function apply(ctx: PreviewApplyContext): void {
   }
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     { name: 'sidebar.right.pane.tab', key: OPENDESIGN_TAB_ID, locale: DESIGN_PANEL_LOCALE_NS },
-    createDesignPanelBody(createArtifactLister(ctx), bounceToGenericPreview, createCommentsApi()),
+    createDesignPanelBody(createArtifactLister(ctx), bounceToGenericPreview, createCommentsApi(), () => {
+      ctx.layout.toggleSidebar()
+    }),
   )), 'opendesign-design-mode: 面板体')
 }

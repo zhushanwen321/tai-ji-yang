@@ -36,6 +36,10 @@ export const zh = {
   'list.truncated': '产物较多，列表已截断。',
   /** 列表 → iframe 视图的返回钮。 */
   'list.back': '返回产物列表',
+  /** 面板头部「侧栏」开关（宿主左侧边栏切换动作钮，D2/U5；face 无状态读取故不设按下态）。 */
+  'layout.sidebar': '侧栏',
+  /** 开关的说明 tooltip。 */
+  'layout.sidebarTitle': '切换左侧边栏的显示与隐藏',
   /** 评论侧栏（右缘折叠条与展开面板共用标题）。 */
   'comments.title': '评论',
   /** 折叠条的展开钮可访问名。 */
@@ -99,6 +103,8 @@ export const en: Record<keyof typeof zh, string> = {
   'list.error': 'Failed to read the artifact list.',
   'list.truncated': 'Many artifacts; the list was truncated.',
   'list.back': 'Back to artifact list',
+  'layout.sidebar': 'Sidebar',
+  'layout.sidebarTitle': 'Toggle the left sidebar',
   'comments.title': 'Comments',
   'comments.open': 'Show comments',
   'comments.close': 'Collapse',
