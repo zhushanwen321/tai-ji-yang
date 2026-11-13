@@ -91,6 +91,18 @@ describe('nameEdited 保护（显示名按 id 自动生成）', () => {
     expect(changes[0].nameEdited).toBeUndefined()
   })
 
+  it('id 联动的显示名经受控 value 回流（MF-1-6：nameRef 直改 DOM 的补丁已删除，重渲染后 name 输入显示新名）', () => {
+    const session = driver(baseDraft())
+    const idInput = byLabel(session.elements, t('model.id'))
+    ;(idInput.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'my-model-v1' } })
+    session.rerender()
+    const nameInput = byLabel(session.elements, t('model.displayName'))
+    expect(nameInput.props.value).toBe('My Model V1')
+    // 两个文本输入均为受控 value=（无 defaultValue 残留）。
+    expect(idInput.props.defaultValue).toBeUndefined()
+    expect(nameInput.props.defaultValue).toBeUndefined()
+  })
+
   it('nameEdited 置位后：id 编辑不再改显示名（用户命名优先）', () => {
     const { elements, changes } = render(baseDraft({ id: 'old', name: 'Custom Name', nameEdited: true }))
     const idInput = byLabel(elements, t('model.id'))
@@ -327,13 +339,13 @@ describe('上下文窗口档位 select 与自定义回落', () => {
     const { elements, changes } = render(baseDraft({ contextWindow: 1000000 }))
     const select = byLabel(elements, t('model.contextWindow'))
     expect(select.props.value).toBe('custom')
-    // 自定义回落输入框在场并显示原值；编辑无损写回。
+    // 自定义回落输入框在场并显示原值（受控 value=，MF-1-6）；编辑无损写回。
     const custom = elements.find((element) => {
       const className = element.props.className
       return typeof className === 'string' && className.split(/\s+/).includes('ms-model-edit-context-custom')
     })
     expect(custom).toBeDefined()
-    expect(custom!.props.defaultValue).toBe('1000000')
+    expect(custom!.props.value).toBe('1000000')
     ;(custom!.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: '1234567' } })
     expect(changes[0].contextWindow).toBe(1234567)
   })
@@ -354,7 +366,7 @@ describe('上下文窗口档位 select 与自定义回落', () => {
       const className = element.props.className
       return typeof className === 'string' && className.split(/\s+/).includes('ms-model-edit-context-custom')
     })
-    expect(custom!.props.defaultValue).toBe('')
+    expect(custom!.props.value).toBe('')
     ;(custom!.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: '' } })
     expect(changes[0].contextWindow).toBeUndefined()
   })

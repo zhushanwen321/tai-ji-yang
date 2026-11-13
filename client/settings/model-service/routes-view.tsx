@@ -19,7 +19,9 @@
  *
  * 即时保存语义：成员增删 / 排序 / 供应商模型切换 / 条件切换 / 可见开关 / 改名 = 即时经
  * saveRoute / toggleWhitelist / renameRoute 整体替换通道落盘，成功给 toast 反馈（store 的
- * notice/error 通道承载失败上报）；仅时间窗格点按上述节流。
+ * notice/error 通道承载失败上报）；时间窗格点与模型 id 自由输入（目录默认态的手输框，
+ * MF-1-4）按草案 + blur/Enter 提交节流。改名（卡头 / 注册失败修复条）前先串行补盘脏草案
+ * （MF-4-2）：先 flush 后 rename 为唯一序，store 侧改名收到的 members 已含草案修改。
  *
  * 成员供应商下拉口径（route-store selectableProviders）：宿主设置文档 providers 快照中
  * 已存在的条目（含自定义 route；displayName 目录名回落）——未接入的目录 route 不可选；
@@ -59,10 +61,6 @@ export function RoutesView({ t, model }: RoutesViewProps) {
   const toast = useRef<string | undefined>(undefined)
   const [, rerender] = useState(0)
 
-  useEffect(() => {
-    model.setTranslate(t)
-  }, [])
-
   /** 即时保存成功的轻反馈（自动消退；失败上报走 store 的 notice/error，不经 toast）。 */
   const showToast = (message: string): void => {
     toast.current = message
@@ -73,6 +71,21 @@ export function RoutesView({ t, model }: RoutesViewProps) {
         rerender((count) => count + 1)
       }
     }, 2500)
+  }
+
+  /** 各卡体「改名前补盘」出口注册表（route id → flush；真相放 ref）：卡体挂载登记、卸载
+   * 注销——卡头改名编辑器与注册失败修复条共用（MF-4-2：两处改名入口先补盘再 rename）。 */
+  const routeFlushes = useRef(new Map<string, () => Promise<void>>())
+
+  /** 卡体登记 / 注销自己的补盘出口（RouteCardBody 挂载 / 卸载时上报）。 */
+  const setRouteFlush = (id: string, flush: (() => Promise<void>) | undefined): void => {
+    if (flush === undefined) routeFlushes.current.delete(id)
+    else routeFlushes.current.set(id, flush)
+  }
+
+  /** 改名前补盘：脏成员草案一次落盘；非脏或卡未展开（无登记出口）空操作——非脏改名零额外写盘。 */
+  const flushRouteDrafts = async (id: string): Promise<void> => {
+    await routeFlushes.current.get(id)?.()
   }
 
   /** 新建即配置（A3）：直接追加一张展开态新卡（默认名避重取序），选中它就地填名。 */
@@ -90,9 +103,12 @@ export function RoutesView({ t, model }: RoutesViewProps) {
     rerender((count) => count + 1)
   }
 
-  /** 改名（就地改名 / 注册修复共用）后新 id 接管选中态——卡按 id 为 key，随之重挂新卡。 */
-  const followRename = (newId: string): void => {
-    selectedId.current = newId
+  /** 改名（就地改名 / 注册修复共用）后新 id 接管选中态——卡按 id 为 key，随之重挂新卡。
+   *  条件迁移（真机时序回归）：改名提交链（flush + renameRoute 落盘，秒级）期间用户可能
+   *  已把选中切到其他卡（最后动作优先）——迟到落地的改名回调只在「本卡旧 id 仍是选中态」
+   *  时迁移，无条件覆盖会把选中抢回改名卡、用户刚选的卡被顶回收起。 */
+  const followRename = (oldId: string, newId: string): void => {
+    if (selectedId.current === oldId) selectedId.current = newId
     rerender((count) => count + 1)
   }
 
@@ -129,6 +145,8 @@ export function RoutesView({ t, model }: RoutesViewProps) {
                 onToast={showToast}
                 onRenamed={followRename}
                 onDeleted={handleCardDeleted}
+                flushDrafts={() => flushRouteDrafts(route.id)}
+                onFlushDraftsChange={setRouteFlush}
               />
             ))}
           </div>
@@ -143,8 +161,10 @@ export function RoutesView({ t, model }: RoutesViewProps) {
   )
 }
 
-/** 空态矩阵（G18 三态，引导语义随卡片工作台保留）：无路由 / 有路由但无一对话流可见 / 可见路由成员全不可用。 */
-function EmptyMatrix({ t, state }: { t: Translate; state: RoutesSnapshot }) {
+/** 空态矩阵（G18 三态，引导语义随卡片工作台保留）：无路由 / 有路由但无一对话流可见 /
+ * 可见路由成员全不可用。判定源 = store 派生的 usableMembers（MF-1-14，与徽章判定同源）。
+ * 导出面 = RoutesView 生产消费 + 单测直挂（夹具不递归函数组件）。 */
+export function EmptyMatrix({ t, state }: { t: Translate; state: RoutesSnapshot }) {
   if (state.routes.length === 0) {
     return (
       <div className="ms-empty">
@@ -162,12 +182,7 @@ function EmptyMatrix({ t, state }: { t: Translate; state: RoutesSnapshot }) {
       </div>
     )
   }
-  const visibleWithMember = visible.filter((route) =>
-    route.members.some((member) => {
-      const availability = state.memberAvailability.get(`${member.provider}/${member.model}`)
-      return availability === undefined || !(availability.providerMissing || (availability.modelMissing && hasConcreteModels(state, member.provider)) || availability.credentialMissing)
-    }),
-  )
+  const visibleWithMember = visible.filter((route) => (state.usableMembers.get(route.id) ?? 0) > 0)
   if (visibleWithMember.length === 0) {
     return (
       <div className="ms-empty">
@@ -177,12 +192,6 @@ function EmptyMatrix({ t, state }: { t: Translate; state: RoutesSnapshot }) {
     )
   }
   return null
-}
-
-/** 该 provider 是否有本地可判定的模型清单（自定义清单态——models[] 非空）。 */
-function hasConcreteModels(state: RoutesSnapshot, provider: string): boolean {
-  const row = state.selectableProviders.find((candidate) => candidate.key === provider)
-  return row !== undefined && row.models.length > 0
 }
 
 /** 路由卡 props（导出面 = RoutesView 生产消费 + 单测直挂；卡头/卡脚接线断言入口）。 */
@@ -195,13 +204,17 @@ export interface RouteCardProps {
   onSelect: () => void
   onToast: (message: string) => void
   /** 改名成功后以新 id 接管选中态（RoutesView 持选中真相）。 */
-  onRenamed: (newId: string) => void
+  onRenamed: (oldId: string, newId: string) => void
   /** 删除完成后回调（两段确认第二击落地后；RoutesView 据此做选中态回退）。 */
   onDeleted: (id: string) => void
+  /** 改名前补盘（按本路由 id 取卡体出口；卡收起无卡体时空操作，MF-4-2）。 */
+  flushDrafts: () => Promise<void>
+  /** 卡体登记 / 注销补盘出口（转发 RouteCardBody，落 RoutesView 注册表）。 */
+  onFlushDraftsChange: (id: string, flush: (() => Promise<void>) | undefined) => void
 }
 
 /** 路由卡（卡头 + 展开卡体 / 收起卡脚）。 */
-export function RouteCard({ t, route, state, model, selected, onSelect, onToast, onRenamed, onDeleted }: RouteCardProps) {
+export function RouteCard({ t, route, state, model, selected, onSelect, onToast, onRenamed, onDeleted, flushDrafts, onFlushDraftsChange }: RouteCardProps) {
   const deleteArmed = useRef(false)
   const [, rerender] = useState(0)
   const registrationFailed = state.registrationFailed.includes(route.id)
@@ -209,7 +222,7 @@ export function RouteCard({ t, route, state, model, selected, onSelect, onToast,
   return (
     <div className={`ms-route-card${selected ? ' ms-route-card-selected' : ''}`}>
       <div className="ms-route-card-head">
-        <RouteNameEditor t={t} route={route} model={model} onRenamed={onRenamed} />
+        <RouteNameEditor t={t} route={route} model={model} onRenamed={onRenamed} flushDrafts={flushDrafts} />
         <span className="ms-badge ms-badge-catalog">{route.id}</span>
         {registrationFailed
           ? <span className="ms-badge ms-badge-missing">{t('route.registrationFailedBadge')}</span>
@@ -234,7 +247,7 @@ export function RouteCard({ t, route, state, model, selected, onSelect, onToast,
         )}
       </div>
       {selected && (
-        <RouteCardBody t={t} route={route} state={state} model={model} onToast={onToast} onRenamed={onRenamed} />
+        <RouteCardBody t={t} route={route} state={state} model={model} onToast={onToast} onRenamed={onRenamed} onFlushDraftsChange={onFlushDraftsChange} />
       )}
       {!selected && (
         <div className="ms-route-card-foot">
@@ -264,13 +277,19 @@ export function RouteCard({ t, route, state, model, selected, onSelect, onToast,
  * 卡头路由名（点击就地改名；失焦/回车保存，Esc 取消——renameRoute 重派生 id 并迁移白名单）。
  * 导出面 = RouteCard 生产消费 + 单测组件同一性断言。
  */
-export function RouteNameEditor({ t, route, model, onRenamed }: {
+export function RouteNameEditor({ t, route, model, onRenamed, flushDrafts, startEditing = false }: {
   t: Translate
   route: RouteEntry
   model: RoutesListModel
-  onRenamed: (newId: string) => void
+  onRenamed: (oldId: string, newId: string) => void
+  /** 改名前补盘（MF-4-2）：先落脏成员草案再 renameRoute——RoutesView 注册表按 route.id 取
+   * 本卡卡体出口（卡收起无卡体时空操作）。 */
+  flushDrafts: () => Promise<void>
+  /** 初始即编辑态：夹具单次渲染无法从按钮态翻到输入态（ref 真相不跨组件调用存续），
+   * 单测直挂输入分支用；生产不传，默认点击路由名进入编辑。 */
+  startEditing?: boolean
 }) {
-  const editing = useRef(false)
+  const editing = useRef(startEditing)
   const draftRef = useRef(route.name)
   const [, rerender] = useState(0)
   const rerenderNow = () => rerender((count) => count + 1)
@@ -287,8 +306,12 @@ export function RouteNameEditor({ t, route, model, onRenamed }: {
       closeEditor()
       return
     }
+    // 先补盘后改名（唯一序，MF-4-2）：renameRoute 在 store 侧取旧路由 members 构造新路由，
+    // 不先落草案则脏时间窗/模型 id 草案随改名静默丢失（改名重派生 id → 旧卡体卸载补盘
+    // saveRoute 携带旧 id，store map 找不到旧 id 写回原样数组，零错误零提示）。
+    await flushDrafts()
     const updated = await model.renameRoute(route.id, name)
-    if (updated !== undefined) onRenamed(updated.id)
+    if (updated !== undefined) onRenamed(route.id, updated.id)
     else closeEditor()
   }
 
@@ -329,20 +352,24 @@ export interface RouteCardBodyProps {
   state: RoutesSnapshot
   model: RoutesListModel
   onToast: (message: string) => void
-  onRenamed: (newId: string) => void
+  onRenamed: (oldId: string, newId: string) => void
+  /** 登记 / 注销本卡体补盘出口（挂载 / 卸载时上报——RoutesView 注册表按 route.id 供改名入口取用）。 */
+  onFlushDraftsChange: (id: string, flush: (() => Promise<void>) | undefined) => void
 }
 
 /**
  * 卡体（选中态）：注册失败修复条 + 成员管线。成员草案在 ref（挂载时从快照克隆）；
- * 成员级操作即时 saveRoute（序列化草案 = 未落盘的时间窗格点一并落盘），时间窗格点只改
- * 草案并标脏，收起（条件切回无条件——切换本身即时保存）或卸载（切换选中卡）时按脏标记
- * 一次性补盘。
+ * 成员级操作即时 saveRoute（序列化草案 = 未落盘的时间窗格点与模型 id 草案一并落盘），
+ * 时间窗格点与模型 id 自由输入只改草案并标脏（节流，MF-1-4——每击键一次写盘 + 全量重读
+ * + 四路探测不可持续），收起（条件切回无条件——切换本身即时保存）或卸载（切换选中卡）
+ * 时按脏标记一次性补盘。
  */
-export function RouteCardBody({ t, route, state, model, onToast, onRenamed }: RouteCardBodyProps) {
+export function RouteCardBody({ t, route, state, model, onToast, onRenamed, onFlushDraftsChange }: RouteCardBodyProps) {
   const membersRef = useRef<RouteMember[]>(route.members.map((member) => ({ ...member, condition: { ...member.condition } })))
   const dragFrom = useRef<number | undefined>(undefined)
   const dragOver = useRef<number | undefined>(undefined)
   const windowDirty = useRef(false)
+  const modelDraftDirty = useRef(false)
   const fixNameRef = useRef(route.name)
   const [, rerender] = useState(0)
   const rerenderNow = () => rerender((count) => count + 1)
@@ -352,13 +379,32 @@ export function RouteCardBody({ t, route, state, model, onToast, onRenamed }: Ro
 
   const save = async (): Promise<boolean> => {
     windowDirty.current = false
+    modelDraftDirty.current = false
     return await model.saveRoute({ id: route.id, name: route.name, members: membersRef.current })
   }
 
-  // 切换选中卡（卡体卸载）时一次性落盘未保存的时间窗草案（节流的补盘出口）。
+  // 切换选中卡（卡体卸载）时一次性落盘未保存草案（时间窗格点 + 模型 id 自由输入——
+  // 击键中途切卡不静默丢输入，与时间窗共用补盘出口）。
   useEffect(() => () => {
-    if (!windowDirty.current) return
+    if (!windowDirty.current && !modelDraftDirty.current) return
+    windowDirty.current = false
+    modelDraftDirty.current = false
     void model.saveRoute({ id: route.id, name: route.name, members: membersRef.current })
+  }, [])
+
+  /** 改名前补盘（MF-4-2）：脏草案一次落盘、非脏空操作——两处改名入口（卡头 commitRename /
+   * 修复条 applyFixRename）先 await 此处再 renameRoute，store 侧改名收到的 members 已含草案。 */
+  const flushDrafts = async (): Promise<void> => {
+    if (!windowDirty.current && !modelDraftDirty.current) return
+    await save()
+  }
+
+  // 挂载登记 / 卸载注销补盘出口（与上方卸载补盘 effect 同款 deps [] 语义：route.id 挂载期
+  // 不变——改名重派生 id 走整卡重挂，新卡体按新 id 重新登记；改名路径先经 flushDrafts 落盘，
+  // 卸载补盘因脏标记已清成为空操作）。
+  useEffect(() => {
+    onFlushDraftsChange(route.id, flushDrafts)
+    return () => { onFlushDraftsChange(route.id, undefined) }
   }, [])
 
   const updateMember = (index: number, next: RouteMember): void => {
@@ -410,12 +456,29 @@ export function RouteCardBody({ t, route, state, model, onToast, onRenamed }: Ro
     windowDirty.current = true
   }
 
-  /** 注册失败的就地改名修复（A7）：新名重派生 id → 替换旧路由 → 注册自动重试。 */
+  /** 模型 id 自由输入的草案更新（节流，RouteNameEditor 同款形态）：击键只改草案标脏，
+   * 不逐击键写盘（每次写盘 = 整字段 mutate + 失败重读重发 + 全量重读 + 四路探测）。 */
+  const updateModelDraft = (index: number, member: RouteMember, model: string): void => {
+    if (model === member.model) return
+    updateMember(index, { ...member, model })
+    modelDraftDirty.current = true
+  }
+
+  /** 草案提交（blur / Enter）：脏草案一次落盘——连续输入 N 字符至多一次写入。 */
+  const commitModelDraft = (): void => {
+    if (!modelDraftDirty.current) return
+    void save().then((ok) => { if (ok) onToast(t('save.saved')) })
+  }
+
+  /** 注册失败的就地改名修复（A7）：新名重派生 id → 替换旧路由 → 注册自动重试。改名前先
+   * 补盘脏草案（MF-4-2，与卡头 commitRename 同一序）：直接 rename 会取 store 侧 members，
+   * 视图草案随旧 id 卸载静默丢失。 */
   const applyFixRename = async (): Promise<void> => {
     const name = fixNameRef.current.trim()
     if (name === '' || name === route.name) return
+    await flushDrafts()
     const updated = await model.renameRoute(route.id, name)
-    if (updated !== undefined) onRenamed(updated.id)
+    if (updated !== undefined) onRenamed(route.id, updated.id)
   }
 
   const members = membersRef.current
@@ -523,15 +586,18 @@ export function RouteCardBody({ t, route, state, model, onToast, onRenamed }: Ro
                   ))}
                 </select>
               ) : (
-                // 目录默认态（models[] 空 / 无自定义清单）：模型 id 无法本地枚举，回落自由输入
-                //（现有语义）；可用性徽章不虚构（buildMemberAvailability 判定保持）。
+                // 目录默认态（models[] 空 / 无自定义清单）：模型 id 无法本地枚举，回落自由输入。
+                // 草案 + blur/Enter 提交（RouteNameEditor 同款，MF-1-4）：击键不落盘；可用性
+                // 徽章不虚构（buildMemberAvailability 判定保持）。
                 <input
                   type="text"
                   className="ms-input"
                   aria-label={t('route.memberModel')}
                   placeholder={t('route.memberModelInput')}
                   value={member.model}
-                  onChange={(event) => { updateAndSave(index, { ...member, model: event.target.value }) }}
+                  onChange={(event) => { updateModelDraft(index, member, event.target.value) }}
+                  onBlur={() => { commitModelDraft() }}
+                  onKeyDown={(event) => { if (event.key === 'Enter') commitModelDraft() }}
                 />
               )}
               <select

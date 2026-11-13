@@ -77,6 +77,7 @@ function fakeModel(snapshot: ModelsListSnapshot, actions: Partial<Record<string,
     customizeFromDirectory: actions.customizeFromDirectory ?? (() => {}),
     copyToCustom: actions.copyToCustom ?? (() => {}),
     removeModel: actions.removeModel ?? (() => {}),
+    load: actions.load ?? (() => {}),
     ...actions,
   }
 }
@@ -549,5 +550,61 @@ describe('ModelsListModel 写路径（writeProviderModels 消费侧）', () => {
     const elements = renderView(readySnapshot({ providersExist: true, groups: snapshot.groups }))
     const alerts = elements.filter((element) => element.props.className === 'ms-note ms-note-err').map((element) => textOf(element))
     expect(alerts).toContain(snapshot.groups[0].directoryError)
+  })
+})
+
+// ── 评审修复 r4（G1 组：MF-1-5 readLlmPiAi 失败/缺席显形 + 重试入口）────────────────
+
+describe('快照失败/缺席显形（MF-1-5：unavailable 三态对齐 providers 视图）', () => {
+  it('readLlmPiAi reject → 快照 unavailable、不拼装残缺分组；渲染提示条 + 重试按钮（点击直调 load）', async () => {
+    const host = fakeHost({
+      providers: { alpha: { displayName: 'Alpha', models: [{ id: 'a1', name: 'A1', input: ['text'] }] } },
+      directory: [{ provider: 'alpha', displayName: 'Alpha', settingsNs: 'llm-pi-ai' }],
+    })
+    host.settings.describe = () => Promise.reject(new Error('settings service down'))
+    const model = await makeModel(host)
+    const snapshot = model.getSnapshot()
+    expect(snapshot.status).toBe('unavailable')
+    expect(snapshot.groups).toEqual([]) // 已接入 provider 的分组不再静默消失（失败不与空同形）
+    // 渲染面：提示条 + 重试按钮，onClick 直调 model.load。
+    let loadCalls = 0
+    const elements = renderView(readySnapshot({ status: 'unavailable' }), {}, { load: () => { loadCalls += 1 } })
+    const warnNotes = elements.filter((element) => element.props.className === 'ms-note ms-note-warn').map((element) => textOf(element))
+    expect(warnNotes.join('\n')).toContain(modelServiceZh['models.snapshotUnavailable'])
+    const retry = elementsWithClass(elements, 'ms-button').filter((button) => textOf(button) === modelServiceZh['models.retryLoad'])
+    expect(retry).toHaveLength(1)
+    ;(retry[0].props.onClick as () => void)()
+    expect(loadCalls).toBe(1)
+  })
+
+  it('available=false（命名空间未被服务）→ 同款 unavailable（不再静默 continue）', async () => {
+    const host = fakeHost({
+      directory: [{ provider: 'alpha', displayName: 'Alpha', settingsNs: 'llm-pi-ai' }],
+    })
+    host.settings.describe = async () => ({ ok: true, value: { writable: true, namespaces: [{ ns: 'other', revision: 1 }] } })
+    const model = await makeModel(host)
+    const snapshot = model.getSnapshot()
+    expect(snapshot.status).toBe('unavailable')
+    expect(snapshot.groups).toEqual([])
+  })
+
+  it('重试恢复：通道恢复后 load() → ready 且筛选状态保留不复位', async () => {
+    const host = fakeHost({
+      providers: { alpha: { displayName: 'Alpha', models: [{ id: 'a1', name: 'A1', input: ['text'] }] } },
+      directory: [{ provider: 'alpha', displayName: 'Alpha', settingsNs: 'llm-pi-ai' }],
+    })
+    const healthyDescribe = host.settings.describe.bind(host)
+    host.settings.describe = () => Promise.reject(new Error('down'))
+    const model = await makeModel(host)
+    expect(model.getSnapshot().status).toBe('unavailable')
+    model.setFilter('a1') // unavailable 期间的筛选输入
+    // 通道恢复（直调 load = 提示条重试按钮的行为）：ready 且 filter 保留、分组按筛选过滤。
+    host.settings.describe = healthyDescribe
+    await model.load()
+    const snapshot = model.getSnapshot()
+    expect(snapshot.status).toBe('ready')
+    expect(snapshot.filter).toBe('a1')
+    expect(snapshot.groups.map((group) => group.providerKey)).toEqual(['alpha'])
+    expect(snapshot.groups[0].rows.map((row) => row.modelId)).toEqual(['a1'])
   })
 })

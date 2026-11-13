@@ -8,13 +8,12 @@
  * modelFromDraft / modelToDraft）。
  *
  * 本组件是纯渲染行：状态由 ProviderEditModel 持有（编辑动作经 onChange 回调上抛），本文件
- * 不持状态副本、不直接触通道。例外是两处输入焦点保真：显示名跟随 id 的同步与自定义档
- * 受控输入——前者经 ref 直接改 DOM 值（uncontrolled 输入的重渲染不回写 DOM 值，不同步会
- * 显示旧名），后者走受控值（draft.levelInput）驱动校验提示。
+ * 不持状态副本、不直接触通道。全部输入一律受控 value=（MF-1-6：与 select 同纪律）——
+ * id→显示名的跟随联动经模型回流到 DOM，无需 ref 直改 DOM 的补丁；自定义档输入的受控值
+ * （draft.levelInput）驱动行内校验提示。
  */
-import { useRef } from 'react'
 import type { ModelServiceLocaleKey } from '../../locale'
-import { prettifyId, THINKING_LEVELS, type ModelDraft } from '../../model-service/settings-client'
+import { MODALITIES, prettifyId, THINKING_LEVELS, type ModelDraft } from '../../model-service/settings-client'
 
 /** 分区翻译函数座位（宿主 locale 渲染机合成的 t）。 */
 export type Translate = (key: ModelServiceLocaleKey, params?: Record<string, unknown>) => string
@@ -23,12 +22,6 @@ export type Translate = (key: ModelServiceLocaleKey, params?: Record<string, unk
 export interface InputEventLike {
   target: { value: string }
 }
-
-/** MODALITIES 词表 = 宿主 schema 的 input 字段值域（仅 text/image，音频不被宿主接受）。 */
-const MODALITIES: { value: 'text' | 'image'; key: ModelServiceLocaleKey }[] = [
-  { value: 'text', key: 'input.text' },
-  { value: 'image', key: 'input.image' },
-]
 
 /**
  * 上下文窗口档位（32K-2M；1M = 1048576 为新增条目的默认档）。档位外的既有数字（如宿主
@@ -72,8 +65,6 @@ export interface ModelEditProps {
  * 非法数字输入忽略（保持原值），不写入草稿。
  */
 export function ModelEdit({ t, draft, onChange }: ModelEditProps) {
-  /** 显示名输入框引用：id 输入联动时直接同步 DOM 值（uncontrolled 输入重渲染不回写 DOM）。 */
-  const nameRef = useRef<HTMLInputElement | null>(null)
   const numberInput = (field: 'contextWindow' | 'maxTokens') => (event: InputEventLike) => {
     const raw = event.target.value.trim()
     if (raw === '') {
@@ -96,24 +87,19 @@ export function ModelEdit({ t, draft, onChange }: ModelEditProps) {
     <div className="ms-model-edit">
       <input
         className="ms-input ms-model-edit-id"
-        defaultValue={draft.id}
+        value={draft.id}
         aria-label={t('model.id')}
         onChange={(event: InputEventLike) => {
           const id = event.target.value
           const next: ModelDraft = { ...draft, id }
-          if (!draft.nameEdited) {
-            next.name = prettifyId(id)
-            // 同步显示名输入框的 DOM 值：不依赖全量重渲染保输入焦点（uncontrolled 输入的
-            // defaultValue 只在挂载生效，不同步则显示名停留在旧值）。
-            if (nameRef.current !== null) nameRef.current.value = next.name
-          }
+          // 显示名跟随 id（nameEdited 未置位时）：受控输入下经 onChange → 草稿回流到 DOM。
+          if (!draft.nameEdited) next.name = prettifyId(id)
           onChange(next)
         }}
       />
       <input
-        ref={nameRef}
         className="ms-input ms-model-edit-name"
-        defaultValue={draft.name}
+        value={draft.name}
         aria-label={t('model.displayName')}
         title={t('model.nameAutoHint')}
         onChange={(event: InputEventLike) => { onChange({ ...draft, name: event.target.value, nameEdited: true }) }}
@@ -139,14 +125,14 @@ export function ModelEdit({ t, draft, onChange }: ModelEditProps) {
       {contextTier === 'custom' && (
         <input
           className="ms-input ms-model-edit-context-custom"
-          defaultValue={draft.contextWindow === undefined ? '' : String(draft.contextWindow)}
+          value={draft.contextWindow === undefined ? '' : String(draft.contextWindow)}
           aria-label={t('model.contextWindow')}
           onChange={numberInput('contextWindow')}
         />
       )}
       <input
         className="ms-input ms-model-edit-max"
-        defaultValue={draft.maxTokens === undefined ? '' : String(draft.maxTokens)}
+        value={draft.maxTokens === undefined ? '' : String(draft.maxTokens)}
         aria-label={t('model.maxTokens')}
         onChange={numberInput('maxTokens')}
       />

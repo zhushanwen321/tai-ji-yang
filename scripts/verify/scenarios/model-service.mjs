@@ -331,7 +331,7 @@ export async function run(ctx) {
   const builtinCard = page.locator('.ms-section .ms-addflow-card', { hasText: '内置' })
   if (!(await builtinCard.isVisible().catch(() => false))) {
     ev.degrade('添加流程「接入方式」两卡未渲染（choose 步骤缺失？）',
-      '核对 ProvidersView 的 addingStep 渲染分支与 locale 键 addflow.builtinTitle/addflow.customTitle')
+      '核对 ProvidersView 的 form 判别字段 addflow/choose 渲染分支与 locale 键 addflow.builtinTitle/addflow.customTitle')
     ev.attach('console.txt', recorder.text())
     return
   }

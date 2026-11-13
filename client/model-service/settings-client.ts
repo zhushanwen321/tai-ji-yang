@@ -37,14 +37,23 @@
  * 风格：无 any、无 lint 禁用注释；不 import 任何 dsh-client 包（D3 纪律，宿主面用最小
  * 结构类型声明）。
  */
-import { isSelfManagedRef, type PendingUnsetRegistration } from './credentials-client'
+import { isSelfManagedRef, type CredentialsRemoteLike, type PendingUnsetRegistration } from './credentials-client'
+import type { DiscoveryRemoteLike } from './discovery'
 import { checkRouteConflict, deriveCredentialRef } from './provider-key'
 import { unwrapRemote, type RemoteResult } from './remote-result'
 import type { RouteEntry } from './route-evaluate'
+import type { ModelServiceLocaleKey } from '../locale'
 
 // Result 包装与解包的权威定义在 remote-result.ts（独立文件防 credentials-client 反向引用成环），
 // 此处 re-export：本模块的导入面（ModelServiceHost / unwrapRemote / RemoteResult）不变。
 export { unwrapRemote, type RemoteResult }
+
+// CredentialsRemoteLike 的权威声明在 credentials-client.ts（describe/set/unset 三签名的
+// 唯一副本，MF-1-8）；沿 settings-client → credentials-client 的既有单向 import 方向引
+// type 并 re-export，消费点（ModelServiceHost 与既有 import）零改动。discovery 侧同理：
+// 发现通道形状以 discovery.ts 为权威（DiscoveryRemoteLike），LlmRemoteLike 经 type-only
+// import 继承它——运行时零 require，无模块环。
+export type { CredentialsRemoteLike }
 
 /** 宿主 llm-pi-ai 命名空间 id = 其 profile 行 id（本机 cordis.patch.yml 实证：`- id: llm-pi-ai`）。 */
 export const LLM_PI_AI_NS = 'llm-pi-ai'
@@ -87,24 +96,14 @@ export interface ConfigurableProviderRow {
   error?: string
 }
 
-/** 宿主 llm remote 的最小同构（ctx.remote.llm 的本模块消费面；发现通道形状见 discovery.ts）。 */
-export interface LlmRemoteLike {
+/**
+ * 宿主 llm remote 的最小同构（ctx.remote.llm 的本模块消费面）。发现成员（discoverModels
+ * 的请求/返回形状）继承自 discovery.ts 的 DiscoveryRemoteLike——权威声明在 discovery.ts
+ * （MF-1-8：不在此处留第二份内联形状）。
+ */
+export interface LlmRemoteLike extends DiscoveryRemoteLike {
   listProviders(): Promise<RemoteResult<{ id: string; name: string }[]>>
   listConfigurableProviders(): Promise<RemoteResult<ConfigurableProviderRow[]>>
-  /** 模型发现（AS7：provider 命中目录零网络短路；请求/返回形状见 discovery.ts）。 */
-  discoverModels(settingsNs: string, request: {
-    provider?: string
-    baseURL?: string
-    api?: string
-    apiKey?: string
-  }): Promise<RemoteResult<{ id: string; name?: string; contextWindow?: number; maxTokens?: number; inputModalities?: ('text' | 'image')[] }[]>>
-}
-
-/** 凭据 remote 的最小同构（ctx.remote.credentials；详细契约在 credentials-client）。 */
-export interface CredentialsRemoteLike {
-  describe(refs: string[]): Promise<RemoteResult<Record<string, { configured: boolean; source?: string; writable: boolean }>>>
-  set(ref: string, value: string): Promise<RemoteResult<void>>
-  unset(ref: string): Promise<RemoteResult<void>>
 }
 
 /** 本模块用到的宿主面集合。 */
@@ -134,6 +133,60 @@ export type HostProviderProfile = Record<string, unknown>
  * 自由定义、但同名映射形态下键 = 值 = 档名，因此档位选择只在本词表内进行。
  */
 export const THINKING_LEVELS: readonly string[] = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+
+/**
+ * 宿主 supportedProtocols 协议表（桌面 0.2.2 asar 内 dsh-llm-pi-ai/lib/index.js 实读；
+ * 声明序 = 界面下拉序）。宿主 schema 词表镜像一族统一安家本模块词表区（MF-1-12）：
+ * 后续 asar 实读对照的机器看守脚本只有此一处可锚。
+ */
+export const PROTOCOLS: readonly string[] = ['openai-completions', 'openai-responses', 'anthropic-messages']
+
+/** 宿主 SUPPORTED_THINKING_FORMATS 词形（asar 实读 :306-318；值集与序不变，thinkingFormat 的合法值域）。 */
+export const THINKING_FORMATS: readonly string[] = [
+  'openai', 'deepseek', 'openrouter', 'together', 'baseten', 'zai', 'qwen',
+  'chat-template', 'qwen-chat-template', 'string-thinking', 'ant-ling',
+]
+
+/**
+ * 本表单 6 个 compat 字段按协议的可用性（宿主 COMPAT_GATES asar 实读 :381-412 逐字面：
+ * 全部 6 字段仅 openai-completions offer；openai-responses 只 offer supportsDeveloperRole；
+ * anthropic-messages 一个不 offer）。
+ */
+export const COMPAT_AVAILABILITY: Readonly<Record<string, Readonly<Record<string, boolean>>>> = {
+  'openai-completions': {
+    thinkingFormat: true,
+    supportsDeveloperRole: true,
+    supportsReasoningEffort: true,
+    supportsStore: true,
+    supportsUsageInStreaming: true,
+    supportsFinishReason: true,
+  },
+  'openai-responses': {
+    thinkingFormat: false,
+    supportsDeveloperRole: true,
+    supportsReasoningEffort: false,
+    supportsStore: false,
+    supportsUsageInStreaming: false,
+    supportsFinishReason: false,
+  },
+  'anthropic-messages': {
+    thinkingFormat: false,
+    supportsDeveloperRole: false,
+    supportsReasoningEffort: false,
+    supportsStore: false,
+    supportsUsageInStreaming: false,
+    supportsFinishReason: false,
+  },
+}
+
+/**
+ * 宿主 models[] 条目 input 字段的值域词表（宿主 schema 实读：仅 text/image，音频不被
+ * 宿主接受）；key = 界面文案词条。纯产品词（如上下文档位表）不属宿主镜像，留在 UI 文件。
+ */
+export const MODALITIES: readonly { value: 'text' | 'image'; key: ModelServiceLocaleKey }[] = [
+  { value: 'text', key: 'input.text' },
+  { value: 'image', key: 'input.image' },
+]
 
 /** 一条模型条目的编辑草案（模型编辑表单 ↔ 宿主 models[] 条目的映射载体）。 */
 export interface ModelDraft {
@@ -465,16 +518,6 @@ export interface SaveProviderParams {
 export async function saveProvider(host: ModelServiceHost, params: SaveProviderParams): Promise<SaveProviderResult> {
   const { draft, revision, existing, refGuard } = params
 
-  // ① provider key 预检：仅新建的全表单（编辑时 key 就是既有 route 本身，查重必然自命中；
-  // 窄表单新建的 key = 内置目录 route——该 route 已由 pi-ai 目录注册，预检必然撞名，而窄表单
-  // 的意图恰是为既有目录 route 写配置而非注册新 route，跳过预检）。
-  if (draft.isNew && !draft.narrow) {
-    const routes = await listRegisteredRoutes(host.llm)
-    if (checkRouteConflict(draft.key, routes)) {
-      return { kind: 'refused-route', message: `provider key「${draft.key}」与已注册 route 同名，请更换显示名后保存` }
-    }
-  }
-
   // ② 凭据 ref 查重（要写密钥时才查；查重拒绝 = 保存动作整体未发生，零写入）。
   // 写入目标（D7：编辑既有 provider 时保留其既有 apiKeyEnv——不重派生、不 unset 旧 ref，
   // 宿主「模型」分区创建的非 TAIJI_ ref 不被孤儿化）；仅既有条目缺失 apiKeyEnv 时
@@ -483,50 +526,56 @@ export async function saveProvider(host: ModelServiceHost, params: SaveProviderP
   const ownRef = typeof existing?.apiKeyEnv === 'string' ? existing.apiKeyEnv : undefined
   const credentialRef = ownRef ?? deriveCredentialRef(draft.key)
   const wantsKey = draft.apiKeyValue.trim().length > 0
-  if (wantsKey) {
-    const verdict = await refGuard(credentialRef, ownRef)
-    if (!verdict.ok) {
-      return { kind: 'refused-ref', branch: verdict.branch, message: `凭据引用 ${credentialRef} 已被占用，请更换显示名后保存` }
+
+  // 预检段（① key 查重 → ② ref 查重 → 无栅栏新建的撞他端预读）：① 仅新建的全表单做
+  //（编辑时 key 就是既有 route 本身，查重必然自命中；窄表单新建的 key = 内置目录 route
+  // ——该 route 已由 pi-ai 目录注册，预检必然撞名，而窄表单的意图恰是为既有目录 route 写
+  // 配置而非注册新 route，跳过预检）。宿主通道传输异常在此收敛为 rejected 结果值
+  //（MF-1-1：三入口 rejection 契约统一为「不外抛」，调用方无防御 catch）。
+  try {
+    if (draft.isNew && !draft.narrow) {
+      const routes = await listRegisteredRoutes(host.llm)
+      if (checkRouteConflict(draft.key, routes)) {
+        return { kind: 'refused-route', message: `provider key「${draft.key}」与已注册 route 同名，请更换显示名后保存` }
+      }
     }
+    if (wantsKey) {
+      const verdict = await refGuard(credentialRef, ownRef)
+      if (!verdict.ok) {
+        return { kind: 'refused-ref', branch: verdict.branch, message: `凭据引用 ${credentialRef} 已被占用，请更换显示名后保存` }
+      }
+    }
+    // 跨端覆盖防护（MF-1-12）的无栅栏分支：他端在本端快照之后接入同 key 时，整条 set 会
+    // 覆盖他端字段。持有 revision 栅栏时他端接入必然推进 revision → 首发即 settings/conflict
+    // → 编排器重读后经 onReread 钩子放弃；栅栏缺失（无条件写、不会触发冲突）时提交前补读检查。
+    if (draft.isNew && revision === undefined) {
+      const current = await readLlmPiAi(host.settings)
+      if (current.providers[draft.key] !== undefined) {
+        return { kind: 'refused-existing', message: providerTakenMessage(draft.key) }
+      }
+    }
+  } catch (error) {
+    return { kind: 'rejected', message: precheckFailureMessage(messageOf(error)) }
   }
 
-  // ③ settings.mutate：新 provider 整条 set / 既有 provider 字段级 diff；冲突重读一次重发一次。
-  // 宿主网关对业务失败 resolve {ok:false}（不 reject），失败判定按 Result 的 ok/code 走。
-  // 新建整条 set 带 apiKeyEnv（D7 只存 ref 名）：本次保存带密钥才写——文档条目引用派生 ref，
-  // 宿主解析才有凭据可用（缺失时徽章「未配置」+ 重填重试，D3 可见可救）。
-  // 跨端覆盖防护（MF-1-12）：他端在本端快照之后接入同 key 时，整条 set 会覆盖他端字段
-  // （窄表单值不含 apiKeyEnv/modelOverrides/compat）。持有 revision 栅栏时他端接入必然推进
-  // revision → 首发即 settings/conflict → 冲突分支重读后按下方检查放弃；栅栏缺失（无条件
-  // 写、不会触发冲突）时提交前补一次重读检查。
-  if (draft.isNew && revision === undefined) {
-    const current = await readLlmPiAi(host.settings)
-    if (current.providers[draft.key] !== undefined) {
-      return { kind: 'refused-existing', message: providerTakenMessage(draft.key) }
-    }
-  }
+  // ③ settings.mutate：新 provider 整条 set / 既有 provider 字段级 diff；冲突重读一次重发
+  // 一次（编排器单点，MF-1-1）。新建整条 set 带 apiKeyEnv（D7 只存 ref 名）：本次保存带密钥
+  // 才写——文档条目引用派生 ref，宿主解析才有凭据可用（缺失时徽章「未配置」+ 重填重试）。
   const ops = draft.isNew
     ? [{ op: 'set' as const, path: ['providers', draft.key], value: profileFromDraft(draft, wantsKey ? credentialRef : undefined) }]
     : profileDiffOps(existing ?? {}, draft, draft.key)
-  let view: SettingsNamespaceViewLike
-  const first = await host.settings.mutate(LLM_PI_AI_NS, ops, revision)
-  if (!first.ok) {
-    if (first.error.code !== 'settings/conflict') {
-      return { kind: 'rejected', message: rejectedMessage(first.error.message) }
-    }
-    // 非盲重试：重读最新 revision 后同形 ops 再发一次（path ops 按存储视图解析，AS11）。
-    const fresh = await readLlmPiAi(host.settings)
-    // 新建撞他端接入（MF-1-12）：重读显示 key 已存在 → 放弃整条 set，不覆盖他端条目。
-    if (draft.isNew && fresh.providers[draft.key] !== undefined) {
-      return { kind: 'refused-existing', message: providerTakenMessage(draft.key) }
-    }
-    const second = await host.settings.mutate(LLM_PI_AI_NS, ops, fresh.revision)
-    if (!second.ok) {
-      return { kind: 'rejected', message: settingsConflictFailureMessage(draft.key, second.error.message, fresh.revision) }
-    }
-    view = second.value
-  } else {
-    view = first.value
-  }
+  const outcome = await mutateLlmPiAiOps(host.settings, ops, {
+    revision,
+    // 新建撞他端接入（MF-1-12）：冲突重读显示 key 已存在 → 放弃整条 set，不覆盖他端条目。
+    onReread: draft.isNew
+      ? (fresh) => fresh.providers[draft.key] !== undefined
+        ? { kind: 'refused-existing', message: providerTakenMessage(draft.key) }
+        : undefined
+      : undefined,
+    conflictMessage: (message, freshRevision) => supplierConflictMessage(draft.key, message, freshRevision),
+  })
+  if (!outcome.ok) return outcome.failure
+  const view = outcome.view
 
   // 写入后回读校验（AS17）：mutate 返回视图即写入后快照，schema 未声明字段标注「宿主不消费」。
   const writtenProfile = readWrittenProfile(view, draft.key)
@@ -587,10 +636,7 @@ export interface DeleteProviderParams {
  * 删除供应商（D3 删除流程 + D7 删除侧）：
  *   ① 路由成员引用警告由 UI 在两段确认里完成（routeReferencesOf 是警告数据源——被引用时
  *      列出受影响路由，用户确认后继续删除，D3 原文；本函数不再硬拒绝）；
- *   ② settings.mutate unset providers.<key>（无条件写：revision 传 undefined，宿主契约
- *      「undefined writes unconditionally」不触发 settings/conflict；下方 conflict 分支是
- *      防御性保留，按宿主契约不可达——D3 的 revision 快照约定只锚定保存提交，删除的
- *      path unset 按存储视图解析、他写者改动按路径保留，不违反设计）；
+ *   ② settings.mutate unset providers.<key>（经编排器；无条件写，见函数内注释）；
  *   ③ 凭据处置：TAIJI_ 前缀（自建）直接 unset，失败登记 pendingCredentialUnsets（登记
  *      本身失败 → unsetMessage 降级为宿主凭据界面人工清理指引，不静默）；
  *      非 TAIJI_ 前缀（宿主侧派生）在 crossProfileConfirmed=true 下同通道 unset（确认
@@ -598,21 +644,15 @@ export interface DeleteProviderParams {
  */
 export async function deleteProvider(host: ModelServiceHost, params: DeleteProviderParams): Promise<DeleteProviderResult> {
   const ops: SettingsOp[] = [{ op: 'unset', path: ['providers', params.key] }]
-  let view: SettingsNamespaceViewLike
-  const first = await host.settings.mutate(LLM_PI_AI_NS, ops, undefined)
-  if (!first.ok) {
-    if (first.error.code !== 'settings/conflict') {
-      return { kind: 'rejected', message: rejectedMessage(first.error.message) }
-    }
-    const fresh = await readLlmPiAi(host.settings)
-    const second = await host.settings.mutate(LLM_PI_AI_NS, ops, fresh.revision)
-    if (!second.ok) {
-      return { kind: 'rejected', message: settingsConflictFailureMessage(params.key, second.error.message, fresh.revision) }
-    }
-    view = second.value
-  } else {
-    view = first.value
-  }
+  // 无条件写（revision 不传 = undefined，宿主契约「undefined writes unconditionally」不触发
+  // settings/conflict）——编排器的 conflict 分支对它是防御性保留（按宿主契约不可达，D3 的
+  // revision 快照约定只锚定保存提交；删除的 path unset 按存储视图解析、他写者改动按路径保留）。
+  const outcome = await mutateLlmPiAiOps(host.settings, ops, {
+    conflictMessage: (message, freshRevision) => supplierConflictMessage(params.key, message, freshRevision),
+  })
+  // 本入口无 onReread 短路：失败载荷映射到本结果词表的 rejected。
+  if (!outcome.ok) return { kind: 'rejected', message: outcome.failure.message }
+  const view = outcome.view
   // 删除产物实质校验（MF-2-5，saveProvider/writeProviderModels 同款口径）：mutate 回执即
   // 写入后快照——整条 unset 期望回执里该 key 缺席；条目仍在 = 宿主静默吞掉 unset，按
   // rejected 上报而非静默 deleted（否则 UI 报已删而条目下次 load 复活，删除回弹无错误归因）。
@@ -676,38 +716,35 @@ export type WriteModelsResult =
  * 回读校验未声明字段（AS17 同款）。空清单 = unset models 字段（目录默认语义恢复，与供应商
  * 表单「保存空清单即保持目录默认」同口径——整段 set 空数组会在文档里留下显式空清单，与
  * 「缺席 = 按目录解析」的宿主语义相悖）。settings/conflict 重读一次重发一次，第二次仍拒 =
- * 四段式文案上报；非冲突拒绝原样透传宿主消息。
+ * 四段式文案上报；非冲突拒绝原样透传宿主消息；传输异常收敛为结果值（MF-1-1）。
  */
 export async function writeProviderModels(remote: ModelServiceHost, key: string, models: HostProviderProfile[]): Promise<WriteModelsResult> {
   const ops: SettingsOp[] = models.length > 0
     ? [{ op: 'set', path: ['providers', key, 'models'], value: models }]
     : [{ op: 'unset', path: ['providers', key, 'models'] }]
-  let view: SettingsNamespaceViewLike
   // 存量 profile（写入前快照，物化视图）：空清单 unset 的产物校验用它比对「字段仍是
   // 原值」——物化回执下缺席字段被补为默认值，只有仍等于原值才是「未执行 unset」。
-  let existingProfile: HostProviderProfile | undefined
+  // 先取快照 revision 是本入口与 saveProvider/deleteProvider 的参数差异（那两者由调用方
+  // 持有 revision；本入口无展开体形态，每次写入自取最新栅栏）。
+  let snapshot: LlmPiAiSnapshot
   try {
-    const snapshot = await readLlmPiAi(remote.settings)
-    existingProfile = snapshot.providers[key]
-    const first = await remote.settings.mutate(LLM_PI_AI_NS, ops, snapshot.revision)
-    if (!first.ok) {
-      if (first.error.code !== 'settings/conflict') {
-        return { kind: 'rejected', message: rejectedMessage(first.error.message) }
-      }
-      // 非盲重试：重读最新 revision 后同形 ops 再发一次（path ops 按存储视图解析，AS11）。
-      const fresh = await readLlmPiAi(remote.settings)
-      existingProfile = fresh.providers[key]
-      const second = await remote.settings.mutate(LLM_PI_AI_NS, ops, fresh.revision)
-      if (!second.ok) {
-        return { kind: 'rejected', message: modelsConflictFailureMessage(key, second.error.message, fresh.revision) }
-      }
-      view = second.value
-    } else {
-      view = first.value
-    }
+    snapshot = await readLlmPiAi(remote.settings)
   } catch (error) {
-    return { kind: 'rejected', message: `模型清单写入失败：${messageOf(error)}。请确认宿主设置服务可用后重试。` }
+    return { kind: 'rejected', message: transportFailureMessage(messageOf(error)) }
   }
+  let existingProfile: HostProviderProfile | undefined = snapshot.providers[key]
+  const outcome = await mutateLlmPiAiOps(remote.settings, ops, {
+    revision: snapshot.revision,
+    // 冲突重读后存量基线同步刷新（重发落在最新存储视图上，产物校验比对最新原值）。
+    onReread: (fresh) => {
+      existingProfile = fresh.providers[key]
+      return undefined
+    },
+    conflictMessage: (message, freshRevision) => modelsConflictMessage(key, message, freshRevision),
+  })
+  // 本入口的 onReread 只做存量基线刷新、从不短路：失败载荷映射到本结果词表的 rejected。
+  if (!outcome.ok) return { kind: 'rejected', message: outcome.failure.message }
+  const view = outcome.view
   const writtenProfile = readWrittenProfile(view, key)
   // 写入产物实质校验（MF-1-14 / MF-2-1，saveProvider 同款）：回执 models 与写入值覆盖
   // 比对——写入值内的条目/字段缺失或被改写 = 宿主静默丢弃或改写，按 rejected 上报而非
@@ -724,11 +761,100 @@ export async function writeProviderModels(remote: ModelServiceHost, key: string,
   }
 }
 
-/** 模型清单连续冲突的四段式文案（本包 + 命名空间与字段 + 事实 + 出路，settingsConflictFailureMessage 同构）。 */
-function modelsConflictFailureMessage(key: string, message: string, revision: number | undefined): string {
-  return `模型清单未能写入宿主设置文档（llm-pi-ai 命名空间 providers.${key}.models）：`
+// ── 三写通道共用的私有编排器（MF-1-1 单点）──────────────────────────────────
+
+/**
+ * 编排器失败载荷：调用方结果面的拒绝词。rejected = 常规拒绝（非冲突拒绝 / 二发仍拒 /
+ * 传输异常收敛）；refused-existing = onReread 钩子的放弃信号（仅 saveProvider 的新建
+ * 撞名检查产出——无此词的入口把失败载荷映射回自己的 rejected）。
+ */
+type MutateFailure =
+  | { kind: 'rejected'; message: string }
+  | { kind: 'refused-existing'; message: string }
+
+/** 编排器结果：成功 = 写入后回执视图；失败 = 调用方结果面直接可用的拒绝载荷。 */
+type MutateOutcome = { ok: true; view: SettingsNamespaceViewLike } | { ok: false; failure: MutateFailure }
+
+/** mutateLlmPiAiOps 的参数（三入口的差异全部经此收口）。 */
+interface MutateLlmPiAiOpsParams {
+  /** 首发提交的 revision 栅栏（undefined = 无条件写，deleteProvider 的形态）。 */
+  revision?: number
+  /**
+   * 冲突重读后的钩子（fresh = 重读快照）：返回非 undefined = 以该失败载荷短路
+   * （saveProvider 的新建撞名检查走此钩子）；返回 undefined = 继续同形重发
+   * （writeProviderModels 的存量基线刷新在此完成）。
+   */
+  onReread?: (fresh: LlmPiAiSnapshot) => MutateFailure | undefined
+  /** 第二次仍拒的四段式文案构造（入口场景化：供应商 / 模型清单）。 */
+  conflictMessage: (message: string, revision: number | undefined) => string
+}
+
+/**
+ * 「首发 mutate → settings/conflict 分类 → 重读一次 → onReread 钩子（可短路）→ 同形
+ * ops 重发一次 → 仍拒产出参数化四段式文案」的单点编排：saveProvider / deleteProvider /
+ * writeProviderModels 三写通道此前各抄一份（仅钩子不同）。宿主网关对业务失败 resolve
+ * {ok:false}（不 reject），失败判定按 Result 的 ok/code 走；非冲突拒绝原样透传宿主消息。
+ * 重发后仍拒（无论分类）= 四段式文案——非盲重试只试一次（path ops 按存储视图解析，
+ * AS11）。传输层异常（mutate / describe 的 reject）统一收敛为 rejected 结果值不外抛
+ * （rejection 契约单点，调用方无防御 catch）。
+ */
+async function mutateLlmPiAiOps(
+  settings: SettingsRemoteLike,
+  ops: SettingsOp[],
+  params: MutateLlmPiAiOpsParams,
+): Promise<MutateOutcome> {
+  try {
+    const first = await settings.mutate(LLM_PI_AI_NS, ops, params.revision)
+    if (first.ok) return { ok: true, view: first.value }
+    if (first.error.code !== 'settings/conflict') {
+      return { ok: false, failure: { kind: 'rejected', message: rejectedMessage(first.error.message) } }
+    }
+    // 非盲重试：重读最新 revision 后同形 ops 再发一次（path ops 按存储视图解析，AS11）。
+    const fresh = await readLlmPiAi(settings)
+    if (params.onReread !== undefined) {
+      const shortCircuit = params.onReread(fresh)
+      if (shortCircuit !== undefined) return { ok: false, failure: shortCircuit }
+    }
+    const second = await settings.mutate(LLM_PI_AI_NS, ops, fresh.revision)
+    if (!second.ok) {
+      return { ok: false, failure: { kind: 'rejected', message: params.conflictMessage(second.error.message, fresh.revision) } }
+    }
+    return { ok: true, view: second.value }
+  } catch (error) {
+    return { ok: false, failure: { kind: 'rejected', message: transportFailureMessage(messageOf(error)) } }
+  }
+}
+
+/**
+ * 连续冲突的四段式文案（本包 + 命名空间与字段 + 事实 + 出路，对齐 persist.ts 口径）：
+ * 主语 / 字段路径 / 出路句参数化的单一构造器（MF-1-1：三入口共用，不再各留一份）。
+ */
+function conflictFailureMessage(subject: string, fieldPath: string, wayOut: string, message: string, revision: number | undefined): string {
+  return `${subject}未能写入宿主设置文档（llm-pi-ai 命名空间 ${fieldPath}）：`
     + `重读一次（revision=${String(revision)}）后重试仍被拒（${message}）。`
-    + '可能另一个窗口正在编辑同一供应商的模型清单；请重试一次，仍失败则重新打开本分区再操作。'
+    + wayOut
+}
+
+/** 供应商侧四段式（saveProvider / deleteProvider）。 */
+function supplierConflictMessage(key: string, message: string, revision: number | undefined): string {
+  return conflictFailureMessage(
+    `供应商「${key}」`,
+    `providers.${key}`,
+    '可能另一个窗口正在编辑同一供应商；请关闭后重新打开展开体再保存。',
+    message,
+    revision,
+  )
+}
+
+/** 模型清单侧四段式（writeProviderModels）。 */
+function modelsConflictMessage(key: string, message: string, revision: number | undefined): string {
+  return conflictFailureMessage(
+    '模型清单',
+    `providers.${key}.models`,
+    '可能另一个窗口正在编辑同一供应商的模型清单；请重试一次，仍失败则重新打开本分区再操作。',
+    message,
+    revision,
+  )
 }
 
 /** 回读校验：profile 顶层与 models[] 条目里宿主 schema 未声明的字段路径（「宿主不消费」标注）。 */
@@ -758,6 +884,16 @@ function messageOf(error: unknown): string {
 /** settings/rejected 与凭据链路之外的失败：原样透传宿主消息（含恢复线索）。 */
 function rejectedMessage(message: string): string {
   return `宿主拒绝写入模型服务设置（llm-pi-ai 命名空间）：${message}。请检查端点/协议/模型字段是否满足宿主校验后重试。`
+}
+
+/** 写通道（mutate/重读 describe）传输层异常的收敛文案（reject 只来自传输层；三入口同款，MF-1-1）。 */
+function transportFailureMessage(message: string): string {
+  return `宿主设置写入失败（llm-pi-ai 命名空间）：${message}。请确认宿主设置服务可用后重试。`
+}
+
+/** 保存前检查段（route 查重 / 凭据查重 / 撞他端预读）传输层异常的收敛文案（saveProvider 专用）。 */
+function precheckFailureMessage(message: string): string {
+  return `保存供应商未能完成（宿主通道异常：${message}）。请确认宿主服务可用后重试。`
 }
 
 /** 新建撞他端接入的拒绝文案（MF-1-12：放弃整条 set，不覆盖他端条目）。 */
@@ -837,13 +973,6 @@ function writeMismatchMessage(missed: string[]): string {
 /** 删除回执与预期不符的上报文案（MF-2-5，writeMismatchMessage 的整条 unset 同构）。 */
 function deleteMismatchMessage(missed: string[]): string {
   return `删除已提交，但宿主回执仍含该条目（llm-pi-ai 命名空间 providers 段 ${missed.join('、')}）——删除可能被宿主静默忽略，条目或仍存在；请重试一次，仍失败请重新打开本分区确认条目状态。`
-}
-
-/** 连续冲突的四段式文案（本包 + 命名空间与字段 + 事实 + 出路，对齐 persist.ts 口径）。 */
-function settingsConflictFailureMessage(key: string, message: string, revision: number | undefined): string {
-  return `供应商「${key}」未能写入宿主设置文档（llm-pi-ai 命名空间 providers.${key}）：`
-    + `重读一次（revision=${String(revision)}）后重试仍被拒（${message}）。`
-    + '可能另一个窗口正在编辑同一供应商；请关闭后重新打开展开体再保存。'
 }
 
 /** mutate 回执视图 → 写入后的 profile（读不到该 route 时回落空对象，标注逻辑照常工作）。 */

@@ -347,8 +347,6 @@ export const modelServiceZh = {
   'providers.emptyManagedOnly': '暂无可编辑供应商（现有供应商由宿主管理）',
   /** 添加引导卡的动作文案。 */
   'providers.emptyAddGuide': '添加供应商',
-  /** 模型清单空态：无模型。 */
-  'models.emptyNoModels': '没有已接入的模型',
   /** 模型清单空态：供应商已接入但未写模型。 */
   'models.emptyNoModelsButProviders': '供应商已接入，但还没有模型',
   /** 模型清单空态：尚未接入供应商。 */
@@ -388,8 +386,6 @@ export const modelServiceZh = {
   'models.duplicateId': '模型 {id} 已在自定义清单中，未重复添加',
   /** 来源筛选无结果空态（关键词空、来源 chip 非「全部」时）。 */
   'models.emptySourceFiltered': '该来源下没有模型',
-  /** 写通道传输异常的前缀（写通道 rejected 分支的消息已自包含，不经此键）。 */
-  'models.writeFailed': '模型清单写入失败',
 
   /* ── 路由视图（M2：路由列表 / 白名单 / 悬挂 / 注册降级 / 空态矩阵）── */
   'routes.snapshotUnavailable': '插件配置未被服务（Config 命名空间不可用）；重新打开本分区或检查插件装载状态。',
@@ -423,9 +419,6 @@ export const modelServiceZh = {
   'route.memberProviderMissing': '供应商已删',
   'route.memberModelMissing': '模型不在清单',
   'route.memberCredentialMissing': '凭据缺失（{ref}）',
-  'route.memberUnavailable': '成员不可用',
-  'route.noActiveMember': '当前时段没有命中的成员，请调整时间窗或成员顺序',
-  'route.notExposed': '该路由未在白名单勾选（或已被删除），对话流不可见',
   'route.registrationFailed': '路由功能不可用：provider id 与宿主冲突（{routes}）',
   'route.registrationFailedNext': '恢复指引：更换路由名称（重新派生标识）或检查宿主适配器；物理模型不受影响，详情见宿主日志。',
   'route.registrationErrorDetail': '原始拒绝原因',
@@ -502,7 +495,6 @@ export const modelServiceZh = {
   'action.addProvider': '添加供应商',
   'action.edit': '编辑',
   'action.locate': '在供应商中查看',
-  'action.backToModels': '返回模型清单',
   'action.confirmDelete': '再点确认删除',
   /** 恢复目录默认的两段确认第二击（警示文案 models.restoreDirectoryWarning 随第一击展示）。 */
   'action.confirmRestore': '再点确认恢复',
@@ -523,7 +515,6 @@ export const modelServiceZh = {
   'provider.protocol.openai-responses': 'OpenAI Responses',
   'provider.protocol.anthropic-messages': 'Anthropic Messages',
   'compat.groupEssential': '基础兼容',
-  'compat.groupAdvanced': '高级兼容',
   'compat.unavailable': '一期不开放',
   'compat.field.thinkingFormat': '思考格式',
   'compat.field.supportsDeveloperRole': '支持 developer 角色',
@@ -564,14 +555,14 @@ export const modelServiceZh = {
   'credential.pendingRetry': '已自动重试清理 {n} 个待清理凭据引用',
   /** 清单写回连续失败（MF-3-2）：凭据侧已清理但 Config 待清理清单原样未动，区分于按条数的成功提示。 */
   'credential.pendingRetryWriteFailed': '凭据已清理，但待清理清单更新失败；下次打开本分区将自动重试',
-  /** 保存链路异常的前缀（MF-1-4：saving 复位 + 可重试错误条）。 */
-  'save.writeFailed': '保存失败（{detail}），请重试',
   /** 新建撞他端接入的拒绝提示（MF-1-12：不整条覆盖，刷新后编辑）。 */
   'save.refTakenElsewhere': '该供应商已在其他窗口接入，本次未覆盖；请重新打开本分区后编辑该条目',
-  /** 删除链路异常的前缀（MF-1-4：confirmDelete 异常捕获）。 */
-  'delete.failed': '删除失败（{detail}），请重试',
   /** 目录默认态目录模型读取失败的提示行前缀（MF-1-18：失败显形）。 */
   'models.directoryLoadFailed': '目录模型读取失败',
+  /** 模型清单视图快照不可用的提示（MF-1-5：readLlmPiAi 失败/缺席显形，对齐 providers 视图三态）。 */
+  'models.snapshotUnavailable': '宿主模型层未就绪（llm-pi-ai 命名空间未被服务或读取失败）；确认宿主已装模型适配器后重试。',
+  /** 模型清单视图快照不可用时的重试按钮（直调重读，MF-1-5）。 */
+  'models.retryLoad': '重试',
 } satisfies LocaleDict
 
 /** 模型服务分区英文词典（与 modelServiceZh 同 key 集，相等性由 locale.test.ts 对账）。 */
@@ -620,7 +611,6 @@ export const modelServiceEn = {
   'providers.empty': 'No providers yet',
   'providers.emptyManagedOnly': 'No editable providers (existing ones are host-managed)',
   'providers.emptyAddGuide': 'Add provider',
-  'models.emptyNoModels': 'No connected models',
   'models.emptyNoModelsButProviders': 'Providers are connected, but no models yet',
   'models.emptyNoProviders': 'No providers connected yet',
   'models.emptyNoMatch': 'No models matching "{q}"',
@@ -645,7 +635,6 @@ export const modelServiceEn = {
   'models.editNeedsId': 'Model ID is required',
   'models.duplicateId': 'Model {id} is already in the custom list; not added again',
   'models.emptySourceFiltered': 'No models under this source',
-  'models.writeFailed': 'Failed to write the model list',
 
   /* ── Routes view (M2: list / whitelist / hanging / registration degraded / empty matrix) ── */
   'routes.snapshotUnavailable': 'Plugin config is not being served (namespace unavailable); reopen this section or check the plugin state.',
@@ -675,9 +664,6 @@ export const modelServiceEn = {
   'route.memberProviderMissing': 'Provider deleted',
   'route.memberModelMissing': 'Model not in list',
   'route.memberCredentialMissing': 'Credential missing ({ref})',
-  'route.memberUnavailable': 'Member unavailable',
-  'route.noActiveMember': 'No member matches the current time; adjust the window or member order',
-  'route.notExposed': 'This route is not whitelisted (or was deleted) and is hidden from conversations',
   'route.registrationFailed': 'Routing unavailable: provider id conflicts with the host ({routes})',
   'route.registrationFailedNext': 'To recover: rename the route (re-derive its id) or check host adapters; physical models are unaffected, see host logs for details.',
   'route.registrationErrorDetail': 'Original rejection reason',
@@ -750,7 +736,6 @@ export const modelServiceEn = {
   'action.addProvider': 'Add provider',
   'action.edit': 'Edit',
   'action.locate': 'Show in provider',
-  'action.backToModels': 'Back to model list',
   'action.confirmDelete': 'Click again to confirm',
   'action.confirmRestore': 'Click again to restore',
 
@@ -768,7 +753,6 @@ export const modelServiceEn = {
   'provider.protocol.openai-responses': 'OpenAI Responses',
   'provider.protocol.anthropic-messages': 'Anthropic Messages',
   'compat.groupEssential': 'Essential compatibility',
-  'compat.groupAdvanced': 'Advanced compatibility',
   'compat.unavailable': 'Not available in this version',
   'compat.field.thinkingFormat': 'Thinking format',
   'compat.field.supportsDeveloperRole': 'Developer role support',
@@ -804,10 +788,10 @@ export const modelServiceEn = {
   'delete.routeReferences': 'This provider is referenced by route(s) ({routes}); after deletion the affected members become unavailable (marked "provider deleted" in the routes view). Confirm to proceed.',
   'credential.pendingRetry': 'Retried clearing {n} pending credential refs',
   'credential.pendingRetryWriteFailed': 'Credentials cleared, but updating the pending-cleanup list failed; reopening this section will retry automatically',
-  'save.writeFailed': 'Save failed ({detail}); please retry',
   'save.refTakenElsewhere': 'This provider was connected in another window and was not overwritten; reopen this section and edit it there',
-  'delete.failed': 'Delete failed ({detail}); please retry',
   'models.directoryLoadFailed': 'Failed to read catalog models',
+  'models.snapshotUnavailable': 'The host model layer is not ready (llm-pi-ai namespace unserved or read failed); retry once the host ships a model adapter.',
+  'models.retryLoad': 'Retry',
 } satisfies LocaleDict
 
 /** 模型服务分区文案 key 域（分区组件侧 `t` 的参数类型）。 */

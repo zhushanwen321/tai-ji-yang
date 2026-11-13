@@ -145,7 +145,6 @@ describe('模型服务分区双语字典（u-foundation 骨架 + M1 填充 + M2 
     expect(modelServiceZh['models.sourceOverride']).toBe('目录默认 + 覆盖')
     // D6 compat 分组与一期不开放标注
     expect(modelServiceZh['compat.groupEssential']).toBe('基础兼容')
-    expect(modelServiceZh['compat.groupAdvanced']).toBe('高级兼容')
     expect(modelServiceZh['compat.unavailable']).toBe('一期不开放')
     // 空态矩阵三视图分支 + 筛选空态
     expect(modelServiceZh['models.emptyNoMatch']).toContain('{q}')

@@ -7,6 +7,10 @@
  * + 订阅刷新，写 = 乐观更新（内存先改 + notify）→ form.set 整字段写回 → 失败重读（宿主
  * 拒绝或传输失败时以 Config 真值为准，UI 回落并显式上报）。
  *
+ * 回放守卫族（revision 倒退栅栏 / 内容级回放守卫 / 收敛防抖 / 递归防护 / 宽限锚与补探）
+ * 内聚在 RouteWriteAuthority（route-write-authority.ts，显式状态机，MF-1-3）；本类只做
+ * IO 编排——RPC 读写、notify、定时器接线与守卫裁决结果的消费。
+ *
  * 派生面（打开分区时可观察）：
  *   · 悬挂白名单条目（D1：whitelist id 在 routes 不存在 →「路由已删除」标注 + 单条移除与
  *     批量清理动作，清理只移除悬挂条目）；
@@ -28,6 +32,7 @@
  * 身份，拒绝改名会破坏悬挂态不复活的机制，所以这里是加序号而不是拒绝。
  */
 import { deriveProviderKey } from './provider-key'
+import { REGISTRATION_ERROR_FIELD, ROUTES_FIELD, WHITELIST_FIELD } from './config-fields'
 import {
   ROUTE_PROVIDER_PREFIX,
   evaluateRoutesAt,
@@ -38,17 +43,8 @@ import {
 } from './route-evaluate'
 import { readLlmPiAi, unwrapRemote, type ModelServiceHost } from './settings-client'
 import type { PluginConfigFormLike } from './credentials-client'
-
-/** 路由 Config 字段名（index.js Config 声明）。 */
-export const ROUTES_FIELD = 'routes'
-/** 白名单 Config 字段名（index.js Config 声明）。 */
-export const WHITELIST_FIELD = 'whitelist'
-/**
- * 注册探测的近期写入宽限窗（毫秒）：本会话写入 routes 后，探测 RPC 可能先于 Node 半场
- * ensureRouteRegistration 的注册执行返回（无先后保证），窗口内差集不标注册失败；volatile
- * 更新链路的注册重试由宿主事件驱动，亚秒级完成，5 秒窗覆盖注册执行 + 一次事件传播的余量。
- */
-const REGISTRATION_PROBE_GRACE_MS = 5000
+import { RouteWriteAuthority } from './route-write-authority'
+import type { ModelServiceLocaleKey } from '../locale'
 
 /** 成员可用性标注（G18 三型；providerMissing = 供应商已删）。 */
 export interface MemberAvailability {
@@ -82,6 +78,12 @@ export interface RoutesSnapshot {
   hits: Map<string, RouteMember | undefined>
   /** 成员可用性标注（键 = `${provider}/${model}`；G18）。 */
   memberAvailability: Map<string, MemberAvailability>
+  /**
+   * 每路由可用成员数（MF-1-14 下沉的派生谓词：成员的 availability 缺席或三布尔全 false
+   * 计可用；空态矩阵「可见路由成员全不可用」的判定源，与徽章判定同源——目录默认态
+   * models[] 空不标模型缺失，即计可用）。
+   */
+  usableMembers: Map<string, number>
   /** 成员选择器的 provider 行（排除 taiji-route-* 与托管行）。 */
   selectableProviders: SelectableProvider[]
   notice: string | undefined
@@ -92,6 +94,8 @@ export interface RoutesSnapshot {
 export interface RoutesListModelDeps {
   remote: ModelServiceHost
   configForm: PluginConfigFormLike
+  /** 翻译座位（构造器注入，ProvidersListModel 同款先例，MF-1-13）：commit 双败的 notice/error 上报文案。 */
+  t: (key: ModelServiceLocaleKey, params?: Record<string, unknown>) => string
 }
 
 /**
@@ -101,40 +105,8 @@ export class RoutesListModel {
   private readonly deps: RoutesListModelDeps
   private readonly listeners = new Set<() => void>()
   private state: RoutesSnapshot
-  /**
-   * 已采纳快照的 revision（倒退栅栏，AF-1-1）：commit 成功后的重读走镜像视图，镜像快照
-   * 滞后于 set 落盘时（persist.ts 镜像/mutate 两路径），旧快照整段重建会把乐观写弹回
-   * （白名单 toggle 静默丢失）。非 ready 态重置——命名空间重开时宿主 revision 可重排，
-   * 栅栏不得跨服务期生效。
-   */
-  private appliedRevision: number | undefined
-  /**
-   * 本会话最近一次成功写入的 (routes, whitelist)（镜像回显对账基准）：load 的内容级回放
-   * 守卫据此区分「自己写入的回显 / 滞后回放 / 外部变更」三态。undefined = 本会话尚未成功
-   * 写入（或双败后交还权威）——镜像内容无条件采纳。writtenAt 供回放守卫的世代序参考；
-   * routesWrittenAt 供注册探测的近期写入宽限（探测 RPC 与 Node 半场注册执行无先后保证，
-   * 窗口内差集不标失败——见 probeDerived），**仅 writeRoutes 刷新**：whitelist 写入不影响
-   * 注册集合，不得重置宽限（MF-2-2：whitelist 写入刷新宽限会使已确认注册失败的路由红徽
-   * 消失且无自动恢复）；undefined = 本会话尚未写 routes（whitelist-only 写入保留该值）。
-   */
-  private lastWritten: { routes: RouteEntry[]; whitelist: string[]; writtenAt: number; routesWrittenAt: number | undefined } | undefined
-  /** 最近覆写前值集合（容量 3）：滞后回放的内容判定源——被上次写入覆盖掉的旧值正是滞后
-   * 快照携带的内容；容量覆盖镜像滞后窗口内的少数几个世代，越界即按外部变更采纳。 */
-  private readonly preImages = new Set<string>()
-  /** 已收敛重写的内容键（单发防抖：同一滞后内容只回写一次，防镜像反复投递成回写乒乓）；
-   * 仅在收敛写**成功**后置位——被拒/传输失败不置位，下一次镜像投递可再次尝试收敛。 */
-  private reconciledFor: string | undefined
-  /** 收敛重写调用链内的递归防护：同一次 load 链内不再收敛（防 set 持续被拒时收敛-重读
-   * 无限循环）；外部新投递（subscribe/commit 触发的 load）不受限。 */
-  private reconcileLoopGuard = false
-  /**
-   * 宽限吞掉候选失败后的一次性延时重探定时器（真机验收回归）：probeDerived 仅事件驱动
-   * （load/commit 链），注册失败链（注册失败 → 写诊断 → Config 变更 → load）亚秒级全部
-   * 落在宽限窗内被吞，窗过期后无事件再触发探测 → 注册失败红徽在真实宿主永不出现。被吞
-   * 的候选失败由本定时器在宽限刚过期时补一次探测；已有定时器时不重复安排（保留最早
-   * 触发点），dispose 撤销。
-   */
-  private graceRecheckTimer: ReturnType<typeof setTimeout> | undefined
+  /** 回放守卫族状态机（revision 栅栏 / 写入权威 / 收敛防抖 / 宽限锚与补探定时器）。 */
+  private readonly authority = new RouteWriteAuthority()
   /** 构造时启动的首读（测试 await model.pending 等待就绪）。 */
   readonly pending: Promise<void>
   private unsubscribe: (() => void) | undefined
@@ -148,30 +120,11 @@ export class RoutesListModel {
     })
   }
 
-  /** 撤订阅（分区卸载时调用；Config 订阅不撤会在卸载后空转重读）。 */
+  /** 撤订阅与守卫定时器（分区卸载时调用；Config 订阅不撤会在卸载后空转重读）。 */
   dispose(): void {
     this.unsubscribe?.()
     this.unsubscribe = undefined
-    if (this.graceRecheckTimer !== undefined) {
-      clearTimeout(this.graceRecheckTimer)
-      this.graceRecheckTimer = undefined
-    }
-  }
-
-  /**
-   * 宽限刚过期时补一次探测：probeDerived 仅事件驱动，被宽限吞掉的候选失败若无人补探
-   * 将永不标注。定时点 = 宽限窗结束 + 50ms 余量（窗边界竞态防抖）；已安排则保留最早
-   * 触发点（后续轮次可能改判 clean，多探一次无害——探测只读宿主 remote）。
-   */
-  private scheduleGraceRecheck(): void {
-    if (this.graceRecheckTimer !== undefined) return
-    const writtenAt = this.lastWritten?.routesWrittenAt
-    if (writtenAt === undefined) return
-    const delay = Math.max(REGISTRATION_PROBE_GRACE_MS - (Date.now() - writtenAt), 0) + 50
-    this.graceRecheckTimer = setTimeout(() => {
-      this.graceRecheckTimer = undefined
-      void this.probeDerived(this.state.routes).catch(() => {})
-    }, delay)
+    this.authority.dispose()
   }
 
   getSnapshot(): RoutesSnapshot {
@@ -187,87 +140,61 @@ export class RoutesListModel {
   async load(): Promise<void> {
     const snapshot = this.deps.configForm.getSnapshot()
     if (snapshot.status === 'unavailable') {
-      this.appliedRevision = undefined
-      this.lastWritten = undefined
-      this.preImages.clear()
-      this.reconciledFor = undefined
+      this.authority.transition({ type: 'namespaceClosed' })
       this.state = { ...emptySnapshot(), status: 'unavailable' }
       this.notify()
       return
     }
     if (snapshot.status !== 'ready') {
-      // loading 是镜像的瞬时态（命名空间重开走 unavailable → ready）——只重置 revision
+      // loading 是镜像的瞬时态（命名空间重开走 unavailable → ready）——只清 revision
       // 栅栏（原语义），会话写入权威保留：重开后的 ready 快照若与本会话写入一致照常采纳。
-      this.appliedRevision = undefined
+      this.authority.transition({ type: 'namespaceReopening' })
       this.state = { ...emptySnapshot(), status: 'loading' }
       this.notify()
       return
     }
-    // 倒退栅栏（AF-1-1）：revision 与 value 在同一快照对象（ConfigFormSnapshotLike），滞后
-    // 回放的旧快照 revision 必然更小——拒收其 Config 派生面重建（routes/whitelist/hanging
-    // 整段重建正是弹回机制本体），subscribe 事件最终会带新 revision 快照完成对账；栅栏只
-    // 挡倒退不挡前进。探测面不拒收（probeDerived 照跑）：探测读宿主 remote，不依赖这份滞后
-    // 快照，而 load 是探测面唯一刷新入口——宿主实测镜像滞后可达数秒（直至下一次写入才有
-    // describe 触发），整段 return 会把成员可用性/注册探测冻结整个窗口（G18「供应商已删」
-    // 标注缺席）。
-    const staleReplay =
-      this.appliedRevision !== undefined &&
-      snapshot.revision !== undefined &&
-      snapshot.revision < this.appliedRevision
-    if (staleReplay) {
-      await this.probeDerived(this.state.routes)
-      return
-    }
-    this.appliedRevision = snapshot.revision
+    // 倒退栅栏 + 内容级回放守卫（AF-1-1 及其补强层）整体裁决进状态机：revision 栅栏挡
+    // 「revision 倒退」的滞后快照；插件 Config 与 llm-pi-ai 等命名空间共享宿主设置文档的
+    // revision 计数，其他命名空间的写入会把计数推进到 ≥ 栅栏，让一份**内容滞后**的镜像
+    // 快照蒙混过栅栏——内容级守卫按「会话写入回显 / 覆写前值（滞后回放）/ 外部变更」三态
+    // 分流（实测形态：路由改名落盘后被滞后镜像回写成旧值、删路由后被复活）。探测面不
+    // 拒收（probeDerived 照跑）：探测读宿主 remote，不依赖这份滞后快照，而 load 是探测面
+    // 唯一刷新入口——整段 return 会把成员可用性/注册探测冻结整个镜像滞后窗口。
     const section = typeof snapshot.value === 'object' && snapshot.value !== null
       ? snapshot.value as Record<string, unknown>
       : {}
     const routes = sanitizeRoutes(section[ROUTES_FIELD])
     const whitelist = sanitizeWhitelist(section[WHITELIST_FIELD])
-    // 内容级回放守卫（AF-1-1 的补强层）：revision 栅栏挡「revision 倒退」的滞后快照，但
-    // 插件 Config 与 llm-pi-ai 等命名空间共享宿主设置文档的 revision 计数——其他命名空间的
-    // 写入会把计数推进到 ≥ appliedRevision，让一份**内容滞后**的镜像快照蒙混过栅栏被采纳
-    // （实测形态：路由改名落盘后，供应商创建推进 revision，滞后的改名前内容被采纳，路由 id
-    // 被回写成旧值；删路由后被采纳的滞后内容把路由「复活」，悬挂区永不渲染）。守卫判定：
-    // 快照内容 == 本会话最近一次成功写入值 → 自己写入的回显，采纳；落在最近覆写前值集合
-    // （preImages）内 → 滞后回放，不采纳其 Config 派生面（保留乐观状态），并对该内容单发
-    // 一次 lastWritten 收敛重写（reconciledFor 防同内容反复投递形成回写乒乓）；两者皆非
-    // → 外部变更（其他窗口/其他写者），采纳并重置会话写入权威。探测面照跑。
-    const content = contentKey(routes, whitelist)
-    if (this.lastWritten !== undefined && content !== contentKey(this.lastWritten.routes, this.lastWritten.whitelist)) {
-      if (this.preImages.has(content)) {
-        await this.probeDerived(this.state.routes)
-        // reconcileLoopGuard：收敛后的递归重读在同一次 load 链内不再收敛（防 set 持续被拒
-        // 时收敛-重读无限循环）；guard 只覆盖本链，外部新投递（新的 load 调用）不受限。
-        if (this.reconciledFor !== content && !this.reconcileLoopGuard) {
+    const verdict = this.authority.screenReadySnapshot({ revision: snapshot.revision, routes, whitelist })
+    if (verdict.kind === 'staleReplay') {
+      await this.probeDerived(this.state.routes)
+      return
+    }
+    if (verdict.kind === 'staleContent') {
+      await this.probeDerived(this.state.routes)
+      // 收敛重写走裸 set（不经 attemptCommit 的栅栏计数）：同值重写宿主是否前移 revision
+      // 未知，不计数避免栅栏虚高；set 被拒不抛异常（返回 false）、传输异常由调用方 catch
+      // ——两种失败都不置位收敛防抖，被拒后的下一次镜像投递能再次尝试收敛（原实现先置位：
+      // 被拒后同内容投递跳过收敛，Config 停留旧值、UI 与持久值分歧持续到下次操作）。
+      if (verdict.shouldReconcile) {
+        const written = this.authority.lastWritten
+        if (written !== undefined) {
           let reconciled = true
           try {
-            const routesWritten = await this.deps.configForm.set(ROUTES_FIELD, this.lastWritten.routes)
-            const whitelistWritten = await this.deps.configForm.set(WHITELIST_FIELD, this.lastWritten.whitelist)
+            const routesWritten = await this.deps.configForm.set(ROUTES_FIELD, written.routes)
+            const whitelistWritten = await this.deps.configForm.set(WHITELIST_FIELD, written.whitelist)
             reconciled = routesWritten && whitelistWritten
           } catch {
             reconciled = false
           }
-          // set 被拒不抛异常（返回 false，attemptCommit 同契约）、传输异常走 catch——两种
-          // 失败都不置位 reconciledFor，让被拒后的下一次镜像投递能再次尝试收敛（原实现
-          // 先置位：被拒后同内容投递跳过收敛，Config 停留旧值、UI 与持久值分歧持续到下次
-          // 操作，重载丢编辑且无上报）。收敛重写走裸 set（不经 attemptCommit 的栅栏计数）：
-          // 同值重写宿主是否前移 revision 未知，不计数避免 appliedRevision 虚高。
-          if (reconciled) this.reconciledFor = content
-          this.reconcileLoopGuard = true
-          try {
-            await this.load()
-          } finally {
-            this.reconcileLoopGuard = false
-          }
+          await this.authority.settleReconcile(verdict.content, reconciled, () => this.load())
         }
-        return
       }
-      // 真外部变更：会话写入权威让位（镜像内容与本会话写入无关）。
-      this.lastWritten = undefined
-      this.preImages.clear()
-      this.reconciledFor = undefined
+      return
     }
+    // echo（自己写入的回显）/ externalChange（权威让位后照常采纳）/ adopt（无权威无条件
+    // 采纳）三态都重建 Config 派生面；探测面（availability 空 → 全员按可用计）与视图旧行为
+    // 一致——探测未返回前不因标注缺席误判「成员全不可用」。
     const routeIds = new Set(routes.map((route) => route.id))
     this.state = {
       ...emptySnapshot(),
@@ -276,6 +203,7 @@ export class RoutesListModel {
       whitelist,
       // 悬挂白名单条目（D1：id 在 routes 不存在——「路由已删除」标注 + 清理动作的判定源）。
       hanging: whitelist.filter((id) => !routeIds.has(id)),
+      usableMembers: countUsableMembers(routes, new Map()),
     }
     this.notify()
     await this.probeDerived(routes)
@@ -286,12 +214,15 @@ export class RoutesListModel {
     // remote 方法返回 typert Result 包装，unwrapRemote 解包后失败转 rejection，由 .catch 降级。
     // listProviders 读取失败降级为 undefined（探测不可用）而不是空集——差集判定按空集算会把
     // 全部路由误标注册失败红徽（与 memberAvailability 的「快照不可用时无法判定，不标注」
-    // 同口径，两条探测通道降级一致）。
+    // 同口径，两条探测通道降级一致）。llm-pi-ai 快照单读共享（MF-1-10）：探测与凭据标注
+    // 消费同一份世代，providers 增删瞬窗内可用性判定与凭据标注不再跨世代。
+    const llmPiAiPromise = readLlmPiAi(this.deps.remote.settings).catch(() => undefined)
     const [directory, llmPiAi, registeredProviders, credentials] = await Promise.all([
       this.deps.remote.llm.listConfigurableProviders().then(unwrapRemote).catch(() => []),
-      readLlmPiAi(this.deps.remote.settings).catch(() => undefined),
+      llmPiAiPromise,
       this.deps.remote.llm.listProviders().then(unwrapRemote).catch(() => undefined),
-      this.describeCredentials(routes).catch(() => new Map<string, { configured: boolean }>()), 
+      llmPiAiPromise.then((snapshot) => this.describeCredentials(routes, snapshot))
+        .catch(() => new Map<string, { configured: boolean }>()),
     ])
     const registeredRouteProviders = registeredProviders === undefined ? undefined : new Set(
       registeredProviders
@@ -313,29 +244,22 @@ export class RoutesListModel {
     // 提前到差集判定之前：诊断是宽限例外的判定源（见下）。
     const formSnapshot = this.deps.configForm.getSnapshot()
     const rawRegistrationError = formSnapshot.status === 'ready' && typeof formSnapshot.value === 'object' && formSnapshot.value !== null
-      ? (formSnapshot.value as Record<string, unknown>).routeRegistrationError
+      ? (formSnapshot.value as Record<string, unknown>)[REGISTRATION_ERROR_FIELD]
       : undefined
     const registrationError = parseRegistrationError(rawRegistrationError)
 
-    // 注册失败差集判定：探测不可用（读取失败）不标注；近期写入宽限——本会话刚写入的
-    // routes（探测 RPC 与 Node 半场 ensureRouteRegistration 的注册执行无先后保证），窗口内
-    // 暂不标失败防新建路由的暂态假失败，宽限过期后的下一次探测照常标注。宽限锚定
-    // routesWrittenAt（仅 writeRoutes 刷新，MF-2-2）：whitelist 写入不重置宽限——白名单
-    // 不影响注册集合，注册状态未变的路由不得因无关写入的宽限窗而红徽消失。
-    // 宽限例外（MF-3-1）：注册失败诊断在场且涵盖该路由 = Node 半场注册已执行且失败
-    //（index.js ensureRouteRegistration 仅在实际失败时写诊断，无暂态误报）——这不是
-    // 「探测 RPC 先于注册执行」的暂态差集，宽限不得吞掉确定性失败信号。注册失败的完整
-    // 事件链（注册失败 → 写诊断 → Config 变更 → load → probeDerived）亚秒级全部落在
-    // 宽限窗内，无此例外则窗过期后无事件再触发探测（probeDerived 仅事件驱动），注册
-    // 失败红徽与修复条在真实宿主永不出现；诊断随事件到达即旁路宽限、红徽即时呈现。
-    const recentWriteGrace = this.lastWritten?.routesWrittenAt !== undefined
-      && Date.now() - this.lastWritten.routesWrittenAt <= REGISTRATION_PROBE_GRACE_MS
-      ? new Set(this.lastWritten.routes.map((route) => route.id))
-      : undefined
+    // 注册失败差集判定：探测不可用（读取失败）不标注；近期写入宽限锚定 routesWrittenAt
+    //（仅 routes 写入刷新，MF-2-2，见状态机）——whitelist 写入不重置宽限：白名单不影响
+    // 注册集合，注册状态未变的路由不得因无关写入的宽限窗而红徽消失。宽限例外（MF-3-1）：
+    // 注册失败诊断在场且涵盖该路由 = Node 半场注册已执行且失败（index.js
+    // ensureRouteRegistration 仅在实际失败时写诊断，无暂态误报）——这不是「探测 RPC 先于
+    // 注册执行」的暂态差集，宽限不得吞掉确定性失败信号；诊断随事件到达即旁路宽限、红徽
+    // 即时呈现（注册失败链亚秒级全部落在宽限窗内，无此例外则窗过期后无事件再触发探测）。
+    const recentWriteGrace = this.authority.graceProtectedRouteIds(Date.now())
     // 宽限吞掉的候选失败（差集判定本会标失败、因宽限跳过且诊断例外未命中）：真实宿主
     // 诊断通道（volatile 字段经 settings.mutate）不落盘不可见，注册失败链全部落在宽限
-    // 窗内且窗过期后无事件再触发探测——被吞的候选失败必须由定时器补探（见
-    // graceRecheckTimer），否则红徽永不出现（真机验收 V7 回归）。
+    // 窗内且窗过期后无事件再触发探测——被吞的候选失败必须由定时器补探（状态机的
+    // scheduleGraceRecheck），否则红徽永不出现（真机验收 V7 回归）。
     let graceSwallowedFailures = 0
     const registrationFailed = registeredRouteProviders === undefined
       ? []
@@ -350,7 +274,11 @@ export class RoutesListModel {
           }
           return wouldFail
         })
-    if (graceSwallowedFailures > 0) this.scheduleGraceRecheck()
+    if (graceSwallowedFailures > 0) {
+      this.authority.scheduleGraceRecheck(() => {
+        void this.probeDerived(this.state.routes).catch(() => {})
+      })
+    }
     // 成员供应商下拉口径（路由交互定稿 A4）：providers 快照里已存在的条目（含自定义 route；
     // 未接入的目录 route 不直出）。displayName 目录名回落（快照条目未写 displayName 时）。
     const selectableProviders =
@@ -380,19 +308,22 @@ export class RoutesListModel {
       registrationError,
       selectableProviders,
       memberAvailability: availability,
+      usableMembers: countUsableMembers(routes, availability),
       hits: evaluateRoutesAt(routes, new Date()),
     }
     this.notify()
   }
 
-  /** 批量读成员凭据状态（refs 来自成员 provider 的 apiKeyEnv）。 */
-  private async describeCredentials(routes: RouteEntry[]): Promise<Map<string, { configured: boolean }>> {
-    const llmPiAi = await readLlmPiAi(this.deps.remote.settings).catch(() => undefined)
+  /** 批量读成员凭据状态（refs 来自成员 provider 的 apiKeyEnv；llmPiAi 由探测周期透传——
+   * 同一探测周期 settings.describe 恰一次，快照单源，MF-1-10）。 */
+  private async describeCredentials(
+    routes: RouteEntry[],
+    llmPiAi: Awaited<ReturnType<typeof readLlmPiAi>> | undefined,
+  ): Promise<Map<string, { configured: boolean }>> {
     const refs = new Set<string>()
     for (const route of routes) {
       for (const member of route.members) {
-        const profile = llmPiAi !== undefined && llmPiAi.available ? llmPiAi.providers[member.provider] : undefined
-        const ref = typeof profile?.apiKeyEnv === 'string' && profile.apiKeyEnv.length > 0 ? profile.apiKeyEnv : undefined
+        const ref = memberCredentialRef(llmPiAi, member.provider)
         if (ref !== undefined) refs.add(ref)
       }
     }
@@ -421,7 +352,7 @@ export class RoutesListModel {
         if (availability.has(key)) continue
         const profile = lookup(member.provider)
         const models = Array.isArray(profile?.models) ? profile.models : []
-        const ref = typeof profile?.apiKeyEnv === 'string' && profile.apiKeyEnv.length > 0 ? profile.apiKeyEnv : undefined
+        const ref = memberCredentialRef(llmPiAi, member.provider)
         const credentialMissing = ref !== undefined && credentials.get(ref)?.configured === false
         availability.set(key, {
           // providers 段缺席 = 供应商已删（快照不可用时无法判定，不标注——探测面降级）。
@@ -520,21 +451,36 @@ export class RoutesListModel {
     await this.writeWhitelist(this.state.whitelist.filter((entry) => alive.has(entry)))
   }
 
-  /** routes 整字段写回：登记覆写前值（回放守卫的判定源）+ 记录会话写入值 + 乐观更新
-   * （悬挂即时重算——删路由后 hanging 无需等镜像回读即可渲染，V6 步骤 4 的可观察事实）。 */
+  /** routes 整字段写回：状态机登记覆写前值 + 会话写入值（宽限锚刷新）+ 乐观更新（悬挂与
+   * 可用成员计数即时重算——删路由后 hanging 无需等镜像回读即可渲染，V6 步骤 4 的可观察事实）。 */
   private async writeRoutes(routes: RouteEntry[]): Promise<boolean> {
-    this.trackPreImage()
-    this.lastWritten = { routes, whitelist: this.state.whitelist, writtenAt: Date.now(), routesWrittenAt: Date.now() }
-    this.state = { ...this.state, routes, hanging: computeHanging(routes, this.state.whitelist) }
+    this.authority.transition({
+      type: 'beginWrite',
+      routes,
+      whitelist: this.state.whitelist,
+      overwrites: [{ routes: this.state.routes, whitelist: this.state.whitelist }],
+      touchesRoutes: true,
+    })
+    this.state = {
+      ...this.state,
+      routes,
+      hanging: computeHanging(routes, this.state.whitelist),
+      usableMembers: countUsableMembers(routes, this.state.memberAvailability),
+    }
     this.notify()
     return await this.commit(ROUTES_FIELD, routes)
   }
 
-  /** whitelist 整字段写回（同 writeRoutes；不刷新 routesWrittenAt——whitelist 写入不属于
-   * 注册宽限的锚定事件，MF-2-2，见 lastWritten 字段注释）。 */
+  /** whitelist 整字段写回（同 writeRoutes；touchesRoutes=false——whitelist 写入不属于
+   * 注册宽限的锚定事件，宽限锚沿用前值，MF-2-2 见状态机）。 */
   private async writeWhitelist(whitelist: string[]): Promise<boolean> {
-    this.trackPreImage()
-    this.lastWritten = { routes: this.state.routes, whitelist, writtenAt: Date.now(), routesWrittenAt: this.lastWritten?.routesWrittenAt }
+    this.authority.transition({
+      type: 'beginWrite',
+      routes: this.state.routes,
+      whitelist,
+      overwrites: [{ routes: this.state.routes, whitelist: this.state.whitelist }],
+      touchesRoutes: false,
+    })
     this.state = { ...this.state, whitelist, hanging: computeHanging(this.state.routes, whitelist) }
     this.notify()
     return await this.commit(WHITELIST_FIELD, whitelist)
@@ -550,39 +496,37 @@ export class RoutesListModel {
    * 滞后镜像投递两者均命中回放守卫（与两笔独立提交通道的登记契约一致）。
    */
   private async writeRoutesAndWhitelist(routes: RouteEntry[], whitelist: string[]): Promise<boolean> {
-    this.trackPreImage()
-    this.trackPreImageContent(this.state.routes, whitelist)
-    this.lastWritten = { routes, whitelist, writtenAt: Date.now(), routesWrittenAt: Date.now() }
-    this.state = { ...this.state, routes, whitelist, hanging: computeHanging(routes, whitelist) }
+    this.authority.transition({
+      type: 'beginWrite',
+      routes,
+      whitelist,
+      overwrites: [
+        { routes: this.state.routes, whitelist: this.state.whitelist },
+        { routes: this.state.routes, whitelist },
+      ],
+      touchesRoutes: true,
+    })
+    this.state = {
+      ...this.state,
+      routes,
+      whitelist,
+      hanging: computeHanging(routes, whitelist),
+      usableMembers: countUsableMembers(routes, this.state.memberAvailability),
+    }
     this.notify()
     const whitelistAccepted = await this.commit(WHITELIST_FIELD, whitelist)
     if (!whitelistAccepted) return false
     return await this.commit(ROUTES_FIELD, routes)
   }
 
-  /** 登记当前内容为「最近覆写前值」（容量 3，FIFO 越界丢弃——覆盖镜像滞后窗口内的世代数）。 */
-  private trackPreImage(): void {
-    this.trackPreImageContent(this.state.routes, this.state.whitelist)
-  }
-
-  /** 登记指定内容为「最近覆写前值」（trackPreImage 的内容参数化形态）。 */
-  private trackPreImageContent(routes: RouteEntry[], whitelist: string[]): void {
-    this.preImages.add(contentKey(routes, whitelist))
-    while (this.preImages.size > 3) {
-      const oldest = this.preImages.values().next().value
-      if (oldest === undefined) break
-      this.preImages.delete(oldest)
-    }
-  }
-
   /** 单次写尝试（persist.ts attempt 同构）：accepted = 宿主接受；refused = revision 栅栏拒绝；
-   * failed = 传输异常（detail 为错误消息）。accepted 时前移 appliedRevision（原 commit 内注释
-   * 语义不变：栅栏挡掉 commit 后重读里的滞后回放，AF-1-1 弹回主径）。 */
+   * failed = 传输异常（detail 为错误消息）。accepted 时前移栅栏（原 commit 内注释语义不变：
+   * 栅栏挡掉 commit 后重读里的滞后回放，AF-1-1 弹回主径）。 */
   private async attemptCommit(field: string, value: unknown): Promise<{ kind: 'accepted' } | { kind: 'refused' } | { kind: 'failed'; detail: string }> {
     try {
       const accepted = await this.deps.configForm.set(field, value)
       if (accepted) {
-        this.appliedRevision = (this.appliedRevision ?? 0) + 1
+        this.authority.transition({ type: 'writeAccepted' })
         return { kind: 'accepted' }
       }
       return { kind: 'refused' }
@@ -612,35 +556,18 @@ export class RoutesListModel {
       await this.load()
       return true
     }
-    // 双败：会话写入权威失效（lastWritten 不再代表宿主真相），镜像内容重新无条件采纳——
-    // load 的回放守卫据此回落 Config 真值（原 AF-1-1 语义）。
-    this.lastWritten = undefined
-    this.preImages.clear()
-    this.reconciledFor = undefined
+    // 双败：会话写入权威失效（writeRefusedTwice 让位），镜像内容重新无条件采纳——load
+    // 照常回落 Config 真值（原 AF-1-1 语义）。
+    this.authority.transition({ type: 'writeRefusedTwice' })
     await this.load()
     if (outcome.kind === 'refused') {
-      this.state = { ...this.state, notice: this.t('route.writeRefused') }
+      this.state = { ...this.state, notice: this.deps.t('route.writeRefused') }
     } else {
-      this.state = { ...this.state, error: this.t('route.writeFailed', { detail: outcome.detail }) }
+      this.state = { ...this.state, error: this.deps.t('route.writeFailed', { detail: outcome.detail }) }
     }
     this.notify()
     return false
   }
-
-  /** locale 座位（store 文案：写入失败上报等；由视图传入——ProvidersListModel 的 t 同款）。 */
-  private t: (key: string, params?: Record<string, unknown>) => string = (key, params) => fallbackCopy(key, params)
-
-  /** 注入翻译函数（RoutesView 挂载时传入；单测可注入桩）。 */
-  setTranslate(t: (key: string, params?: Record<string, unknown>) => string): void {
-    this.t = t
-  }
-}
-
-/** store 未注入翻译时的兜底文案（与 locale 字典键同字面；zh 单语，兜底场景只在测试）。 */
-function fallbackCopy(key: string, params?: Record<string, unknown>): string {
-  if (key === 'route.writeRefused') return '写入被宿主拒绝，已恢复为当前保存值'
-  if (key === 'route.writeFailed') return `写入失败（${params?.detail ?? ''}），已恢复为当前保存值`
-  return key
 }
 
 /**
@@ -683,16 +610,38 @@ function emptySnapshot(): RoutesSnapshot {
     registrationError: undefined,
     hits: new Map(),
     memberAvailability: new Map(),
+    usableMembers: new Map(),
     selectableProviders: [],
     notice: undefined,
     error: undefined,
   }
 }
 
-/** (routes, whitelist) 的内容键（回放守卫与覆写前值集合的相等判定；JSON 序列化足够——
- * 两侧都是 sanitize/乐观更新产出的同构形态，键序稳定）。 */
-function contentKey(routes: RouteEntry[], whitelist: string[]): string {
-  return JSON.stringify([routes, whitelist])
+/** 成员 provider 的凭据 ref（apiKeyEnv 非空 string 才作 ref；快照缺席/不可用/条目非对象
+ * → undefined——describeCredentials 与 buildMemberAvailability 共用的单点提取，MF-1-10）。 */
+function memberCredentialRef(
+  llmPiAi: Awaited<ReturnType<typeof readLlmPiAi>> | undefined,
+  provider: string,
+): string | undefined {
+  if (llmPiAi === undefined || !llmPiAi.available) return undefined
+  const profile = llmPiAi.providers[provider]
+  if (typeof profile !== 'object' || profile === null) return undefined
+  return typeof profile.apiKeyEnv === 'string' && profile.apiKeyEnv.length > 0 ? profile.apiKeyEnv : undefined
+}
+
+/** 每路由可用成员计数（MF-1-14 派生谓词单点：availability 缺席（探测未返回/降级/新成员）
+ * 或三布尔全 false 计可用；与成员行徽章判定同源——buildMemberAvailability 的现行口径）。 */
+function countUsableMembers(routes: RouteEntry[], availability: Map<string, MemberAvailability>): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const route of routes) {
+    let usable = 0
+    for (const member of route.members) {
+      const marker = availability.get(`${member.provider}/${member.model}`)
+      if (marker === undefined || (!marker.providerMissing && !marker.modelMissing && !marker.credentialMissing)) usable += 1
+    }
+    counts.set(route.id, usable)
+  }
+  return counts
 }
 
 /** 悬挂条目（D1：whitelist 中不在 routes 的 id）。 */

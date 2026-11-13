@@ -263,8 +263,10 @@ describe('恢复目录默认的两段确认（U6，D11 采用段警示语义）'
 })
 
 // ── 评审修复 r1（G2 组：MF-1-4 保存链路异常捕获 / MF-1-18 目录失败显形）──────────────
+// MF-1-1 后异常捕获单点移入 settings-client 写通道（结果值收敛），本文件的用例改断言
+// 「saving 复位 + 错误条带通道异常原文与重试指引」的收敛文案。
 
-describe('保存链路异常捕获（MF-1-4：saving 不因未捕获异常永久卡 true）', () => {
+describe('保存链路异常收敛（MF-1-4 saving 复位语义 / MF-1-1 写通道收敛为结果值）', () => {
   /** 可脚本化 mutate 的 remote（编辑流零 diff 时 ops 为空数组，回执 providers.yanshi 供回读）。 */
   function editableRemote() {
     const remote = fakeRemote()
@@ -274,14 +276,14 @@ describe('保存链路异常捕获（MF-1-4：saving 不因未捕获异常永久
     return { remote, profile }
   }
 
-  it('mutate 传输层 reject：saving 复位、错误条带可重试指引（按钮不再永久禁用）', async () => {
+  it('mutate 传输层 reject：saveProvider 收敛为 rejected 结果值——saving 复位、错误条带可重试指引（按钮不再永久禁用）', async () => {
     const { remote } = editableRemote()
     remote.settings.mutate = () => Promise.reject(new Error('transport down'))
     const model = makeModel([{ id: 'a', name: 'A', input: ['text'], reasoningEfforts: false }], { remote })
     await model.save()
     const snapshot = model.getSnapshot()
     expect(snapshot.saving).toBe(false)
-    expect(snapshot.error).toBe('保存失败（transport down），请重试')
+    expect(snapshot.error).toBe('宿主设置写入失败（llm-pi-ai 命名空间）：transport down。请确认宿主设置服务可用后重试。')
 
     // 通道恢复后再次保存可成功（saving 未卡死的回归证明）。
     remote.settings.mutate = async () => ({ ok: true, value: { ns: 'llm-pi-ai', value: { providers: { yanshi: { displayName: 'Yanshi', models: [] } } }, revision: 4 } })
@@ -291,7 +293,7 @@ describe('保存链路异常捕获（MF-1-4：saving 不因未捕获异常永久
     expect(recovered.error).toBeUndefined()
   })
 
-  it('新建全表单的 route 预检 unwrapRemote throw 同样被捕获（saving 复位）', async () => {
+  it('新建全表单的 route 预检 unwrapRemote throw 同样收敛为 rejected（saving 复位）', async () => {
     const remote = editableRemote().remote
     remote.llm.listProviders = () => Promise.reject(new Error('llm remote down'))
     const model = makeModel([], {
@@ -304,7 +306,7 @@ describe('保存链路异常捕获（MF-1-4：saving 不因未捕获异常永久
     await model.save()
     const snapshot = model.getSnapshot()
     expect(snapshot.saving).toBe(false)
-    expect(snapshot.error).toBe('保存失败（llm remote down），请重试')
+    expect(snapshot.error).toBe('保存供应商未能完成（宿主通道异常：llm remote down）。请确认宿主服务可用后重试。')
   })
 })
 
@@ -354,5 +356,96 @@ describe('新建撞他端接入（MF-1-12：refused-existing 分支给刷新指�
     expect(snapshot.notice?.kind).toBe('err')
     expect(snapshot.notice?.text).toBe(modelServiceZh['save.refTakenElsewhere'])
     expect(snapshot.error).toBeUndefined()
+  })
+})
+
+// ── 评审修复 r4（G1 组：MF-1-6 受控输入清场 / MF-1-11 窄表单空保存判据单点）──────────
+
+describe('保存成功后密钥清场（MF-1-6：受控输入的模型回流，AX1 生效）', () => {
+  /** 编辑流 remote：mutate 回执带 providers.yanshi（保存成功路径的回读底座）。 */
+  function saveableRemote() {
+    const remote = fakeRemote()
+    const profile = { displayName: 'Yanshi', api: 'openai-completions', baseURL: 'http://y/v1', models: [{ id: 'a', name: 'A', input: ['text'], reasoningEfforts: false }] }
+    remote.settings.describe = async () => ({ ok: true, value: { writable: true, namespaces: [{ ns: 'llm-pi-ai', value: { providers: { yanshi: profile } }, revision: 2 }] } })
+    remote.settings.mutate = async () => ({ ok: true, value: { ns: 'llm-pi-ai', value: { providers: { yanshi: profile } }, revision: 3 } })
+    return remote
+  }
+
+  it('B1 保存成功：快照 apiKeyValue 清空，渲染的密钥输入 value 跟随为空串（非受控 defaultValue 无 DOM 写回通道的修复）', async () => {
+    const remote = saveableRemote()
+    const model = makeModel([{ id: 'a', name: 'A', input: ['text'], reasoningEfforts: false }], { remote })
+    model.setApiKeyValue('sk-once')
+    await model.save()
+    const snapshot = model.getSnapshot()
+    expect(snapshot.notice?.kind).toBe('ok')
+    expect(snapshot.apiKeyValue).toBe('')
+    // 渲染面：受控输入的 value 跟随快照清空（此前非受控输入无 DOM 写回通道，AX1 失效）。
+    const props: ProviderEditBodyProps = { t, model, focusModel: undefined, onCancel: () => {} }
+    const tree = bodyModule.ProviderEditBody(props) as Parameters<typeof collectElements>[0]
+    const passwordInputs = elementsOf(tree).filter((element) => element.props.type === 'password')
+    expect(passwordInputs).toHaveLength(1)
+    expect(passwordInputs[0].props.value).toBe('')
+  })
+
+  it('B3 保存失败（宿主拒绝）：已输入密钥保留（失败分支不清模型值），输入 value 仍显示', async () => {
+    const remote = saveableRemote()
+    remote.settings.mutate = async () => ({ ok: false, error: { code: 'settings/rejected', message: 'schema violation', details: {} } })
+    const model = makeModel([{ id: 'a', name: 'A', input: ['text'], reasoningEfforts: false }], { remote })
+    model.setApiKeyValue('sk-keep')
+    await model.save()
+    const snapshot = model.getSnapshot()
+    expect(snapshot.error).toBeDefined()
+    expect(snapshot.apiKeyValue).toBe('sk-keep')
+    const props: ProviderEditBodyProps = { t, model, focusModel: undefined, onCancel: () => {} }
+    const tree = bodyModule.ProviderEditBody(props) as Parameters<typeof collectElements>[0]
+    const passwordInputs = elementsOf(tree).filter((element) => element.props.type === 'password')
+    expect(passwordInputs).toHaveLength(1)
+    expect(passwordInputs[0].props.value).toBe('sk-keep')
+  })
+})
+
+describe('窄表单空保存判据单点（MF-1-11：快照派生布尔 saveBlocked）', () => {
+  /** 取渲染树里的主保存按钮（ms-button-primary 且文案 = action.save）。 */
+  function saveButtonOf(model: ProviderEditModel) {
+    const props: ProviderEditBodyProps = { t, model, focusModel: undefined, onCancel: () => {} }
+    const tree = bodyModule.ProviderEditBody(props) as Parameters<typeof collectElements>[0]
+    return elementsOf(tree)
+      .filter((element) => {
+        const className = element.props.className
+        return typeof className === 'string' && className.split(/\s+/).includes('ms-button-primary')
+      })
+      .find((button) => textOf(button) === modelServiceZh['action.save'])
+  }
+
+  it('新建窄表单零填写：saveBlocked=true（按钮禁用 + title 指引）；输入密钥即解除', () => {
+    const model = makeModel([], {
+      target: { key: 'deepseek-official', isNew: true, customOnly: false, narrow: true, catalogName: 'DeepSeek Official' },
+      existing: undefined,
+    })
+    expect(model.getSnapshot().saveBlocked).toBe(true)
+    const blocked = saveButtonOf(model)
+    expect(blocked).toBeDefined()
+    expect(blocked!.props.disabled).toBe(true)
+    expect(blocked!.props.title).toBe(modelServiceZh['provider.narrowEmptyBlocked'])
+    model.setApiKeyValue('sk-x')
+    expect(model.getSnapshot().saveBlocked).toBe(false)
+    expect(saveButtonOf(model)!.props.disabled).toBe(false)
+  })
+
+  it('编辑既有目录型条目（isNew=false、directoryMode、空密钥）：saveBlocked=false，保存按钮可点（不再被空密钥过拦——行为修正）', () => {
+    const model = makeModel([], {
+      target: { key: 'deepseek-official', isNew: false, customOnly: false, narrow: true, catalogName: 'DeepSeek Official' },
+      existing: { apiKeyEnv: 'DEEPSEEK_OFFICIAL_API_KEY', models: [] },
+    })
+    const snapshot = model.getSnapshot()
+    expect(snapshot.narrow).toBe(true)
+    expect(snapshot.directoryMode).toBe(true)
+    expect(snapshot.apiKeyValue).toBe('')
+    expect(snapshot.models).toHaveLength(0)
+    expect(snapshot.saveBlocked).toBe(false)
+    const button = saveButtonOf(model)
+    expect(button).toBeDefined()
+    expect(button!.props.disabled).toBe(false)
+    expect(button!.props.title).toBeUndefined()
   })
 })

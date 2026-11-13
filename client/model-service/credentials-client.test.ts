@@ -6,9 +6,9 @@ import {
   isSelfManagedRef,
   registerPendingUnset,
   retryPendingUnsets,
-  PENDING_UNSETS_FIELD,
   type CredentialsRemoteLike,
 } from './credentials-client'
+import { PENDING_UNSETS_FIELD } from './config-fields'
 import type { ConfigFormLike, ConfigFormSnapshotLike } from '../persist'
 
 /**
@@ -23,16 +23,26 @@ import type { ConfigFormLike, ConfigFormSnapshotLike } from '../persist'
  */
 
 /** 假 Config 表单：内存段 + 写记录（整字段写回断言的载体）；failSet 注入传输异常（U13 边界）；
- * refuseSet 注入「前 N 次 set 被宿主拒收（返回 false、不落盘）」——revision 栅栏冲突形态。 */
-function fakeForm(initial: { status?: 'ready' | 'unavailable'; value?: Record<string, unknown>; failSet?: boolean } = {}) {
+ * refuseSet 注入「前 N 次 set 被宿主拒收（返回 false、不落盘）」——revision 栅栏冲突形态；
+ * lagMirror = 宿主真值（host）与镜像（getSnapshot 的内容）分离：set 落盘真值但镜像停在写入前
+ * 的真值（滞后一代），hostWrite 改真值不动镜像——模拟「revision 已被其他命名空间推进而内容
+ * 滞后的快照」投递形态（MF-1-2；route-store 内容级回放守卫注释记载的实测形态的最小化）。 */
+function fakeForm(initial: {
+  status?: 'ready' | 'unavailable'
+  value?: Record<string, unknown>
+  failSet?: boolean
+  lagMirror?: boolean
+} = {}) {
   let status = initial.status ?? 'ready'
   let failSet = initial.failSet ?? false
   let refuseCount = 0
-  let value: Record<string, unknown> | undefined = initial.value
+  const lag = initial.lagMirror ?? false
+  let host: Record<string, unknown> | undefined = initial.value
+  let mirror: Record<string, unknown> | undefined = initial.value
   const writes: { field: string; value: unknown }[] = []
   const form: ConfigFormLike = {
     getSnapshot(): ConfigFormSnapshotLike {
-      return { status, value, revision: 1, writable: status === 'ready' }
+      return { status, value: mirror, revision: 1, writable: status === 'ready' }
     },
     subscribe: () => () => {},
     async set(field, next) {
@@ -42,7 +52,14 @@ function fakeForm(initial: { status?: 'ready' | 'unavailable'; value?: Record<st
         return false
       }
       writes.push({ field, value: next })
-      value = { ...(value ?? {}), [field]: next }
+      if (lag) {
+        // 镜像滞后一代：set 接受后停在写入前的宿主真值——滞后镜像保有被覆盖前的他端成员。
+        mirror = host === undefined ? undefined : { ...host }
+        host = { ...(host ?? {}), [field]: next }
+      } else {
+        host = { ...(host ?? {}), [field]: next }
+        mirror = host
+      }
       return true
     },
   }
@@ -52,6 +69,10 @@ function fakeForm(initial: { status?: 'ready' | 'unavailable'; value?: Record<st
     refuseSet: (times: number) => { refuseCount = times },
     setUnavailable: () => { status = 'unavailable' },
     setFailSet: (next: boolean) => { failSet = next },
+    /** 他端窗口直写宿主真值（lagMirror 专用）：本端镜像不感知——滞后窗口的注入器。 */
+    hostWrite: (field: string, value: unknown) => { host = { ...(host ?? {}), [field]: value } },
+    /** 宿主真值（lag 模式下断言「最终清单」的权威源）。 */
+    hostValue: () => host,
   }
 }
 
@@ -253,5 +274,47 @@ describe('form.set 被拒（返回 false）不谎报成功（MF-2-4）', () => {
     expect(result.kept).toEqual(['TAIJI_A_KEY']) // 写回连续被拒 → 并回 kept（清单持有态），下次打开分区自愈
     expect(result.writeBackFailed).toBe(true) // 消费方据此渲染「清单更新失败」而非按 removed.length 的「已清理 N 条」
     expect(writes).toHaveLength(0)
+  })
+})
+
+describe('滞后投递的内容防线（MF-1-2：接受 ≠ 内容最新）', () => {
+  it('登记：接受后镜像仍缺两端 ref → verify 检测 → 以重读内容重算重发，最终清单同时含两端 ref', async () => {
+    const { form, writes, hostWrite, hostValue } = fakeForm({
+      value: { pendingCredentialUnsets: ['TAIJI_A_KEY'] },
+      lagMirror: true,
+    })
+    // 他端窗口已登记 OTHER_KEY、宿主真值已含它；本端镜像滞后（getSnapshot 仍投 [A]）。
+    hostWrite(PENDING_UNSETS_FIELD, ['TAIJI_A_KEY', 'TAIJI_OTHER_KEY'])
+    expect(await registerPendingUnset(form, 'TAIJI_OUR_KEY')).toEqual({ ok: true })
+    // 首发基于滞后快照 [A] 整字段写回（OTHER_KEY 被覆盖——无防线时他端登记就此静默丢失）；
+    // verify 重读滞后镜像 [A, OTHER_KEY]（保有覆盖前真值）发现 OUR_KEY 缺席 → 重算重发。
+    expect(writes).toEqual([
+      { field: PENDING_UNSETS_FIELD, value: ['TAIJI_A_KEY', 'TAIJI_OUR_KEY'] },
+      { field: PENDING_UNSETS_FIELD, value: ['TAIJI_A_KEY', 'TAIJI_OTHER_KEY', 'TAIJI_OUR_KEY'] },
+    ])
+    // 最终宿主清单两端 ref 都在（本端 OUR_KEY + 他端 OTHER_KEY）。
+    expect(hostValue()?.[PENDING_UNSETS_FIELD]).toEqual(['TAIJI_A_KEY', 'TAIJI_OTHER_KEY', 'TAIJI_OUR_KEY'])
+  })
+
+  it('重试写回：接受后镜像仍含 removed → verify 检测 → 以重读内容重算重发，他端登记不被清空写覆盖', async () => {
+    const { form, writes, hostWrite, hostValue } = fakeForm({
+      value: { pendingCredentialUnsets: ['TAIJI_A_KEY'] },
+      lagMirror: true,
+    })
+    const { credentials } = fakeCredentials(['TAIJI_A_KEY'])
+    // 他端窗口在 unset 循环期间登记 OTHER_KEY：宿主真值 [A, OTHER]，本端镜像滞后仍投 [A]。
+    hostWrite(PENDING_UNSETS_FIELD, ['TAIJI_A_KEY', 'TAIJI_OTHER_KEY'])
+    const result = await retryPendingUnsets(form, credentials)
+    expect(result.removed).toEqual(['TAIJI_A_KEY'])
+    expect(result.kept).toEqual([])
+    expect(result.writeBackFailed).toBe(false)
+    // 写回基于滞后快照 [A] 发出清空 []（OTHER_KEY 被覆盖）；verify 重读滞后镜像 [A, OTHER]
+    // 发现 removed 成员在场 → 以重读内容重算（[A, OTHER] 减 removed）重发。
+    expect(writes).toEqual([
+      { field: PENDING_UNSETS_FIELD, value: [] },
+      { field: PENDING_UNSETS_FIELD, value: ['TAIJI_OTHER_KEY'] },
+    ])
+    // 最终宿主清单保住他端登记（无防线时会被清空写覆盖丢失）。
+    expect(hostValue()?.[PENDING_UNSETS_FIELD]).toEqual(['TAIJI_OTHER_KEY'])
   })
 })

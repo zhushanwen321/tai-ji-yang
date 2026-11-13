@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -34,14 +34,13 @@ import {
   evaluateConditionAt as nodeEvaluateConditionAt,
   evaluateRouteAt as nodeEvaluateRouteAt,
 } from './index.js'
-import { deriveRouteId } from './client/model-service/route-store'
+import { deriveRouteId, parseRegistrationError } from './client/model-service/route-store'
 import {
-  isRouteErrorCode,
-  memberAvailabilityLocaleKeys,
-  memberUnavailableLocaleKey,
-  noActiveMemberLocaleKey,
-  parseMemberUnavailableMessage,
-} from './client/model-service/route-errors'
+  PENDING_UNSETS_FIELD,
+  REGISTRATION_ERROR_FIELD,
+  ROUTES_FIELD,
+  WHITELIST_FIELD,
+} from './client/model-service/config-fields'
 
 /**
  * 壳信息（版本行）解析单测：Node 半场 index.js 的版本解析三支（own / desktop / cli）与
@@ -414,6 +413,26 @@ describe('注册失败诊断透传（settings.mutate 写入通道）', () => {
     expect(host.registeredIds()).toEqual(['taiji-route-conflict']) // 宿主原有注册原样
     dispose()
   })
+
+  it('诊断串构造→解析互锁（MF-1-7）：mutations 值喂 parseRegistrationError 还原 routeIds/origin', () => {
+    const host = createFakeHostRegistry(['taiji-route-conflict'])
+    const holder = snapshotHolder([{ id: 'conflict', name: 'C', members: [] }], ['conflict'])
+    const config = fakeConfig()
+    const adapter = createRouteAdapter({ readSnapshot: holder.readSnapshot, llm: host.llm, credentials: fakeCredentials(), readProviderProfiles: fakeProfiles({}), now: FIXED_NOW })
+    const dispose = ensureRouteRegistration(host.ctx, holder.readSnapshot, adapter, config)
+    expect(host.mutations).toHaveLength(1)
+    // 构造侧（index.js writeRegistrationDiagnosis）：写入路径键 = REGISTRATION_ERROR_FIELD，
+    // 值形态「origin scope: detail」——解析侧（route-store.parseRegistrationError）的契约；
+    // 改构造侧形态时本断言变红，宽限例外判据（routeIds 解析）不再静默漂移。
+    const op = host.mutations[0].ops[0] as { op: string; path: string[]; value: string }
+    expect(op.path).toEqual([REGISTRATION_ERROR_FIELD])
+    expect(parseRegistrationError(op.value)).toEqual({
+      routeIds: ['conflict'],
+      origin: 'initial',
+      detail: 'an adapter for provider "taiji-route-conflict" is already registered',
+    })
+    dispose()
+  })
 })
 
 describe('成员级求值转发（V5：命中 / 回退 / 不命中跳过 vs 不可用终结）', () => {
@@ -475,9 +494,9 @@ describe('成员级求值转发（V5：命中 / 回退 / 不命中跳过 vs 不�
     expect(error?.code).toBe('ROUTE_MEMBER_UNAVAILABLE') // fail-closed 终结语义不变
     expect(error?.message).toContain('read of provider registry failed')
     expect(error?.message).toContain('rpc down')
-    // detail 前缀不撞三型归因（parseMemberUnavailableMessage 按 provider/model/credential 前缀
-    // 分派）：读取失败落 unknown 通用标注，不误报供应商已删。
-    expect(parseMemberUnavailableMessage(error?.message ?? '')).toMatchObject({ kind: 'unknown' })
+    // detail 直接锚定「read of …」前缀（真实约束 = 构造侧 detail 不以 provider/model/
+    // credential 词头起头，区分读取失败与三型文案——detail 前缀仅供人读，无机器消费方）。
+    expect(/is unavailable: (.+)$/.exec(error?.message ?? '')?.[1]).toMatch(/^read of /)
     expect(first.forwarded).toEqual([])
 
     // listModels 抛错：不得误报「模型不在清单」。
@@ -496,8 +515,8 @@ describe('成员级求值转发（V5：命中 / 回退 / 不命中跳过 vs 不�
     expect(credentialError?.code).toBe('ROUTE_MEMBER_UNAVAILABLE') // fail-closed 终结语义不变
     expect(credentialError?.message).toContain('read of credential status failed for TAIJI_A_KEY')
     expect(credentialError?.message).toContain('kv unreachable')
-    // detail 前缀不撞 credential 三型归因：读取失败落 unknown 通用标注，不误报密钥未填。
-    expect(parseMemberUnavailableMessage(credentialError?.message ?? '')).toMatchObject({ kind: 'unknown' })
+    // detail 前缀不撞 credential 词头（同上：直接锚定「read of …」前缀文本）。
+    expect(/is unavailable: (.+)$/.exec(credentialError?.message ?? '')?.[1]).toMatch(/^read of /)
     expect(third.forwarded).toEqual([])
   })
 
@@ -770,35 +789,15 @@ describe('路由 id 派生查重加序号（AX11/D5/V5 步骤 2）', () => {
   })
 })
 
-describe('错误码词表界面侧映射（route-errors，词表三条）', () => {
-  it('词表成员判定与 Node 半场错误码同字面', () => {
-    expect(isRouteErrorCode('ROUTE_NO_ACTIVE_MEMBER')).toBe(true)
-    expect(isRouteErrorCode('ROUTE_MEMBER_UNAVAILABLE')).toBe(true)
-    expect(isRouteErrorCode('ROUTE_REGISTRATION_FAILED')).toBe(true)
-    expect(isRouteErrorCode('UNKNOWN')).toBe(false)
-  })
-
-  it('消息解析（契约见 route-errors 文件头）：凭据/供应商/模型三型归因与 unknown 兜底', () => {
-    expect(parseMemberUnavailableMessage('route "r" member "p/m" is unavailable: credential TAIJI_A_KEY is not configured'))
-      .toEqual({ kind: 'credential-missing', provider: 'p', model: 'm', ref: 'TAIJI_A_KEY' })
-    expect(parseMemberUnavailableMessage('route "r" member "p/m" is unavailable: provider "p" is no longer registered'))
-      .toEqual({ kind: 'provider-missing', provider: 'p', model: 'm' })
-    expect(parseMemberUnavailableMessage('route "r" member "p/m" is unavailable: model "m" is not listed by provider "p"'))
-      .toEqual({ kind: 'model-missing', provider: 'p', model: 'm' })
-    expect(parseMemberUnavailableMessage('route "r" member "p/m" is unavailable: PROVIDER_ERROR: upstream 500'))
-      .toEqual({ kind: 'unknown', provider: 'p', model: 'm' })
-    expect(parseMemberUnavailableMessage('unrelated')).toBeUndefined()
-  })
-
-  it('locale 键映射：G18 三型标注键与无活跃成员两支键', () => {
-    expect(memberAvailabilityLocaleKeys({ providerMissing: true, modelMissing: false, credentialMissing: true })).toEqual([
-      'route.memberProviderMissing',
-      'route.memberCredentialMissing',
-    ])
-    expect(memberAvailabilityLocaleKeys({ providerMissing: false, modelMissing: false, credentialMissing: false })).toEqual([])
-    expect(memberUnavailableLocaleKey({ kind: 'credential-missing', provider: 'p', model: 'm', ref: 'R' }).messageKey).toBe('route.memberCredentialMissing')
-    expect(noActiveMemberLocaleKey(true).messageKey).toBe('route.noActiveMember')
-    expect(noActiveMemberLocaleKey(false).messageKey).toBe('route.notExposed')
+describe('跨半场 Config 字段名与诊断串互锁（MF-1-7）', () => {
+  it('四个字段名常量出现在 index.js Config 声明键集内（浏览器半场常量 ↔ Node 半场声明）', () => {
+    const source = readFileSync(new URL('./index.js', import.meta.url), 'utf8')
+    // Config z.object 声明块（首列 `})` 收块——内层 z.object 缩进闭合不误截）。
+    const configBlock = /export const Config = z\.object\(\{[\s\S]*?\n\}\)/.exec(source)?.[0] ?? ''
+    expect(configBlock).not.toBe('')
+    for (const field of [ROUTES_FIELD, WHITELIST_FIELD, REGISTRATION_ERROR_FIELD, PENDING_UNSETS_FIELD]) {
+      expect(configBlock).toMatch(new RegExp(`^\\s*${field}\\s*:`, 'm'))
+    }
   })
 })
 

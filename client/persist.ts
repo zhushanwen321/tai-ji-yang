@@ -25,6 +25,7 @@
  * tests/uninstall-cleanliness.spec.ts 的 findStorageUsages 断言（禁的是调用形态，
  * 注释中的字样放行）。
  */
+import { writeConfigFieldRMW, type ConfigFieldRMWOutcome } from './config-form-rmw'
 import { coerceThemeId, type ThemeId } from './theme/resolve'
 
 /**
@@ -61,7 +62,11 @@ export interface ConfigFormSnapshotLike {
 export interface ConfigFormLike {
   getSnapshot(): ConfigFormSnapshotLike
   subscribe(listener: () => void): () => void
-  /** 队列化一次字段写；返回宿主是否接受（拒绝时宿主已自做一次重读）。传输失败会 reject。 */
+  /** 队列化一次字段写；返回宿主是否接受（拒绝时宿主已自做一次重读）。传输失败会 reject。
+   * 接受 ≠ 内容最新：插件 Config 与 llm-pi-ai 等命名空间共享宿主设置文档的 revision 计数，
+   * 其他命名空间的写入会推进计数，让一份 revision 已被其他命名空间推进而内容滞后的快照
+   * 随写入通过栅栏被接受——整字段读改写（读快照 → 改 → 整字段写回）必须自带内容防线
+   * （config-form-rmw.ts 的 verify 钩子），不能把「set 返回 true」当作「写入基于最新内容」。 */
   set(field: string, value: unknown): Promise<boolean>
 }
 
@@ -76,8 +81,8 @@ export interface ConfigFormsHost {
   logger?: { error(message: string): void; warn(message: string): void }
 }
 
-/** 单次写入的结果三态（把「拒绝」与「传输失败」分开，失败文案才能指对修复动作）。 */
-type WriteOutcome = 'accepted' | 'refused' | 'failed'
+/** save 的失败终态（refused = 重发后仍被拒；failed = 传输异常，detail 为错误消息）。 */
+type SaveFailure = Exclude<ConfigFieldRMWOutcome, { kind: 'accepted' }>
 
 /** 构造参数。 */
 export interface AppearancePersistenceOptions {
@@ -105,8 +110,6 @@ export class AppearancePersistence {
   private current: ThemeId
   /** 是否已把「会话内的最终取值」定下来（持久值首达被采纳，或用户已点选）。 */
   private adoptedPersisted = false
-  /** 最近一次传输异常的消息（失败文案里带上，便于区分「被拒」与「链路断」）。 */
-  private transportError: string | undefined
   private disposed = false
 
   constructor(host: ConfigFormsHost, options: AppearancePersistenceOptions = {}) {
@@ -175,33 +178,28 @@ export class AppearancePersistence {
   }
 
   /**
-   * 写插件 Config：一次失败按设计「重读一次再试」，连续失败显式上报。
+   * 写插件 Config：经共享 RMW 助手（writeConfigFieldRMW）——被拒 / 传输异常由助手以重读
+   * 快照重发一次（栅栏防线），连续失败显式上报。单值写入不做读改写合并（写入值不依赖快照
+   * 内容），内容防线（verify 钩子）不适用；`requireReady: false` 保持「任何镜像态都尝试
+   * set」的原行为（快照 loading / unavailable 时由宿主裁决接受与否）。
    *
-   * 为什么还要在本层重试：宿主在拒绝时已自做一次重读（`ConfigFormController.recover` →
-   * `mirror.load()`），但那一次重读的产物只进镜像，**不重放这次写入**——revision 冲突的语义是
-   * 「你读的那个栅栏过期了」，必须有人用新栅栏再发一次。本层就是那个人：第二次 attempt 取的是
-   * 重读后的最新 revision，因此不是盲重试。
+   * 为什么还要重试（原 attempt 二连的语义，责任移交助手后理由不变）：宿主在拒绝时已自做
+   * 一次重读（`ConfigFormController.recover` → `mirror.load()`），但那一次重读的产物只进
+   * 镜像，**不重放这次写入**——revision 冲突的语义是「你读的那个栅栏过期了」，必须有人用
+   * 新栅栏再发一次。助手的重试轮就是那个人：第二次 attempt 取的是重读后的最新 revision，
+   * 因此不是盲重试。
    */
   private async save(id: ThemeId): Promise<boolean> {
-    const first = await this.attempt(id)
-    if (first === 'accepted') return true
-
-    const second = await this.attempt(id)
-    if (second === 'accepted') return true
-
-    this.report(this.failureMessage(id, second))
+    const outcome = await writeConfigFieldRMW(
+      this.form,
+      APPEARANCE_FIELD,
+      () => ({ write: true, value: id }),
+      undefined,
+      { requireReady: false },
+    )
+    if (outcome.kind === 'accepted') return true
+    this.report(this.failureMessage(id, outcome))
     return false
-  }
-
-  /** 单次写入；传输异常收敛成 `failed`（不外抛，UI 不因存储故障中断）。 */
-  private async attempt(id: ThemeId): Promise<WriteOutcome> {
-    try {
-      const accepted = await this.form.set(APPEARANCE_FIELD, id)
-      return accepted ? 'accepted' : 'refused'
-    } catch (error) {
-      this.transportError = error instanceof Error ? error.message : String(error)
-      return 'failed'
-    }
   }
 
   /**
@@ -211,12 +209,12 @@ export class AppearancePersistence {
    * `appearance` 字段的 `Config`，或该 profile 行没激活。这是本包装载/声明问题，不是写入冲突，
    * 指错修复动作会让人去查 revision。
    */
-  private failureMessage(id: ThemeId, outcome: WriteOutcome): string {
+  private failureMessage(id: ThemeId, outcome: SaveFailure): string {
     const snapshot = this.form.getSnapshot()
     const where = `插件 Config（命名空间 ${PLUGIN_ENTRY_ID}，字段 ${APPEARANCE_FIELD}，值 ${id}）`
     const facts = `快照 status=${snapshot.status} writable=${String(snapshot.writable)}`
       + ` revision=${String(snapshot.revision)}`
-      + (outcome === 'failed' && this.transportError !== undefined ? ` 传输错误=${this.transportError}` : '')
+      + (outcome.kind === 'failed' ? ` 传输错误=${outcome.detail}` : '')
     if (snapshot.status === 'unavailable') {
       return `配色选择未能写入${where}：该命名空间当前未被宿主服务（${facts}）。`
         + '请确认本包 profile 行已激活，且 Node 半场导出的 Config 含 volatile 的 appearance 字段；'

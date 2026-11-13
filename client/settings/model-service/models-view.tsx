@@ -41,7 +41,6 @@ import {
   type HostProviderProfile,
   type ModelDraft,
   type ModelServiceHost,
-  type WriteModelsResult,
 } from '../../model-service/settings-client'
 import { discoverProviderModels, type DiscoveredModel } from '../../model-service/discovery'
 import { DEFAULT_CONTEXT_WINDOW, ModelEdit, type Translate } from './model-edit'
@@ -86,7 +85,8 @@ export type ModelSourceFilter = 'all' | 'custom' | 'directory'
 
 /** 清单视图快照。 */
 export interface ModelsListSnapshot {
-  status: 'loading' | 'ready'
+  /** 三态（对齐 ProvidersListSnapshot 词表，MF-1-5）：unavailable = readLlmPiAi 失败或命名空间未被服务。 */
+  status: 'loading' | 'ready' | 'unavailable'
   groups: ModelGroupSnapshot[]
   /** 目录里是否存在任何 provider（空态矩阵的分流依据）。 */
   providersExist: boolean
@@ -106,9 +106,9 @@ export interface ModelsListModelDeps {
 /** 来源筛选候选（chip 渲染序）。 */
 const SOURCE_FILTERS: ModelSourceFilter[] = ['all', 'custom', 'directory']
 
-/**
- * 模型清单视图模型：四层拼装的分组操作台会话内权威（纯 TS，可独立单测）。
- */
+  /**
+   * 模型清单视图模型：四层拼装的分组操作台会话内权威（纯 TS，可独立单测）。
+   */
 export class ModelsListModel {
   private readonly deps: ModelsListModelDeps
   private readonly listeners = new Set<() => void>()
@@ -151,7 +151,12 @@ export class ModelsListModel {
     this.notify()
   }
 
-  /** 重读四层并按供应商分组（视图激活时可再调——AS10 的拉取式刷新兜底）。 */
+  /**
+   * 重读四层并按供应商分组（视图激活时可再调——AS10 的拉取式刷新兜底；unavailable 态的
+   * 重试按钮也直调本方法，MF-1-5）。快照缺席（readLlmPiAi 传输失败）或命名空间未被服务
+   * → 显式 unavailable（对齐 providers 视图三态），不再静默转 undefined 拼装残缺分组
+   * （已接入 provider 的分组会整组消失、失败与空同形）；筛选状态经 spread 保留不复位。
+   */
   async load(): Promise<void> {
     const t = this.deps.t
     const [directory, snapshot, catalog] = await Promise.all([
@@ -159,6 +164,11 @@ export class ModelsListModel {
       readLlmPiAi(this.deps.remote.settings).catch(() => undefined),
       this.deps.remote.session?.modelCatalog().then(unwrapRemote).catch(() => undefined) ?? Promise.resolve(undefined),
     ])
+    if (snapshot === undefined || !snapshot.available) {
+      this.state = { ...this.state, status: 'unavailable' }
+      this.notify()
+      return
+    }
     const groups: ModelGroupSnapshot[] = []
     const reasoningOf = buildReasoningIndex(catalog)
     // 目录行序 = 目录声明序（宿主 directoryEntries：catalog 在前、declared 在后）。
@@ -305,16 +315,10 @@ export class ModelsListModel {
     return await this.writeModels(key, entries, this.deps.t('models.directoryReplaced'))
   }
 
-  /** 写通道封装：writeProviderModels → 成功重读 + toast，失败错误条（四段式文案自包含）。 */
+  /** 写通道封装：writeProviderModels → 成功重读 + toast，失败错误条（四段式文案自包含）。
+   * 写通道 rejection 契约 = 结果值不外抛（settings-client mutateLlmPiAiOps 单点收敛），无 catch。 */
   private async writeModels(key: string, entries: HostProviderProfile[], notice: string): Promise<boolean> {
-    let result: WriteModelsResult
-    try {
-      result = await writeProviderModels(this.deps.remote, key, entries)
-    } catch (error) {
-      this.state = { ...this.state, error: `${this.deps.t('models.writeFailed')}：${messageOf(error)}` }
-      this.notify()
-      return false
-    }
+    const result = await writeProviderModels(this.deps.remote, key, entries)
     if (result.kind !== 'saved') {
       this.state = { ...this.state, error: result.message }
       this.notify()
@@ -381,10 +385,6 @@ function discoveredToEntry(model: DiscoveredModel): HostProviderProfile {
   return entry
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 /** 模型清单视图组件 props。 */
 export interface ModelsViewProps {
   t: Translate
@@ -402,6 +402,16 @@ export function ModelsView({ t, model, onJump, onGoToProviders }: ModelsViewProp
     () => model.getSnapshot(),
     () => model.getSnapshot(),
   )
+  if (state.status === 'unavailable') {
+    // 快照失败/缺席显形（MF-1-5）：与 providers 视图同款降级文案 + 重试按钮（直调
+    // model.load()；视图切换时的重建重读保留为兜底通道）。
+    return (
+      <div className="ms-note ms-note-warn">
+        {t('models.snapshotUnavailable')}
+        <button type="button" className="ms-button" onClick={() => { void model.load() }}>{t('models.retryLoad')}</button>
+      </div>
+    )
+  }
   if (state.status === 'loading') {
     return <div className="ms-note">{t('providers.loading')}</div>
   }

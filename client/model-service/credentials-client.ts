@@ -24,7 +24,9 @@
  * 的 ref 幂等，dsh-credentials-local/lib/index.js:517-519），成功即从清单移除。
  */
 
+import { writeConfigFieldRMW } from '../config-form-rmw'
 import { type ConfigFormLike } from '../persist'
+import { PENDING_UNSETS_FIELD } from './config-fields'
 import { deriveCredentialRef } from './provider-key'
 import { unwrapRemote, type RemoteResult } from './remote-result'
 
@@ -44,9 +46,6 @@ export interface CredentialsRemoteLike {
 
 /** 插件 Config 表单面（读写 pendingCredentialUnsets；与 persist.ts 的 ConfigFormLike 同构）。 */
 export interface PluginConfigFormLike extends ConfigFormLike {}
-
-/** 待清理清单字段名（index.js Config 的 volatile 字段）。 */
-export const PENDING_UNSETS_FIELD = 'pendingCredentialUnsets'
 
 /** ref 查重结果：ok = 可写；branch a/b = 拒绝（文案两支见 D7，UI 层按 branch 取 locale）。 */
 export type RefCheckResult = { ok: true } | { ok: false; branch: 'a' | 'b' }
@@ -117,26 +116,25 @@ export type PendingUnsetRegistration = { ok: true } | { ok: false; detail: strin
  * 调用方给用户可见降级提示（宿主凭据界面人工清理），Config 未被服务同理如实上报。
  */
 export async function registerPendingUnset(form: PluginConfigFormLike, ref: string): Promise<PendingUnsetRegistration> {
-  // 单次尝试：快照 → 幂等检查 → 整字段写回。form.set 被拒返回 false（业务失败 resolve 型，
-  // persist.ts 契约），不查返回值会把被拒当成功——登记谎报落盘 = AX9 要防的孤儿密钥形态。
-  const attemptOnce = async (): Promise<PendingUnsetRegistration> => {
-    const snapshot = form.getSnapshot()
-    if (snapshot.status !== 'ready') return { ok: false, detail: '插件 Config 未被服务，待清理登记通道缺失' }
-    const pending = sanitizePending(sectionValue(snapshot)?.[PENDING_UNSETS_FIELD])
-    if (pending.includes(ref)) return { ok: true }
-    try {
-      const accepted = await form.set(PENDING_UNSETS_FIELD, [...pending, ref])
-      return accepted ? { ok: true } : { ok: false, detail: '待清理登记写入被拒（Config revision 栅栏冲突）' }
-    } catch (error) {
-      return { ok: false, detail: error instanceof Error ? error.message : String(error) }
-    }
-  }
-  const first = await attemptOnce()
-  if (first.ok) return first
-  // 被拒时宿主已自做一次镜像重读（ConfigFormLike.set 契约）——第二次尝试取重读后的最新
-  // 快照与栅栏，幂等合并后重发一次（route-store attemptCommit/commit 同款「一次重试」；
-  // 不重发则登记静默丢失）。连续失败如实返回 failed，让调用方走人工清理指引文案。
-  return await attemptOnce()
+  // 整字段读改写经共享 RMW 助手（writeConfigFieldRMW）：幂等判定在 compute 内（已在清单
+  // 零写入）；被拒自动以重读快照重算重发一次（栅栏防线）；接受后校验本端 ref 在场性
+  // （内容防线）——缺席说明接受基于滞后快照（revision 已被其他命名空间推进而内容滞后，
+  // ConfigFormLike.set 契约），滞后镜像保有被覆盖前的他端成员，以重读内容重算重发挽回
+  // （MF-1-2：他端窗口新登记的 ref 不得被静默覆盖）。失败终态如实翻译，让调用方走人工
+  // 清理指引文案——登记谎报落盘 = AX9 要防的孤儿密钥形态。
+  const outcome = await writeConfigFieldRMW(
+    form,
+    PENDING_UNSETS_FIELD,
+    (current) => {
+      const pending = sanitizePending(current)
+      return pending.includes(ref) ? { write: false } : { write: true, value: [...pending, ref] }
+    },
+    (fresh) => sanitizePending(fresh).includes(ref),
+  )
+  if (outcome.kind === 'accepted') return { ok: true }
+  if (outcome.kind === 'not-ready') return { ok: false, detail: '插件 Config 未被服务，待清理登记通道缺失' }
+  if (outcome.kind === 'refused') return { ok: false, detail: '待清理登记写入被拒（Config revision 栅栏冲突）' }
+  return { ok: false, detail: outcome.detail }
 }
 
 /** 重试结果（UI 与 verify 场景消费；removed/kept 都是 ref 名；kept = 清单实际仍持有的 ref）。 */
@@ -184,24 +182,21 @@ export async function retryPendingUnsets(form: PluginConfigFormLike, credentials
   }
   let writeBackFailed = false
   if (removed.length > 0) {
-    // 写回 kept：被拒（false）或传输异常都不把 removed 谎报为已清理。被拒时宿主已自做一次
-    // 镜像重读（ConfigFormLike.set 契约）——重读快照后以「最新清单减去本次已清理」重发一次
-    // （他端窗口新登记的 ref 不丢）；连续失败把 removed 并回 kept（清单原样，下次打开分区
-    // 重试自愈——宿主 unset 幂等），并置 writeBackFailed 让消费方区分提示（凭据侧已清理、
-    // 清单未同步——按 removed.length 渲染「已清理 N 条」会谎报清单状态）。
-    try {
-      if (!await form.set(PENDING_UNSETS_FIELD, kept)) {
-        const fresh = form.getSnapshot()
-        const retryable = fresh.status === 'ready'
-        const next = retryable
-          ? sanitizePending(sectionValue(fresh)?.[PENDING_UNSETS_FIELD]).filter((item) => !removed.includes(item))
-          : kept
-        if (!retryable || !await form.set(PENDING_UNSETS_FIELD, next)) {
-          kept.push(...removed)
-          writeBackFailed = true
-        }
-      }
-    } catch {
+    // 写回经共享 RMW 助手（writeConfigFieldRMW）：compute 基于**写回时**重读的快照减去本次
+    // 已清理（unset 循环耗时期间他端窗口可能新登记——重读比沿用进入函数时的快照更防丢，
+    // 与原 fresh 过滤同口径）；被拒自动以重读快照重算重发一次（栅栏防线）；接受后校验
+    // removed 成员的缺席性（内容防线）——在场说明接受基于滞后快照，滞后镜像保有被覆盖前
+    // 的他端成员，以重读内容重算重发挽回（MF-1-2）。失败终态（被拒 / 传输异常 / 快照未被
+    // 服务）把 removed 并回 kept（清单原样，下次打开分区重试自愈——宿主 unset 幂等），
+    // 并置 writeBackFailed 让消费方区分提示（凭据侧已清理、清单未同步——按 removed.length
+    // 渲染「已清理 N 条」会谎报清单状态）。
+    const outcome = await writeConfigFieldRMW(
+      form,
+      PENDING_UNSETS_FIELD,
+      (current) => ({ write: true, value: sanitizePending(current).filter((item) => !removed.includes(item)) }),
+      (fresh) => !removed.some((item) => sanitizePending(fresh).includes(item)),
+    )
+    if (outcome.kind !== 'accepted') {
       kept.push(...removed)
       writeBackFailed = true
     }

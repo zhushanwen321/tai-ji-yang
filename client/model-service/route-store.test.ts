@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { moveMember, RoutesListModel, ROUTES_FIELD, WHITELIST_FIELD , parseRegistrationError } from './route-store'
+import { moveMember, RoutesListModel, parseRegistrationError, type RoutesListModelDeps } from './route-store'
+import { ROUTES_FIELD, WHITELIST_FIELD } from './config-fields'
+import { RouteWriteAuthority } from './route-write-authority'
 import type { PluginConfigFormLike } from './credentials-client'
 import type { ConfigFormSnapshotLike } from '../persist'
+import { modelServiceZh, type ModelServiceLocaleKey } from '../locale'
 import type { RouteEntry } from './route-evaluate'
 import type { ModelServiceHost } from './settings-client'
 
@@ -14,7 +17,18 @@ import type { ModelServiceHost } from './settings-client'
  * 路由交互定稿增测（本文件第二批）：renameRoute 改名重派生 + 白名单迁移、saveRoute 拒绝
  * 回传、selectableProviders 快照口径（未接入目录 route 不直出）、注册探测的 id 占用识别
  * （物理 provider 撞 taiji-route-* 形态）、moveMember 排序数据交换。
+ *
+ * 第三批（MF-1-3 状态机重建配套）：RouteWriteAuthority 转移表单测（含表外转移 fail-fast）
+ * + 探测周期 settings.describe 单读计数（MF-1-10）+ 派生可用成员计数（MF-1-14）。store 的
+ * 全部行为断言仍经公开面驱动（getSnapshot / form.sets）。
  */
+
+/** 桩翻译（构造器注入的 t 座位，MF-1-13）：locale zh 字典直取 + {param} 插值。 */
+const t: RoutesListModelDeps['t'] = (key: ModelServiceLocaleKey, params?: Record<string, unknown>): string => {
+  let text: string = modelServiceZh[key]
+  for (const [name, value] of Object.entries(params ?? {})) text = text.replaceAll(`{${name}}`, String(value))
+  return text
+}
 
 /** 初始 Config 快照（routes 一条 + 白名单空；revision 可调）。 */
 function readySnapshot(options: { revision: number; whitelist: string[] }): ConfigFormSnapshotLike {
@@ -84,7 +98,7 @@ async function settle(): Promise<void> {
 describe('RoutesListModel revision 倒退栅栏（AF-1-1）', () => {
   it('toggle 后镜像滞后（旧 revision 旧值回放）：state.whitelist 不弹回，乐观写保留', async () => {
     const form = fakeConfigForm(readySnapshot({ revision: 1, whitelist: [] }))
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
     expect(model.getSnapshot().whitelist).toEqual([])
 
@@ -97,7 +111,7 @@ describe('RoutesListModel revision 倒退栅栏（AF-1-1）', () => {
 
   it('subscribe 带新 revision 快照完成对账：前进照常采纳（栅栏只挡倒退）', async () => {
     const form = fakeConfigForm(readySnapshot({ revision: 1, whitelist: [] }))
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
     await model.toggleWhitelist('verify-route')
 
@@ -109,7 +123,7 @@ describe('RoutesListModel revision 倒退栅栏（AF-1-1）', () => {
 
   it('已采纳新 revision 后旧快照重放（subscribe 再触发）：state 不回退', async () => {
     const form = fakeConfigForm(readySnapshot({ revision: 1, whitelist: [] }))
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
     await model.toggleWhitelist('verify-route')
     form.deliver(readySnapshot({ revision: 2, whitelist: ['verify-route'] }))
@@ -123,7 +137,7 @@ describe('RoutesListModel revision 倒退栅栏（AF-1-1）', () => {
   it('栅栏拒收滞后回放时探测面照跑：派生标注照常刷新、Config 派生面不被旧快照重建', async () => {
     const remote = fakeRemote()
     const form = fakeConfigForm(readySnapshot({ revision: 1, whitelist: [] }))
-    const model = new RoutesListModel({ remote, configForm: form })
+    const model = new RoutesListModel({ t, remote, configForm: form })
     await model.pending
     // 初始注册表空 → verify-route 注册探测失败（V7 registrationFailed 标注在场）。
     expect(model.getSnapshot().registrationFailed).toEqual(['verify-route'])
@@ -141,7 +155,7 @@ describe('RoutesListModel revision 倒退栅栏（AF-1-1）', () => {
 
   it('非 ready 态重置栅栏：命名空间重开（revision 重新从低值起）后照常采纳', async () => {
     const form = fakeConfigForm(readySnapshot({ revision: 1, whitelist: [] }))
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
     await model.toggleWhitelist('verify-route')
     form.deliver(readySnapshot({ revision: 2, whitelist: ['verify-route'] }))
@@ -160,7 +174,7 @@ describe('RoutesListModel revision 倒退栅栏（AF-1-1）', () => {
   it('宿主拒绝写入时回落 Config 真值（拒绝不前移栅栏，重读照常生效）', async () => {
     const form = fakeConfigForm(readySnapshot({ revision: 1, whitelist: [] }))
     form.setAccepted = false
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
 
     await model.toggleWhitelist('verify-route')
@@ -184,7 +198,7 @@ describe('RoutesListModel revision 倒退栅栏（AF-1-1）', () => {
       form.sets.push({ field, value })
       return calls > 1
     }
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
 
     const accepted = await model.toggleWhitelist('verify-route')
@@ -246,7 +260,7 @@ describe('selectableProviders 快照口径（路由交互定稿 A4）', () => {
         { provider: 'zeta', displayName: 'Zeta（未接入）' },
       ],
     })
-    const model = new RoutesListModel({ remote, configForm: fakeConfigForm(routesSnapshot([], [])) })
+    const model = new RoutesListModel({ t, remote, configForm: fakeConfigForm(routesSnapshot([], [])) })
     await model.pending
     const selectable = model.getSnapshot().selectableProviders
     // 快照存在且可枚举：alpha（displayName 优先）+ beta（displayName 缺失 → 目录名回落）。
@@ -267,7 +281,7 @@ describe('selectableProviders 快照口径（路由交互定稿 A4）', () => {
       directory: [{ provider: 'alpha', displayName: 'Alpha' }],
     })
     remote.settings.describe = async () => ({ ok: true, value: { writable: true, namespaces: [] } })
-    const model = new RoutesListModel({ remote, configForm: fakeConfigForm(routesSnapshot([], [])) })
+    const model = new RoutesListModel({ t, remote, configForm: fakeConfigForm(routesSnapshot([], [])) })
     await model.pending
     expect(model.getSnapshot().selectableProviders).toEqual([])
   })
@@ -284,7 +298,7 @@ describe('注册探测的 id 占用识别（V7 可构造形态）', () => {
       registered: ['taiji-route-p-1', 'taiji-route-p-2'],
       providers: { 'taiji-route-p-1': { displayName: '占用者' } },
     })
-    const model = new RoutesListModel({ remote, configForm: fakeConfigForm(routesSnapshot(routes, [])) })
+    const model = new RoutesListModel({ t, remote, configForm: fakeConfigForm(routesSnapshot(routes, [])) })
     await model.pending
     // p-1 的宿主 id 归物理适配器（DUPLICATE_ADAPTER 拒注册），p-2 真注册成功。
     expect(model.getSnapshot().registrationFailed).toEqual(['p-1'])
@@ -292,7 +306,7 @@ describe('注册探测的 id 占用识别（V7 可构造形态）', () => {
 
   it('无占用时维持原判定：注册表缺 taiji-route-<id> 即失败', async () => {
     const remote = probeRemote({ registered: ['taiji-route-p-1'] })
-    const model = new RoutesListModel({ remote, configForm: fakeConfigForm(routesSnapshot(routes, [])) })
+    const model = new RoutesListModel({ t, remote, configForm: fakeConfigForm(routesSnapshot(routes, [])) })
     await model.pending
     expect(model.getSnapshot().registrationFailed).toEqual(['p-2'])
   })
@@ -304,7 +318,7 @@ describe('renameRoute（改名重派生 + 白名单迁移，路由交互定稿 B
       { id: 'old', name: 'Old', members: [{ provider: 'alpha', model: 'a1', order: 1, condition: { type: 'none' } }] },
     ]
     const form = fakeConfigForm(routesSnapshot(routes, ['old', 'ghost']))
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
 
     const updated = await model.renameRoute('old', 'New Route')
@@ -325,7 +339,7 @@ describe('renameRoute（改名重派生 + 白名单迁移，路由交互定稿 B
       { id: 'x', name: 'X', members: [] },
       { id: 'x-2', name: 'X two', members: [] },
     ]
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: fakeConfigForm(routesSnapshot(routes, [])) })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: fakeConfigForm(routesSnapshot(routes, [])) })
     await model.pending
 
     const updated = await model.renameRoute('x', 'x-2')
@@ -336,7 +350,7 @@ describe('renameRoute（改名重派生 + 白名单迁移，路由交互定稿 B
   it('宿主拒绝写入时返回 undefined 且回落旧值（notice 上报在场）', async () => {
     const form = fakeConfigForm(routesSnapshot([{ id: 'old', name: 'Old', members: [] }], ['old']))
     form.setAccepted = false
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
 
     const updated = await model.renameRoute('old', 'New')
@@ -346,7 +360,7 @@ describe('renameRoute（改名重派生 + 白名单迁移，路由交互定稿 B
 
   it('空名或未知路由 id：不动作（返回 undefined，零写入）', async () => {
     const form = fakeConfigForm(routesSnapshot([{ id: 'old', name: 'Old', members: [] }], []))
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
     expect(await model.renameRoute('old', '   ')).toBeUndefined()
     expect(await model.renameRoute('missing', 'New')).toBeUndefined()
@@ -356,7 +370,7 @@ describe('renameRoute（改名重派生 + 白名单迁移，路由交互定稿 B
   it('共享 revision 推进 + 滞后镜像投递改名前内容：state 保持新 id + 单发收敛重写', async () => {
     const before: RouteEntry[] = [{ id: 'old', name: 'Old', members: [] }]
     const form = fakeConfigForm(routesSnapshot(before, ['old']))
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
 
     const updated = await model.renameRoute('old', 'New')
@@ -385,7 +399,7 @@ describe('renameRoute（改名重派生 + 白名单迁移，路由交互定稿 B
   it('滞后镜像投递两笔之间的中间态（routes 旧 + whitelist 新）：同样命中回放守卫不采纳', async () => {
     const before: RouteEntry[] = [{ id: 'old', name: 'Old', members: [] }]
     const form = fakeConfigForm(routesSnapshot(before, ['old']))
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
 
     await model.renameRoute('old', 'New')
@@ -407,7 +421,7 @@ describe('renameRoute（改名重派生 + 白名单迁移，路由交互定稿 B
   it('改名全程零中间态 notify：乐观更新一次到位，新 id 不闪现「路由已删除」标注（MF-2-3）', async () => {
     const before: RouteEntry[] = [{ id: 'old', name: 'Old', members: [] }]
     const form = fakeConfigForm(routesSnapshot(before, ['old']))
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
     const observed: { routes: string[]; whitelist: string[]; hanging: string[] }[] = []
     model.subscribe(() => {
@@ -433,7 +447,7 @@ describe('renameRoute（改名重派生 + 白名单迁移，路由交互定稿 B
 describe('saveRoute 回传与 moveMember 数据交换（路由交互定稿 A2/A8）', () => {
   it('saveRoute 接受时回传 true（成员即时保存通道的 toast 依据）', async () => {
     const routes: RouteEntry[] = [{ id: 'a', name: 'A', members: [] }]
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: fakeConfigForm(routesSnapshot(routes, [])) })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: fakeConfigForm(routesSnapshot(routes, [])) })
     await model.pending
     expect(await model.saveRoute({ id: 'a', name: 'A', members: [{ provider: 'p', model: 'm', order: 1, condition: { type: 'none' } }] })).toBe(true)
     expect(model.getSnapshot().routes[0].members).toHaveLength(1)
@@ -475,7 +489,7 @@ describe('内容级回放守卫（共享 revision 计数下滞后内容蒙混栅
 
   it('revision 被外部写入推进的滞后内容不采纳：state 保留会话写入值 + 单发收敛重写', async () => {
     const form = fakeConfigForm(whitelistSnapshot(1, []))
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
     await model.toggleWhitelist('verify-route')
     // toggle 已接受（applied = 2）。滞后镜像投递：revision 5（被其他命名空间写入推进）+
@@ -497,7 +511,7 @@ describe('内容级回放守卫（共享 revision 计数下滞后内容蒙混栅
 
   it('真外部变更（内容 ≠ 会话写入值 ≠ 覆写前值）照常采纳：会话写入权威让位', async () => {
     const form = fakeConfigForm(whitelistSnapshot(1, []))
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
     await model.toggleWhitelist('verify-route')
     // 其他窗口把 whitelist 改成另一条目：revision 前进 + 内容既非写入值也非覆写前值。
@@ -514,7 +528,7 @@ describe('内容级回放守卫（共享 revision 计数下滞后内容蒙混栅
 
   it('收敛重写被拒不置位 reconciledFor：下一次同内容投递能再次尝试收敛', async () => {
     const form = fakeConfigForm(whitelistSnapshot(1, []))
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
     await model.toggleWhitelist('verify-route')
     // 滞后内容投递，但收敛重写的两个裸 set 均被宿主拒绝（返回 false 不抛异常）——
@@ -536,7 +550,7 @@ describe('内容级回放守卫（共享 revision 计数下滞后内容蒙混栅
 
   it('删除路由的悬挂在乐观更新即重算（不等镜像回读——V6 步骤 4 的可观察事实不再依赖滞后镜像）', async () => {
     const form = fakeConfigForm(whitelistSnapshot(1, ['verify-route']))
-    const model = new RoutesListModel({ remote: fakeRemote(), configForm: form })
+    const model = new RoutesListModel({ t, remote: fakeRemote(), configForm: form })
     await model.pending
     expect(model.getSnapshot().hanging).toEqual([])
 
@@ -554,7 +568,7 @@ describe('注册探测降级（读取失败不标注 + 近期写入宽限）', (
     // 注册表读取整链失败（RPC 拒绝）：修复前降级为空集 → 差集判定把全部路由误标红。
     remote.llm.listProviders = async () => { throw new Error('rpc down') }
     const form = fakeConfigForm(routesSnapshot([{ id: 'r1', name: 'R1', members: [] }], []))
-    const model = new RoutesListModel({ remote, configForm: form })
+    const model = new RoutesListModel({ t, remote, configForm: form })
     await model.pending
     expect(model.getSnapshot().registrationFailed).toEqual([])
   })
@@ -565,7 +579,7 @@ describe('注册探测降级（读取失败不标注 + 近期写入宽限）', (
     try {
       const remote = fakeRemote() // 注册表恒空 = 差集恒在
       const form = fakeConfigForm(routesSnapshot([], []))
-      const model = new RoutesListModel({ remote, configForm: form })
+      const model = new RoutesListModel({ t, remote, configForm: form })
       await model.pending
       // 本会话刚写入 fresh（writtenAt = 当前时刻）：探测 RPC 与 Node 半场注册执行无先后
       // 保证，宽限窗（5s）内差集不标失败（防新建路由的暂态假失败）。
@@ -592,7 +606,7 @@ describe('注册探测降级（读取失败不标注 + 近期写入宽限）', (
     try {
       const remote = fakeRemote() // 注册表恒空 = 差集恒在
       const form = fakeConfigForm(routesSnapshot([], []))
-      const model = new RoutesListModel({ remote, configForm: form })
+      const model = new RoutesListModel({ t, remote, configForm: form })
       await model.pending
       await model.createRoute('Fresh')
       // 宽限窗内：候选失败被吞，不标注。
@@ -610,7 +624,7 @@ describe('注册探测降级（读取失败不标注 + 近期写入宽限）', (
     try {
       const remote = fakeRemote()
       const form = fakeConfigForm(routesSnapshot([], []))
-      const model = new RoutesListModel({ remote, configForm: form })
+      const model = new RoutesListModel({ t, remote, configForm: form })
       await model.pending
       await model.createRoute('Fresh')
       expect(model.getSnapshot().registrationFailed).toEqual([])
@@ -626,7 +640,7 @@ describe('注册探测降级（读取失败不标注 + 近期写入宽限）', (
     const remote = fakeRemote() // 注册表恒空 = 注册恒失败
     // 初始路由非本会话写入（lastWritten 无 routes 写入历史，无宽限）：pending 后标注在场。
     const form = fakeConfigForm(routesSnapshot([{ id: 'a', name: 'A', members: [] }], []))
-    const model = new RoutesListModel({ remote, configForm: form })
+    const model = new RoutesListModel({ t, remote, configForm: form })
     await model.pending
     expect(model.getSnapshot().registrationFailed).toEqual(['a'])
 
@@ -642,7 +656,7 @@ describe('注册探测降级（读取失败不标注 + 近期写入宽限）', (
     try {
       const remote = fakeRemote()
       const form = fakeConfigForm(routesSnapshot([], []))
-      const model = new RoutesListModel({ remote, configForm: form })
+      const model = new RoutesListModel({ t, remote, configForm: form })
       await model.pending
       await model.createRoute('Fresh') // routes 写入 → routesWrittenAt = t0
       expect(model.getSnapshot().registrationFailed).toEqual([]) // 宽限内不标
@@ -660,7 +674,7 @@ describe('注册探测降级（读取失败不标注 + 近期写入宽限）', (
   it('宽限窗内注册失败诊断到达：红徽即时出现（诊断旁路宽限，MF-3-1）', async () => {
     const remote = fakeRemote() // 注册表恒空 = 注册恒失败
     const form = fakeConfigForm(routesSnapshot([], []))
-    const model = new RoutesListModel({ remote, configForm: form })
+    const model = new RoutesListModel({ t, remote, configForm: form })
     await model.pending
     await model.createRoute('Fresh') // routes 写入 → 宽限窗开始（窗内差集不标，防暂态假失败）
     expect(model.getSnapshot().registrationFailed).toEqual([])
@@ -688,7 +702,7 @@ describe('注册探测降级（读取失败不标注 + 近期写入宽限）', (
   it('诊断不涵盖的路由宽限照常保护（旁路粒度 = 诊断 scope，暂态假失败防护不回归）', async () => {
     const remote = fakeRemote()
     const form = fakeConfigForm(routesSnapshot([], []))
-    const model = new RoutesListModel({ remote, configForm: form })
+    const model = new RoutesListModel({ t, remote, configForm: form })
     await model.pending
     await model.createRoute('Fresh')
     // 诊断涵盖的是另一路由（other）：fresh 的差集仍是「探测 RPC 先于注册执行」的暂态
@@ -741,5 +755,205 @@ describe('parseRegistrationError（Node 半场诊断透传的解析）', () => {
   it('undefined / 空串返回 undefined', () => {
     expect(parseRegistrationError(undefined)).toBeUndefined()
     expect(parseRegistrationError('')).toBeUndefined()
+  })
+})
+describe('RouteWriteAuthority 转移表（MF-1-3 状态机）', () => {
+  const routes = (id: string): RouteEntry[] => [{ id, name: id, members: [] }]
+
+  it('初始 idle；beginWrite 登记 preImage + 写入值 → authoritative；touchesRoutes 决定宽限锚刷新（whitelist-only 沿用前锚，MF-2-2）', () => {
+    const authority = new RouteWriteAuthority()
+    expect(authority.state).toBe('idle')
+    authority.transition({
+      type: 'beginWrite',
+      routes: routes('a'),
+      whitelist: ['a'],
+      overwrites: [{ routes: [], whitelist: [] }],
+      touchesRoutes: true,
+    })
+    expect(authority.state).toBe('authoritative')
+    expect(authority.lastWritten?.routes.map((route) => route.id)).toEqual(['a'])
+    expect(authority.lastWritten?.routesWrittenAt).not.toBeUndefined()
+    const previousAnchor = authority.lastWritten?.routesWrittenAt
+    authority.transition({
+      type: 'beginWrite',
+      routes: routes('a'),
+      whitelist: [],
+      overwrites: [{ routes: routes('a'), whitelist: ['a'] }],
+      touchesRoutes: false,
+    })
+    expect(authority.lastWritten?.routesWrittenAt).toBe(previousAnchor)
+  })
+
+  it('writeAccepted 前移栅栏；writeRefusedTwice 让位（栅栏保留、lastWritten/preImages/reconciledFor 清空）', () => {
+    const authority = new RouteWriteAuthority()
+    authority.transition({ type: 'snapshotAdopted', revision: 1 })
+    authority.transition({ type: 'beginWrite', routes: routes('a'), whitelist: [], overwrites: [{ routes: [], whitelist: [] }], touchesRoutes: true })
+    authority.transition({ type: 'writeAccepted' })
+    expect(authority.appliedRevision).toBe(2)
+    authority.transition({ type: 'writeRefusedTwice' })
+    expect(authority.state).toBe('ceded')
+    expect(authority.lastWritten).toBeUndefined()
+    expect(authority.preImages).toEqual([])
+    expect(authority.reconciledFor).toBeUndefined()
+    expect(authority.appliedRevision).toBe(2) // 栅栏保留（原 commit 双败语义）
+  })
+
+  it('表外转移 fail-fast：externalChangeDetected 在 idle/ceded 态抛错（writeAccepted 等落账事件全态合法——set 在途的并发投递可先让权威让位，见转移表注释）', () => {
+    const authority = new RouteWriteAuthority()
+    expect(() => authority.transition({ type: 'externalChangeDetected' })).toThrow(/非法转移/)
+    authority.transition({ type: 'writeAccepted' }) // idle 态落账合法（IO 并发竞态不抛错）
+    authority.transition({ type: 'beginWrite', routes: routes('a'), whitelist: [], overwrites: [], touchesRoutes: true })
+    authority.transition({ type: 'externalChangeDetected' })
+    expect(() => authority.transition({ type: 'externalChangeDetected' })).toThrow(/非法转移/)
+  })
+
+  it('namespaceClosed 全重置回 idle（含栅栏）；namespaceReopening 只清栅栏（写入权威保留）', () => {
+    const authority = new RouteWriteAuthority()
+    authority.transition({ type: 'snapshotAdopted', revision: 3 })
+    authority.transition({ type: 'beginWrite', routes: routes('a'), whitelist: [], overwrites: [{ routes: [], whitelist: [] }], touchesRoutes: true })
+    authority.transition({ type: 'namespaceReopening' })
+    expect(authority.state).toBe('authoritative')
+    expect(authority.appliedRevision).toBeUndefined()
+    expect(authority.lastWritten).not.toBeUndefined()
+    authority.transition({ type: 'writeAccepted' })
+    authority.transition({ type: 'namespaceClosed' })
+    expect(authority.state).toBe('idle')
+    expect(authority.appliedRevision).toBeUndefined()
+    expect(authority.lastWritten).toBeUndefined()
+    expect(authority.preImages).toEqual([])
+  })
+
+  it('preImages 容量 3 FIFO（第 4 笔覆写前值挤掉最旧一笔）', () => {
+    const authority = new RouteWriteAuthority()
+    let current: RouteEntry[] = [] // 被覆写的当前内容（overwrites 登记的正是它）
+    const overwriteAt = (id: string): void => {
+      authority.transition({ type: 'beginWrite', routes: routes(id), whitelist: [], overwrites: [{ routes: current, whitelist: [] }], touchesRoutes: true })
+      current = routes(id)
+    }
+    overwriteAt('a') // 登记 [] 前值
+    overwriteAt('b') // 登记 [a] 前值
+    overwriteAt('c') // 登记 [b] 前值
+    overwriteAt('d') // 登记 [c] 前值 → 容量越界，最旧的 [] 前值被挤掉
+    expect(authority.preImages).toEqual([
+      JSON.stringify([routes('a'), []]),
+      JSON.stringify([routes('b'), []]),
+      JSON.stringify([routes('c'), []]),
+    ])
+  })
+
+  it('screenReadySnapshot 五态：staleReplay（栅栏不动）/ echo / staleContent（含收敛裁决）/ externalChange（让位）/ adopt', () => {
+    const authority = new RouteWriteAuthority()
+    // idle：无条件采纳。
+    expect(authority.screenReadySnapshot({ revision: 1, routes: [], whitelist: [] })).toEqual({ kind: 'adopt' })
+    authority.transition({ type: 'beginWrite', routes: routes('a'), whitelist: ['a'], overwrites: [{ routes: [], whitelist: [] }], touchesRoutes: true })
+    // 回显。
+    expect(authority.screenReadySnapshot({ revision: 2, routes: routes('a'), whitelist: ['a'] }).kind).toBe('echo')
+    // 滞后内容（覆写前值命中）。
+    const stale = authority.screenReadySnapshot({ revision: 5, routes: [], whitelist: [] })
+    expect(stale.kind).toBe('staleContent')
+    if (stale.kind === 'staleContent') expect(stale.shouldReconcile).toBe(true)
+    // 真外部变更 → 让位。
+    expect(authority.screenReadySnapshot({ revision: 5, routes: routes('other'), whitelist: [] })).toEqual({ kind: 'externalChange' })
+    expect(authority.state).toBe('ceded')
+    // ceded：无条件采纳。
+    expect(authority.screenReadySnapshot({ revision: 6, routes: routes('other'), whitelist: [] })).toEqual({ kind: 'adopt' })
+    // revision 倒退（ceded 下栅栏仍立）：staleReplay，栅栏不动。
+    expect(authority.screenReadySnapshot({ revision: 2, routes: routes('other'), whitelist: [] })).toEqual({ kind: 'staleReplay' })
+    expect(authority.appliedRevision).toBe(6)
+  })
+
+  it('收敛防抖 + 递归防护：settleReconcile 成功置位后同内容不再收敛；递归域内同内容不收敛、域外他内容恢复', async () => {
+    const authority = new RouteWriteAuthority()
+    authority.transition({ type: 'snapshotAdopted', revision: 1 })
+    authority.transition({ type: 'beginWrite', routes: routes('a'), whitelist: [], overwrites: [{ routes: [], whitelist: [] }], touchesRoutes: true })
+    const staleContent = JSON.stringify([[], []])
+    let verdictInside: { kind: string; shouldReconcile?: boolean } | undefined
+    await authority.settleReconcile(staleContent, true, async () => {
+      // 递归域内：同内容再投递不收敛（loopGuard）。
+      const inside = authority.screenReadySnapshot({ revision: 5, routes: [], whitelist: [] })
+      verdictInside = inside.kind === 'staleContent' ? { kind: inside.kind, shouldReconcile: inside.shouldReconcile } : { kind: inside.kind }
+    })
+    expect(verdictInside).toEqual({ kind: 'staleContent', shouldReconcile: false })
+    // 域外：reconciledFor 已置位，同内容防抖。
+    const after = authority.screenReadySnapshot({ revision: 6, routes: [], whitelist: [] })
+    expect(after.kind).toBe('staleContent')
+    if (after.kind === 'staleContent') expect(after.shouldReconcile).toBe(false)
+    // 被拒（succeeded=false）不置位：同内容可再次收敛。
+    const authority2 = new RouteWriteAuthority()
+    authority2.transition({ type: 'snapshotAdopted', revision: 1 })
+    authority2.transition({ type: 'beginWrite', routes: routes('a'), whitelist: [], overwrites: [{ routes: [], whitelist: [] }], touchesRoutes: true })
+    await authority2.settleReconcile(staleContent, false, async () => {})
+    const retry = authority2.screenReadySnapshot({ revision: 6, routes: [], whitelist: [] })
+    expect(retry.kind).toBe('staleContent')
+    if (retry.kind === 'staleContent') expect(retry.shouldReconcile).toBe(true)
+  })
+
+  it('graceProtectedRouteIds：宽限锚在场且窗内 → id 集；whitelist-only 写入不刷新锚；出窗 → undefined', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const authority = new RouteWriteAuthority()
+      expect(authority.graceProtectedRouteIds(Date.now())).toBeUndefined() // 无锚
+      authority.transition({ type: 'beginWrite', routes: routes('fresh'), whitelist: [], overwrites: [], touchesRoutes: true })
+      expect(authority.graceProtectedRouteIds(Date.now())?.has('fresh')).toBe(true)
+      vi.advanceTimersByTime(3000)
+      authority.transition({ type: 'beginWrite', routes: routes('fresh'), whitelist: ['fresh'], overwrites: [], touchesRoutes: false })
+      expect(authority.graceProtectedRouteIds(Date.now())?.has('fresh')).toBe(true) // 锚沿用（仍自 t0 起算）
+      vi.advanceTimersByTime(3000) // 自 t0 共 6s > 5s 窗
+      expect(authority.graceProtectedRouteIds(Date.now())).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('探测周期快照单读（MF-1-10）', () => {
+  it('load + 探测全链路 settings.describe 恰一次（探测与凭据标注共用同一份 llm-pi-ai 快照，不跨世代）', async () => {
+    const remote = probeRemote({ providers: { alpha: { apiKeyEnv: 'TAIJI_A_KEY' } } })
+    let describes = 0
+    const original = remote.settings.describe.bind(remote)
+    remote.settings.describe = async () => {
+      describes += 1
+      return original()
+    }
+    const routes: RouteEntry[] = [{
+      id: 'r',
+      name: 'R',
+      members: [{ provider: 'alpha', model: 'a1', order: 1, condition: { type: 'none' } }],
+    }]
+    const model = new RoutesListModel({ t, remote, configForm: fakeConfigForm(routesSnapshot(routes, [])) })
+    await model.pending
+    expect(describes).toBe(1)
+  })
+})
+
+describe('派生可用成员计数（MF-1-14）', () => {
+  it('目录默认态（models[] 空）不标模型缺失 → 计可用；自定义清单态模型不在清单 → 计不可用（与徽章判定同源）', async () => {
+    const remote = probeRemote({ providers: { alpha: {}, beta: { models: [{ id: 'b1', name: 'B1' }] } } })
+    const routes: RouteEntry[] = [{
+      id: 'r',
+      name: 'R',
+      members: [
+        { provider: 'alpha', model: 'any-id', order: 1, condition: { type: 'none' } },
+        { provider: 'beta', model: 'b2', order: 2, condition: { type: 'none' } },
+      ],
+    }]
+    const model = new RoutesListModel({ t, remote, configForm: fakeConfigForm(routesSnapshot(routes, [])) })
+    await model.pending
+    expect(model.getSnapshot().usableMembers.get('r')).toBe(1)
+    expect(model.getSnapshot().memberAvailability.get('alpha/any-id')?.modelMissing).toBe(false)
+    expect(model.getSnapshot().memberAvailability.get('beta/b2')?.modelMissing).toBe(true)
+  })
+
+  it('探测降级（providers 快照缺席）→ 不标注 → 全员计可用；空成员路由计数 0', async () => {
+    const remote = probeRemote({ registered: [] })
+    remote.settings.describe = async () => ({ ok: true, value: { writable: true, namespaces: [] } })
+    const routes: RouteEntry[] = [
+      { id: 'with', name: 'W', members: [{ provider: 'alpha', model: 'a1', order: 1, condition: { type: 'none' } }] },
+      { id: 'empty', name: 'E', members: [] },
+    ]
+    const model = new RoutesListModel({ t, remote, configForm: fakeConfigForm(routesSnapshot(routes, [])) })
+    await model.pending
+    expect(model.getSnapshot().usableMembers.get('with')).toBe(1)
+    expect(model.getSnapshot().usableMembers.get('empty')).toBe(0)
   })
 })

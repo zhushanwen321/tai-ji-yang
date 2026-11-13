@@ -4,15 +4,15 @@ import { createTsxLoader } from '../../testing/load-tsx'
 import { modelServiceZh } from '../../locale'
 import type { ConfigurableProviderRow, RemoteResult } from '../../model-service/settings-client'
 import type { PluginConfigFormLike } from '../../model-service/credentials-client'
-import type { ProvidersListModel, ProvidersListModelDeps } from './providers-view'
+import type { ProvidersFormState, ProvidersListSnapshot, ProvidersListModel, ProvidersListModelDeps } from './providers-view'
 
 /**
  * 供应商视图模型单测（供应商接入交互重设计）。锁死 ProvidersListModel 的可机器化行为：
  *   · 清单口径反转：llm-pi-ai 行源 = 快照 providers 已存在的条目（含宿主侧创建的仅
  *     apiKeyEnv 条目）；未接入的目录 route 不直出；托管只读行（settingsNs 非本命名空间）
  *     保持现行只读形态；快照有而目录无的 key = 自定义型；
- *   · 添加流程步骤态：choose（两卡）→ pick-builtin（目录中未被占用的内置条目）→ 窄表单 /
- *     自定义全表单；步骤可返回与退出，与展开体互斥；
+ *   · 挂载态单判别字段 form：none（纯列表）/ addflow（choose → pick-builtin）/
+ *     edit（mount: inline 行内展开 | standalone 独立新建）五种形态与翻转语义；
  *   · expand：目录型行 → 窄表单编辑；自定义行 → 全表单编辑。
  */
 
@@ -83,6 +83,12 @@ async function makeModel(options: Parameters<typeof fakeDeps>[0] = {}): Promise<
   return model
 }
 
+/** 取 edit 形态的挂载态（非 edit 形态 = 测试失败：断言已在前，此处只做类型收窄）。 */
+function expectEditForm(form: ProvidersListSnapshot['form']): Extract<ProvidersFormState, { kind: 'edit' }> {
+  if (form.kind !== 'edit') throw new Error(`expected edit form, got kind=${String(form.kind)}`)
+  return form
+}
+
 describe('清单口径反转（未接入目录 route 不直出）', () => {
   it('快照 providers 已存在的条目成为行（含仅 apiKeyEnv 的宿主侧条目）；未接入目录 route 不出现', async () => {
     const model = await makeModel({
@@ -140,6 +146,48 @@ describe('清单口径反转（未接入目录 route 不直出）', () => {
   })
 })
 
+describe('表单挂载态（单判别字段 form）', () => {
+  it('五种挂载态逐一以判别形态出现：none → choose → pick-builtin → standalone 新建 → inline 展开', async () => {
+    const model = await makeModel({
+      providers: { 'deepseek-official': { apiKeyEnv: 'X' } },
+      directory: [
+        directoryRow('deepseek-official', { displayName: 'DeepSeek Official' }),
+        directoryRow('zai', { displayName: 'Z.ai' }),
+      ],
+    })
+    expect(model.getSnapshot().form).toEqual({ kind: 'none' }) // 1 纯列表
+    model.startAddFlow()
+    expect(model.getSnapshot().form).toEqual({ kind: 'addflow', step: 'choose', candidates: [] }) // 2 choose
+    model.pickBuiltin()
+    expect(model.getSnapshot().form).toEqual({ // 3 pick-builtin（未被占用的目录条目为候选）
+      kind: 'addflow',
+      step: 'pick-builtin',
+      candidates: [{ key: 'zai', name: 'Z.ai', catalogType: true }],
+    })
+    model.startNarrowAdd('zai', 'Z.ai')
+    expect(expectEditForm(model.getSnapshot().form).mount).toBe('standalone') // 4 独立新建
+    model.collapse()
+    model.expand('deepseek-official')
+    const inline = expectEditForm(model.getSnapshot().form) // 5 行内展开编辑
+    expect(inline.mount).toBe('inline')
+    expect(inline.model.key).toBe('deepseek-official')
+  })
+
+  it('删除武装与表单挂载可并存：requestDelete 不清 form；挂载翻转清武装', async () => {
+    const model = await makeModel({
+      providers: { 'my-custom': { displayName: '我的自定义' } },
+      directory: [directoryRow('my-custom', { declared: true })],
+    })
+    model.expand('my-custom')
+    model.requestDelete('my-custom')
+    const armed = model.getSnapshot()
+    expect(armed.deleteArmed?.key).toBe('my-custom')
+    expect(armed.form.kind).toBe('edit') // 武装不拆表单（两段确认第一击）
+    model.startAddFlow() // 挂载翻转（进入添加流）清武装
+    expect(model.getSnapshot().deleteArmed).toBeUndefined()
+  })
+})
+
 describe('添加流程（choose → pick-builtin → 窄表单 / 全表单）', () => {
   it('startAddFlow → choose；pickBuiltin 列出目录中未被占用的 llm-pi-ai 条目（托管 ns 与已接入条目不出现）', async () => {
     const model = await makeModel({
@@ -152,16 +200,19 @@ describe('添加流程（choose → pick-builtin → 窄表单 / 全表单）', 
       ],
     })
     model.startAddFlow()
-    expect(model.getSnapshot().addingStep).toBe('choose')
+    expect(model.getSnapshot().form).toEqual({ kind: 'addflow', step: 'choose', candidates: [] })
     model.pickBuiltin()
-    const snapshot = model.getSnapshot()
-    expect(snapshot.addingStep).toBe('pick-builtin')
-    expect(snapshot.builtinCandidates.map((candidate) => candidate.key)).toEqual(['zai', 'moonshot'])
-    expect(snapshot.builtinCandidates[0].name).toBe('Z.ai')
-    expect(snapshot.builtinCandidates[0].catalogType).toBe(true)
+    expect(model.getSnapshot().form).toEqual({
+      kind: 'addflow',
+      step: 'pick-builtin',
+      candidates: [
+        { key: 'zai', name: 'Z.ai', catalogType: true },
+        { key: 'moonshot', name: 'Moonshot', catalogType: true },
+      ],
+    })
   })
 
-  it('startNarrowAdd：窄表单新建（narrow + isNew + 目录名）；步骤态清空；与展开体互斥', async () => {
+  it('startNarrowAdd：窄表单新建（narrow + isNew + 目录名）；挂载翻转到 standalone 编辑（单值即互斥）', async () => {
     const model = await makeModel({
       providers: {},
       directory: [directoryRow('zai', { displayName: 'Z.ai' })],
@@ -169,16 +220,14 @@ describe('添加流程（choose → pick-builtin → 窄表单 / 全表单）', 
     model.startAddFlow()
     model.pickBuiltin()
     model.startNarrowAdd('zai', 'Z.ai')
-    const snapshot = model.getSnapshot()
-    expect(snapshot.addingStep).toBeUndefined()
-    expect(snapshot.addingNew).toBe(true)
-    expect(snapshot.editing).toBeDefined()
-    const editSnapshot = snapshot.editing?.getSnapshot()
-    expect(editSnapshot?.narrow).toBe(true)
-    expect(editSnapshot?.catalogName).toBe('Z.ai')
+    const editForm = expectEditForm(model.getSnapshot().form)
+    expect(editForm.mount).toBe('standalone')
+    const editSnapshot = editForm.model.getSnapshot()
+    expect(editSnapshot.narrow).toBe(true)
+    expect(editSnapshot.catalogName).toBe('Z.ai')
   })
 
-  it('返回与退出：backToChoose 回第一步；cancelAddFlow / collapse 清空步骤态', async () => {
+  it('返回与退出：backToChoose 回第一步并丢弃候选；cancelAddFlow / collapse 清挂载态', async () => {
     const model = await makeModel({
       providers: {},
       directory: [directoryRow('zai', { displayName: 'Z.ai' })],
@@ -186,23 +235,21 @@ describe('添加流程（choose → pick-builtin → 窄表单 / 全表单）', 
     model.startAddFlow()
     model.pickBuiltin()
     model.backToChoose()
-    expect(model.getSnapshot().addingStep).toBe('choose')
-    expect(model.getSnapshot().builtinCandidates).toHaveLength(0)
+    expect(model.getSnapshot().form).toEqual({ kind: 'addflow', step: 'choose', candidates: [] })
     model.cancelAddFlow()
-    expect(model.getSnapshot().addingStep).toBeUndefined()
+    expect(model.getSnapshot().form).toEqual({ kind: 'none' })
     model.startAddFlow()
     model.collapse()
-    expect(model.getSnapshot().addingStep).toBeUndefined()
+    expect(model.getSnapshot().form).toEqual({ kind: 'none' })
   })
 
-  it('startAdd（自定义卡）：全表单新建（narrow=false），步骤态清空', async () => {
+  it('startAdd（自定义卡）：全表单新建（narrow=false），挂载翻转到 standalone 编辑', async () => {
     const model = await makeModel({})
     model.startAddFlow()
     model.startAdd()
-    const snapshot = model.getSnapshot()
-    expect(snapshot.addingNew).toBe(true)
-    expect(snapshot.addingStep).toBeUndefined()
-    expect(snapshot.editing?.getSnapshot().narrow).toBe(false)
+    const editForm = expectEditForm(model.getSnapshot().form)
+    expect(editForm.mount).toBe('standalone')
+    expect(editForm.model.getSnapshot().narrow).toBe(false)
   })
 })
 
@@ -219,19 +266,22 @@ describe('expand 展开形态（目录型窄表单 / 自定义全表单）', () 
       ],
     })
     model.expand('deepseek-official')
-    expect(model.getSnapshot().editing?.getSnapshot().narrow).toBe(true)
+    const catalogForm = expectEditForm(model.getSnapshot().form)
+    expect(catalogForm.mount).toBe('inline')
+    expect(catalogForm.model.getSnapshot().narrow).toBe(true)
     model.collapse()
     model.expand('my-custom')
-    const snapshot = model.getSnapshot().editing?.getSnapshot()
-    expect(snapshot?.narrow).toBe(false)
-    expect(snapshot?.customOnly).toBe(true)
+    const customForm = expectEditForm(model.getSnapshot().form)
+    const snapshot = customForm.model.getSnapshot()
+    expect(snapshot.narrow).toBe(false)
+    expect(snapshot.customOnly).toBe(true)
   })
 })
 
 // ── 评审修复 r1（G2 组：MF-1-4 删除链路异常捕获）─────────────────────────────────
 
 describe('删除链路异常捕获（MF-1-4：confirmDelete 传输层 reject 不静默卡流程）', () => {
-  it('mutate 传输层 reject：确认态清除、错误条给可重试指引', async () => {
+  it('mutate 传输层 reject：确认态清除、错误条给可重试指引（MF-1-1 后 deleteProvider 收敛为 rejected 结果值）', async () => {
     const deps = fakeDeps({
       providers: { 'my-custom': { displayName: '我的自定义' } },
       directory: [directoryRow('my-custom', { declared: true })],
@@ -244,7 +294,7 @@ describe('删除链路异常捕获（MF-1-4：confirmDelete 传输层 reject 不
     await model.confirmDelete()
     const snapshot = model.getSnapshot()
     expect(snapshot.deleteArmed).toBeUndefined() // 确认态已消费，不滞留
-    expect(snapshot.error).toBe('删除失败（transport down），请重试')
+    expect(snapshot.error).toBe('宿主设置写入失败（llm-pi-ai 命名空间）：transport down。请确认宿主设置服务可用后重试。')
   })
 
   it('正常删除链路（对照）：unset 成功 → 无错误、行刷新后消失', async () => {

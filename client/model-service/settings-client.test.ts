@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import {
+  COMPAT_AVAILABILITY,
   deleteProvider,
   levelsToEfforts,
   listProviderDirectory,
   listRegisteredRoutes,
+  MODALITIES,
   modelFromDraft,
   modelToDraft,
   prettifyId,
   profileDiffOps,
   profileFromDraft,
+  PROTOCOLS,
   readLlmPiAi,
   routeReferencesOf,
   saveProvider,
+  THINKING_FORMATS,
   THINKING_LEVELS,
   undeclaredFieldPaths,
   writeProviderModels,
@@ -1296,5 +1300,141 @@ describe('存量物化空形态的 unset 假失败（MF-3-1）', () => {
     const settings = fakeSettings({ providers: { yanshi: { displayName: 'Yanshi', compat: { chatTemplateKwargs: {}, chatTemplateArgs: {} } } }, revision: 3 })
     const result = await writeProviderModels(makeHost({ settings }), 'yanshi', [])
     expect(result.kind).toBe('saved')
+  })
+})
+
+// ── 评审修复 r4（G1 组：MF-1-1 三写通道编排器单点 / MF-1-12 词表安家）────────────────
+
+describe('传输异常收敛（MF-1-1：rejection 契约单点——三入口均返回 rejected 不外抛）', () => {
+  it('saveProvider：mutate 传输层 reject → rejected 结果值（编排器收敛）', async () => {
+    const settings = fakeSettings()
+    settings.mutate = () => Promise.reject(new Error('transport down'))
+    const result = await saveProvider(makeHost({ settings }), {
+      draft: baseDraft,
+      revision: 7,
+      existing: undefined,
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('rejected')
+    if (result.kind !== 'rejected') return
+    expect(result.message).toContain('transport down')
+    expect(result.message).toContain('请确认宿主设置服务可用后重试')
+  })
+
+  it('saveProvider：冲突分支的重读 describe 传输层 reject → rejected（非盲重试链内的收敛）', async () => {
+    const settings = fakeSettings({
+      mutateImpl: () => Promise.resolve({ ok: false as const, error: { code: 'settings/conflict', message: 'stale', details: {} } }),
+    })
+    settings.describe = () => Promise.reject(new Error('describe down'))
+    const result = await saveProvider(makeHost({ settings }), {
+      draft: baseDraft,
+      revision: 7,
+      existing: undefined,
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('rejected')
+    if (result.kind !== 'rejected') return
+    expect(result.message).toContain('describe down')
+  })
+
+  it('saveProvider：预检通道（listProviders / 凭据 describe）传输层 reject → rejected（saving 不卡死的前提）', async () => {
+    const llm = fakeLlm(['deepseek-official'])
+    llm.listProviders = () => Promise.reject(new Error('llm remote down'))
+    const result = await saveProvider(makeHost({ llm }), {
+      draft: baseDraft,
+      revision: 7,
+      existing: undefined,
+      refGuard: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('rejected')
+    if (result.kind !== 'rejected') return
+    expect(result.message).toContain('llm remote down')
+
+    const credentials = fakeCredentials([])
+    credentials.describe = () => Promise.reject(new Error('credentials down'))
+    const refGuardRejected = await saveProvider(makeHost({ credentials }), {
+      draft: baseDraft,
+      revision: 7,
+      existing: undefined,
+      refGuard: async () => {
+        // 查重判定经 refGuard 注入：模拟 checkCredentialRefAvailable 的 describe 传输异常上抛。
+        throw new Error('credentials describe down')
+      },
+    })
+    expect(refGuardRejected.kind).toBe('rejected')
+  })
+
+  it('deleteProvider：mutate 传输层 reject → rejected 结果值', async () => {
+    const settings = fakeSettings()
+    settings.mutate = () => Promise.reject(new Error('transport down'))
+    const result = await deleteProvider(makeHost({ settings }), {
+      key: 'verify-a',
+      existing: undefined,
+      crossProfileConfirmed: true,
+      registerPendingUnset: async () => ({ ok: true }),
+    })
+    expect(result.kind).toBe('rejected')
+    if (result.kind !== 'rejected') return
+    expect(result.message).toContain('transport down')
+  })
+
+  it('writeProviderModels：先取快照的 describe 传输层 reject → rejected 结果值', async () => {
+    const settings = fakeSettings()
+    settings.describe = () => Promise.reject(new Error('settings service down'))
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', [{ id: 'm1', name: 'M1', input: ['text'] }])
+    expect(result.kind).toBe('rejected')
+    if (result.kind !== 'rejected') return
+    expect(result.message).toContain('settings service down')
+  })
+
+  it('writeProviderModels：mutate 传输层 reject → rejected 结果值（编排器收敛）', async () => {
+    const settings = fakeSettings()
+    settings.mutate = () => Promise.reject(new Error('mutate down'))
+    const result = await writeProviderModels(makeHost({ settings }), 'yanshi', [{ id: 'm1', name: 'M1', input: ['text'] }])
+    expect(result.kind).toBe('rejected')
+    if (result.kind !== 'rejected') return
+    expect(result.message).toContain('mutate down')
+  })
+})
+
+describe('宿主词表镜像值集锁（MF-1-12：词表安家 settings-client，值集与顺序不变）', () => {
+  it('PROTOCOLS / THINKING_FORMATS / THINKING_LEVELS / MODALITIES 值集与顺序锁定', () => {
+    expect(PROTOCOLS).toEqual(['openai-completions', 'openai-responses', 'anthropic-messages'])
+    expect(THINKING_FORMATS).toEqual([
+      'openai', 'deepseek', 'openrouter', 'together', 'baseten', 'zai', 'qwen',
+      'chat-template', 'qwen-chat-template', 'string-thinking', 'ant-ling',
+    ])
+    expect(THINKING_LEVELS).toEqual(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+    expect(MODALITIES.map((modality) => modality.value)).toEqual(['text', 'image'])
+    expect(MODALITIES.map((modality) => modality.key)).toEqual(['input.text', 'input.image'])
+  })
+
+  it('COMPAT_AVAILABILITY：六 compat 字段 × 三协议可用性矩阵逐项锁定', () => {
+    expect(COMPAT_AVAILABILITY).toEqual({
+      'openai-completions': {
+        thinkingFormat: true,
+        supportsDeveloperRole: true,
+        supportsReasoningEffort: true,
+        supportsStore: true,
+        supportsUsageInStreaming: true,
+        supportsFinishReason: true,
+      },
+      'openai-responses': {
+        thinkingFormat: false,
+        supportsDeveloperRole: true,
+        supportsReasoningEffort: false,
+        supportsStore: false,
+        supportsUsageInStreaming: false,
+        supportsFinishReason: false,
+      },
+      'anthropic-messages': {
+        thinkingFormat: false,
+        supportsDeveloperRole: false,
+        supportsReasoningEffort: false,
+        supportsStore: false,
+        supportsUsageInStreaming: false,
+        supportsFinishReason: false,
+      },
+    })
   })
 })

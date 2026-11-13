@@ -48,9 +48,12 @@ import {
   deriveProviderKey,
 } from '../../model-service/provider-key'
 import {
+  COMPAT_AVAILABILITY,
   modelToDraft,
   prettifyId,
+  PROTOCOLS,
   saveProvider,
+  THINKING_FORMATS,
   THINKING_LEVELS,
   undeclaredFieldPaths,
   type HostProviderProfile,
@@ -60,48 +63,7 @@ import {
 } from '../../model-service/settings-client'
 import { DEFAULT_CONTEXT_WINDOW, ModelEdit, type Translate } from './model-edit'
 
-// ── 常量（宿主契约字段集，逐字面对照 dsh-llm-pi-ai/lib/index.js）─────────────
-
-/** 协议表（supportedProtocols 的声明序；界面下拉同序）。 */
-const PROTOCOLS = ['openai-completions', 'openai-responses', 'anthropic-messages'] as const
-
-/** thinkingFormat 的合法词形（SUPPORTED_THINKING_FORMATS，:306-318）。 */
-const THINKING_FORMATS = [
-  'openai', 'deepseek', 'openrouter', 'together', 'baseten', 'zai', 'qwen',
-  'chat-template', 'qwen-chat-template', 'string-thinking', 'ant-ling',
-] as const
-
-/**
- * 本表单 6 个 compat 字段按协议的可用性（宿主 COMPAT_GATES :381-412 逐字面：全部 6 字段
- * 仅 openai-completions offer；openai-responses 只 offer supportsDeveloperRole；
- * anthropic-messages 一个不 offer）。
- */
-const COMPAT_AVAILABILITY: Record<string, Record<string, boolean>> = {
-  'openai-completions': {
-    thinkingFormat: true,
-    supportsDeveloperRole: true,
-    supportsReasoningEffort: true,
-    supportsStore: true,
-    supportsUsageInStreaming: true,
-    supportsFinishReason: true,
-  },
-  'openai-responses': {
-    thinkingFormat: false,
-    supportsDeveloperRole: true,
-    supportsReasoningEffort: false,
-    supportsStore: false,
-    supportsUsageInStreaming: false,
-    supportsFinishReason: false,
-  },
-  'anthropic-messages': {
-    thinkingFormat: false,
-    supportsDeveloperRole: false,
-    supportsReasoningEffort: false,
-    supportsStore: false,
-    supportsUsageInStreaming: false,
-    supportsFinishReason: false,
-  },
-}
+// ── 常量（宿主契约词表镜像已安家 settings-client 词表区，MF-1-12；此处只留产品侧分组）──
 
 /** essential 3 + advanced 3（D6 分组；advanced = COMPLETIONS gate 声明序中 essential 外前三）。 */
 const COMPAT_ESSENTIAL = ['thinkingFormat', 'supportsDeveloperRole', 'supportsReasoningEffort'] as const
@@ -177,6 +139,11 @@ export interface ProviderEditSnapshot {
   directoryModels: DiscoveredModel[]
   /** 目录模型读取失败提示（MF-1-18：失败显形——携带恢复动作，区分「目录无模型」与「读取失败」）。 */
   directoryError: string | undefined
+  /**
+   * 派生布尔（MF-1-11）：窄表单空保存判据（与 precondition 同源，见 narrowEmptyBlockedForm）。
+   * 保存按钮 disabled 与提示 title 只读本字段，不再各自内联条件——同一裁决单点。
+   */
+  saveBlocked: boolean
 }
 
 /** 展开体的构造依赖。 */
@@ -199,6 +166,24 @@ export interface ProviderEditModelDeps {
   catalogProviderKeys?: ReadonlySet<string>
   /** 保存成功回调（父级刷新列表；本模型不回写父状态）。 */
   onSaved: () => void
+}
+
+/** 快照的源字段集（saveBlocked 为派生字段，由 finalizeSnapshot 统一重算，不手工写）。 */
+type ProviderEditStateFields = Omit<ProviderEditSnapshot, 'saveBlocked'>
+
+/**
+ * 窄表单空保存判据（MF-1-11 单点）：新建的窄表单零填写（无密钥且无模型）。窄表单零填写
+ * = 写入全字段缺省的空 profile 条目，宿主 settings 视图对该形态视为未设置（describe 条目
+ * 延迟出现——隔离实例实测），接入因此不成立。既有条目编辑（isNew=false）不在此列——
+ * 不因未输密钥被拦（行为修正：旧按钮判据无 isNew，编辑既有目录型条目会被过拦）。
+ */
+function narrowEmptyBlockedForm(state: ProviderEditStateFields, target: ProviderEditModelDeps['target']): boolean {
+  return state.narrow && target.isNew && state.apiKeyValue.trim() === '' && state.models.length === 0
+}
+
+/** 快照终态化：状态写入的唯一出口（见 ProviderEditModel.commit），合并派生字段 saveBlocked。 */
+function finalizeSnapshot(state: ProviderEditStateFields, target: ProviderEditModelDeps['target']): ProviderEditSnapshot {
+  return { ...state, saveBlocked: narrowEmptyBlockedForm(state, target) }
 }
 
 /**
@@ -230,10 +215,10 @@ export class ProviderEditModel {
     const existing = deps.existing
     this.storedCompat = isRecord(existing?.compat) ? { ...existing.compat } : {}
     const storedModels = Array.isArray(existing?.models) ? existing.models.filter(isRecord) : []
-    this.state = {
+    this.state = finalizeSnapshot({
       displayName: typeof existing?.displayName === 'string' ? existing.displayName : '',
       baseURL: typeof existing?.baseURL === 'string' ? existing.baseURL : '',
-      api: typeof existing?.api === 'string' && (PROTOCOLS as readonly string[]).includes(existing.api) ? existing.api : 'openai-completions',
+      api: typeof existing?.api === 'string' && PROTOCOLS.includes(existing.api) ? existing.api : 'openai-completions',
       apiKeyValue: '',
       narrow: deps.target.narrow,
       catalogName: deps.target.catalogName,
@@ -255,7 +240,7 @@ export class ProviderEditModel {
       undeclared: [],
       directoryModels: [],
       directoryError: undefined,
-    }
+    }, this.target)
     this.refreshKeyPreview()
     if (!this.state.customOnly && this.state.directoryMode) void this.loadDirectoryModels()
   }
@@ -274,26 +259,34 @@ export class ProviderEditModel {
     return this.target.key
   }
 
+  /**
+   * 状态写入单点（MF-1-11）：合并 partial 并重算派生字段（saveBlocked）——除构造器外，
+   * this.state 只经本方法赋值，派生字段不随写入点漂移。notify 时序归调用方（与既有行为一致）。
+   */
+  private commit(partial: Partial<ProviderEditSnapshot>): void {
+    this.state = finalizeSnapshot({ ...this.state, ...partial }, this.target)
+  }
+
   // ── 表单字段写入 ──
 
   setDisplayName(value: string): void {
-    this.state = { ...this.state, displayName: value }
+    this.commit({ displayName: value })
     this.refreshKeyPreview()
     this.notify()
   }
 
   setBaseURL(value: string): void {
-    this.state = { ...this.state, baseURL: value }
+    this.commit({ baseURL: value })
     this.notify()
   }
 
   setApi(value: string): void {
-    this.state = { ...this.state, api: value }
+    this.commit({ api: value })
     this.notify()
   }
 
   setApiKeyValue(value: string): void {
-    this.state = { ...this.state, apiKeyValue: value }
+    this.commit({ apiKeyValue: value })
     this.notify()
   }
 
@@ -302,7 +295,7 @@ export class ProviderEditModel {
     const compat: Record<string, unknown> = { ...this.state.compat }
     if (value === undefined) Reflect.deleteProperty(compat, field)
     else compat[field] = value
-    this.state = { ...this.state, compat }
+    this.commit({ compat })
     this.notify()
   }
 
@@ -311,7 +304,7 @@ export class ProviderEditModel {
     const compat: Record<string, unknown> = { ...this.state.compat }
     if (value === '') Reflect.deleteProperty(compat, 'thinkingFormat')
     else compat.thinkingFormat = value
-    this.state = { ...this.state, compat }
+    this.commit({ compat })
     this.notify()
   }
 
@@ -331,7 +324,7 @@ export class ProviderEditModel {
       preserve: false,
     }
     const models = [...this.state.models, blank]
-    this.state = { ...this.state, models, directoryMode: false, blockedMessage: undefined, restoreArmed: false }
+    this.commit({ models, directoryMode: false, blockedMessage: undefined, restoreArmed: false })
     this.notify()
   }
 
@@ -339,14 +332,14 @@ export class ProviderEditModel {
   setModel(index: number, draft: ModelDraft): void {
     const models = [...this.state.models]
     models[index] = draft
-    this.state = { ...this.state, models }
+    this.commit({ models })
     this.notify()
   }
 
   /** 删除第 index 条模型草案（删空 = 目录默认态；customOnly 时保存会被前置拒绝；清单变更退出确认态）。 */
   removeModel(index: number): void {
     const models = this.state.models.filter((_, at) => at !== index)
-    this.state = { ...this.state, models, directoryMode: models.length === 0 && !this.state.customOnly, restoreArmed: false }
+    this.commit({ models, directoryMode: models.length === 0 && !this.state.customOnly, restoreArmed: false })
     this.notify()
   }
 
@@ -356,7 +349,7 @@ export class ProviderEditModel {
   /** 第一击：进入确认态（警示文案在渲染层展示；无可恢复清单时不进入）。 */
   requestRestoreDirectory(): void {
     if (this.state.customOnly || this.state.models.length === 0) return
-    this.state = { ...this.state, restoreArmed: true }
+    this.commit({ restoreArmed: true })
     this.notify()
   }
 
@@ -368,14 +361,14 @@ export class ProviderEditModel {
   /** 退出确认态（models 草案不动）。 */
   cancelRestoreDirectory(): void {
     if (!this.state.restoreArmed) return
-    this.state = { ...this.state, restoreArmed: false }
+    this.commit({ restoreArmed: false })
     this.notify()
   }
 
   /** 恢复目录默认（D11：清空 models 草案 = 保存时 unset models[]）。 */
   restoreDirectory(): void {
     if (this.state.customOnly || this.state.models.length === 0) return
-    this.state = { ...this.state, models: [], directoryMode: true, restoreArmed: false }
+    this.commit({ models: [], directoryMode: true, restoreArmed: false })
     this.notify()
   }
 
@@ -389,15 +382,12 @@ export class ProviderEditModel {
       this.deps.catalogProviderKeys,
     )
     if (outcome.kind === 'failed') {
-      this.state = {
-        ...this.state,
-        directoryError: `${this.deps.t('models.directoryLoadFailed')}：${outcome.recovery}（${outcome.message}）`,
-      }
+      this.commit({ directoryError: `${this.deps.t('models.directoryLoadFailed')}：${outcome.recovery}（${outcome.message}）` })
       this.notify()
       return
     }
     this.directoryModels = outcome.models
-    this.state = { ...this.state, directoryModels: outcome.models, directoryError: undefined }
+    this.commit({ directoryModels: outcome.models, directoryError: undefined })
     this.notify()
   }
 
@@ -413,14 +403,11 @@ export class ProviderEditModel {
     if (this.state.discovery.running) return
     const baseURL = this.state.baseURL.trim()
     if (baseURL === '' && this.directoryModels.length === 0) {
-      this.state = {
-        ...this.state,
-        discovery: { running: false, outcome: undefined, selected: [], error: `${this.deps.t('discovery.failed')}：${this.deps.t('discovery.requireEndpoint')}` },
-      }
+      this.commit({ discovery: { running: false, outcome: undefined, selected: [], error: `${this.deps.t('discovery.failed')}：${this.deps.t('discovery.requireEndpoint')}` } })
       this.notify()
       return
     }
-    this.state = { ...this.state, discovery: { running: true, outcome: undefined, selected: [], error: undefined } }
+    this.commit({ discovery: { running: true, outcome: undefined, selected: [], error: undefined } })
     this.notify()
     const draftKey = this.target.key !== '' ? this.target.key : undefined
     const outcome = await discoverProviderModels(
@@ -434,15 +421,14 @@ export class ProviderEditModel {
       this.deps.catalogProviderKeys,
     )
     const error = outcome.kind === 'failed' ? `${this.deps.t('discovery.failed')}：${outcome.recovery}（${outcome.message}）` : undefined
-    this.state = {
-      ...this.state,
+    this.commit({
       discovery: {
         running: false,
         outcome: outcome.kind === 'failed' ? undefined : outcome,
         selected: outcome.kind === 'failed' ? [] : outcome.models.map((_, index) => index),
         error,
       },
-    }
+    })
     this.notify()
   }
 
@@ -451,7 +437,7 @@ export class ProviderEditModel {
     const selected = this.state.discovery.selected.includes(index)
       ? this.state.discovery.selected.filter((at) => at !== index)
       : [...this.state.discovery.selected, index]
-    this.state = { ...this.state, discovery: { ...this.state.discovery, selected } }
+    this.commit({ discovery: { ...this.state.discovery, selected } })
     this.notify()
   }
 
@@ -463,21 +449,17 @@ export class ProviderEditModel {
       .sort((left, right) => left - right)
       .flatMap((index) => discoveredToDraft(outcome.models[index]))
     if (models.length === 0) return
-    this.state = { ...this.state, models, directoryMode: false, restoreArmed: false, discovery: { running: false, outcome: undefined, selected: [], error: undefined } }
+    this.commit({ models, directoryMode: false, restoreArmed: false, discovery: { running: false, outcome: undefined, selected: [], error: undefined } })
     this.notify()
   }
 
   // ── 保存 ──
 
-  /** 保存前置（D3/D11）：自定义清单态至少一条模型。返回 undefined = 通过。 */
+  /** 保存前置（D3/D11）：自定义清单态至少一条模型；窄表单空判据与 saveBlocked 同源（MF-1-11）。返回 undefined = 通过。 */
   private precondition(): string | undefined {
     const wantsCustomList = this.state.customOnly || !this.state.directoryMode
     if (wantsCustomList && this.state.models.length === 0) return this.deps.t('models.saveBlockedEmpty')
-    // 窄表单零填写 = 写入全字段缺省的空 profile 条目；宿主 settings 视图对该形态视为未设置
-    // （describe 条目延迟出现——隔离实例实测），接入因此不成立：至少要有密钥或一条模型。
-    if (this.state.narrow && this.target.isNew && this.state.apiKeyValue.trim() === '' && this.state.models.length === 0) {
-      return this.deps.t('provider.narrowEmptyBlocked')
-    }
+    if (narrowEmptyBlockedForm(this.state, this.target)) return this.deps.t('provider.narrowEmptyBlocked')
     return undefined
   }
 
@@ -486,95 +468,81 @@ export class ProviderEditModel {
     if (this.state.saving) return
     const blocked = this.precondition()
     if (blocked !== undefined) {
-      this.state = { ...this.state, blockedMessage: blocked, error: undefined, notice: undefined }
+      this.commit({ blockedMessage: blocked, error: undefined, notice: undefined })
       this.notify()
       return
     }
-    this.state = { ...this.state, saving: true, blockedMessage: undefined, error: undefined, notice: undefined }
+    this.commit({ saving: true, blockedMessage: undefined, error: undefined, notice: undefined })
     this.notify()
 
-    // 保存全链路统一异常捕获（MF-1-4）：预检 unwrapRemote throw 与 mutate 传输层 reject 都
-    // 会向上抛——不捕获则 saving 永久卡 true（按钮禁用零提示）。catch 复位 saving 并给
-    // 可重试的错误条；四个正常结果分支之外不再有裸 await 出口。
-    try {
-      const draft: ProviderDraft = {
-        // 新建全表单：key 由显示名即时派生（AX11）；编辑与窄表单：key 固定——窄表单新建的
-        // key = 所选目录 route（条目身份由目录决定，不经显示名派生）。
-        key: this.target.isNew && !this.state.narrow ? deriveProviderKey(this.state.displayName.trim()) : this.target.key,
-        isNew: this.target.isNew,
-        narrow: this.state.narrow,
-        displayName: this.state.displayName.trim(),
-        baseURL: this.state.baseURL.trim(),
-        api: this.state.api,
-        apiKeyValue: this.state.apiKeyValue.trim(),
-        compat: writableCompat(this.state.compat, this.state.api),
-        models: this.state.models,
-      }
-      const result = await saveProvider(this.deps.remote, {
-        draft,
-        revision: this.heldRevision,
-        existing: this.diffBase,
-        refGuard: (ref, ownRef) => checkCredentialRefAvailable(
-          { credentials: this.deps.remote.credentials, profileRefs: collectProfileRefs(this.deps.providers) },
-          ref,
-          ownRef,
-        ),
-      })
-
-      if (result.kind === 'refused-route') {
-        this.state = { ...this.state, saving: false, notice: { kind: 'err', text: this.deps.t('save.refTakenRoute') } }
-        this.notify()
-        return
-      }
-      if (result.kind === 'refused-ref') {
-        this.state = {
-          ...this.state,
-          saving: false,
-          notice: { kind: 'err', text: result.branch === 'a' ? this.deps.t('save.refTakenA') : this.deps.t('save.refTakenB') },
-        }
-        this.notify()
-        return
-      }
-      if (result.kind === 'refused-existing') {
-        // 他端已接入同 key（MF-1-12）：放弃整条 set，用户刷新后编辑既有条目。
-        this.state = { ...this.state, saving: false, notice: { kind: 'err', text: this.deps.t('save.refTakenElsewhere') } }
-        this.notify()
-        return
-      }
-      if (result.kind === 'rejected') {
-        this.state = { ...this.state, saving: false, error: result.message }
-        this.notify()
-        return
-      }
-
-      // 成功：凭据失败不回滚设置（D3 可见可救——徽章「未配置」+ 重填重试）。
-      this.heldRevision = result.revision
-      this.diffBase = result.profile
-      // 新建保存成功：目标翻转为既有 provider 的编辑语义（key 固定、不再走新建预检与整条
-      // set）——展开体保持打开时二次保存走字段级 diff，不会撞自身的 route 预检。
-      if (this.target.isNew) this.target = { ...this.target, key: draft.key, isNew: false }
-      const notice = result.refConfigured
-        ? { kind: 'ok' as const, text: this.deps.t('save.saved') }
-        : { kind: 'warn' as const, text: `${this.deps.t('credential.missing')}：${result.refMessage ?? ''}` }
-      this.state = {
-        ...this.state,
-        saving: false,
-        notice,
-        undeclared: result.undeclared,
-        apiKeyValue: '', // 密钥不回显（AX1：成功后清草稿；失败时用户在展开体重填）
-      }
-      this.deps.onSaved()
-      this.notify()
-    } catch (error) {
-      this.state = { ...this.state, saving: false, error: this.deps.t('save.writeFailed', { detail: messageOf(error) }) }
-      this.notify()
+    const draft: ProviderDraft = {
+      // 新建全表单：key 由显示名即时派生（AX11）；编辑与窄表单：key 固定——窄表单新建的
+      // key = 所选目录 route（条目身份由目录决定，不经显示名派生）。
+      key: this.target.isNew && !this.state.narrow ? deriveProviderKey(this.state.displayName.trim()) : this.target.key,
+      isNew: this.target.isNew,
+      narrow: this.state.narrow,
+      displayName: this.state.displayName.trim(),
+      baseURL: this.state.baseURL.trim(),
+      api: this.state.api,
+      apiKeyValue: this.state.apiKeyValue.trim(),
+      compat: writableCompat(this.state.compat, this.state.api),
+      models: this.state.models,
     }
+    // saveProvider 的 rejection 契约是「不外抛」（MF-1-1：传输异常在写通道内收敛为 rejected
+    // 结果值）——结果分支穷尽 saving 复位，调用方无需防御 catch。
+    const result = await saveProvider(this.deps.remote, {
+      draft,
+      revision: this.heldRevision,
+      existing: this.diffBase,
+      refGuard: (ref, ownRef) => checkCredentialRefAvailable(
+        { credentials: this.deps.remote.credentials, profileRefs: collectProfileRefs(this.deps.providers) },
+        ref,
+        ownRef,
+      ),
+    })
+
+    if (result.kind === 'refused-route') {
+      this.commit({ saving: false, notice: { kind: 'err', text: this.deps.t('save.refTakenRoute') } })
+      this.notify()
+      return
+    }
+    if (result.kind === 'refused-ref') {
+      this.commit({ saving: false, notice: { kind: 'err', text: result.branch === 'a' ? this.deps.t('save.refTakenA') : this.deps.t('save.refTakenB') } })
+      this.notify()
+      return
+    }
+    if (result.kind === 'refused-existing') {
+      // 他端已接入同 key（MF-1-12）：放弃整条 set，用户刷新后编辑既有条目。
+      this.commit({ saving: false, notice: { kind: 'err', text: this.deps.t('save.refTakenElsewhere') } })
+      this.notify()
+      return
+    }
+    if (result.kind === 'rejected') {
+      this.commit({ saving: false, error: result.message })
+      this.notify()
+      return
+    }
+
+    // 成功：凭据失败不回滚设置（D3 可见可救——徽章「未配置」+ 重填重试）。
+    this.heldRevision = result.revision
+    this.diffBase = result.profile
+    // 新建保存成功：目标翻转为既有 provider 的编辑语义（key 固定、不再走新建预检与整条
+    // set）——展开体保持打开时二次保存走字段级 diff，不会撞自身的 route 预检。
+    if (this.target.isNew) this.target = { ...this.target, key: draft.key, isNew: false }
+    const notice = result.refConfigured
+      ? { kind: 'ok' as const, text: this.deps.t('save.saved') }
+      : { kind: 'warn' as const, text: `${this.deps.t('credential.missing')}：${result.refMessage ?? ''}` }
+    // 密钥不回显（AX1：成功后清草稿；失败时用户在展开体重填）——受控输入（MF-1-6）下
+    // 该清空经模型回流到 DOM，非受控输入无 DOM 写回通道的缺陷由此消除。
+    this.commit({ saving: false, notice, undeclared: result.undeclared, apiKeyValue: '' })
+    this.deps.onSaved()
+    this.notify()
   }
 
   /** 重置错误/提示行（用户再次编辑前清屏）。 */
   dismissMessages(): void {
     if (this.state.error === undefined && this.state.notice === undefined) return
-    this.state = { ...this.state, error: undefined, notice: undefined }
+    this.commit({ error: undefined, notice: undefined })
     this.notify()
   }
 
@@ -584,11 +552,10 @@ export class ProviderEditModel {
     // 凭据引用预览：编辑既有条目显示其真实 apiKeyEnv（保存目标就是它——D7 写入目标同源）；
     // 仅新建（无既有条目）显示将派生的 ref。一律显示派生值会把既有条目的真实引用显示错。
     const existingRef = typeof this.diffBase?.apiKeyEnv === 'string' ? this.diffBase.apiKeyEnv : undefined
-    this.state = {
-      ...this.state,
+    this.commit({
       keyPreview: key !== '' ? key : undefined,
       refPreview: existingRef ?? (key !== '' ? credentialRefFor(key) : undefined),
-    }
+    })
   }
 
   private notify(): void {
@@ -638,19 +605,19 @@ export function ProviderEditBody({ t, model, focusModel, onCancel }: ProviderEdi
             <input
               className="ms-input"
               type="password"
-              defaultValue={state.apiKeyValue}
+              value={state.apiKeyValue}
               onChange={(event: { target: { value: string } }) => { model.setApiKeyValue(event.target.value) }}
             />
           </label>
         </>
       ) : (
         <>
-          {/* 基本字段 */}
+          {/* 基本字段（文本输入一律受控 value=，MF-1-6：与 select 同纪律，保存清场经模型回流 DOM）。 */}
           <label className="ms-field">
             <span className="ms-field-label">{t('provider.displayName')}</span>
             <input
               className="ms-input"
-              defaultValue={state.displayName}
+              value={state.displayName}
               onChange={(event: { target: { value: string } }) => { model.setDisplayName(event.target.value) }}
             />
             {state.keyPreview !== undefined && (
@@ -664,7 +631,7 @@ export function ProviderEditBody({ t, model, focusModel, onCancel }: ProviderEdi
             <span className="ms-field-label">{t('provider.baseURL')}</span>
             <input
               className="ms-input"
-              defaultValue={state.baseURL}
+              value={state.baseURL}
               placeholder="https://api.example.com/v1"
               onChange={(event: { target: { value: string } }) => { model.setBaseURL(event.target.value) }}
             />
@@ -686,7 +653,7 @@ export function ProviderEditBody({ t, model, focusModel, onCancel }: ProviderEdi
             <input
               className="ms-input"
               type="password"
-              defaultValue={state.apiKeyValue}
+              value={state.apiKeyValue}
               onChange={(event: { target: { value: string } }) => { model.setApiKeyValue(event.target.value) }}
             />
           </label>
@@ -850,13 +817,13 @@ export function ProviderEditBody({ t, model, focusModel, onCancel }: ProviderEdi
         <div className="ms-note">{t('compat.hostDoesNotConsume', { fields: state.undeclared.join(', ') })}</div>
       )}
 
-      {/* 保存 / 取消 */}
+      {/* 保存 / 取消（禁用与提示只读快照派生布尔 saveBlocked——窄表单空保存判据的唯一裁决，MF-1-11）。 */}
       <div className="ms-edit-actions">
         <button
           type="button"
           className="ms-button ms-button-primary"
-          disabled={state.saving || (state.narrow && state.directoryMode && state.apiKeyValue.trim() === '' && state.models.length === 0 && !state.overrideOnly)}
-          title={state.narrow && state.apiKeyValue.trim() === '' && state.models.length === 0 ? t('provider.narrowEmptyBlocked') : undefined}
+          disabled={state.saving || state.saveBlocked}
+          title={state.saveBlocked ? t('provider.narrowEmptyBlocked') : undefined}
           onClick={() => { void model.save() }}>
           {t('action.save')}
         </button>
@@ -867,11 +834,6 @@ export function ProviderEditBody({ t, model, focusModel, onCancel }: ProviderEdi
 }
 
 // ── 工具 ────────────────────────────────────────────────────────────────────
-
-/** 异常 → 展示消息（保存链路 catch 的 detail 插值源，MF-1-4）。 */
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 /** 协议 id → locale key。 */
 function protocolKey(protocol: string): 'provider.protocol.openai-completions' | 'provider.protocol.openai-responses' | 'provider.protocol.anthropic-messages' {

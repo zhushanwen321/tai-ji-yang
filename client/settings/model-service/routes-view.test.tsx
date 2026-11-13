@@ -14,7 +14,8 @@ import type { RoutesListModel, RoutesSnapshot } from '../../model-service/route-
  *   · RouteCardBody（导出面 = 生产消费点 RouteCard）：成员管线行（把手 draggable + 序号 +
  *     下拉 + 条件 + 可用性徽章 + 移除）、拖拽落点与键盘方向键同一 moveMember 出口（即时
  *     保存）、时间窗格点节流（草案不落盘、卸载补盘）、添加成员禁用与接入指引、注册失败
- *     修复条（就地改名转发 renameRoute）。
+ *     修复条（就地改名转发 renameRoute）；改名 × 脏草案串行补盘（MF-4-2：两处改名入口先
+ *     flush 后 rename 唯一序，非脏零额外写盘）。
  *
  * 交互断言沿 load-tsx 夹具语义：真相在 ref，同一渲染树上的 props 直调可读同一份 ref；
  * 落盘断言落在假模型的 saveRoute / renameRoute spy 上。
@@ -59,6 +60,7 @@ function readySnapshot(overrides: Partial<RoutesSnapshot> = {}): RoutesSnapshot 
     registrationFailed: [],
     hits: new Map(),
     memberAvailability: new Map(),
+    usableMembers: new Map(),
     selectableProviders: [],
     notice: undefined,
     error: undefined,
@@ -66,13 +68,15 @@ function readySnapshot(overrides: Partial<RoutesSnapshot> = {}): RoutesSnapshot 
   }
 }
 
-/** 假视图模型：动作 spy 记录调用（落盘断言载体）。 */
+/** 假视图模型：动作 spy 记录调用（落盘断言载体；calls 为跨动作统一调用序——save/rename
+ * 先后序断言用，MF-4-2）。 */
 function fakeModel(snapshot: RoutesSnapshot): RoutesListModel & {
   saves: RouteEntry[]
   toggles: string[]
   creates: string[]
   renames: { oldId: string; newName: string }[]
   deletes: string[]
+  calls: string[]
   nextRename: { id: string; name: string; members: RouteMember[] } | undefined
 } {
   const saves: RouteEntry[] = []
@@ -80,15 +84,16 @@ function fakeModel(snapshot: RoutesSnapshot): RoutesListModel & {
   const creates: string[] = []
   const renames: { oldId: string; newName: string }[] = []
   const deletes: string[] = []
+  const calls: string[] = []
   const state = { nextRename: undefined as { id: string; name: string; members: RouteMember[] } | undefined }
   return {
     getSnapshot: () => snapshot,
     subscribe: () => () => {},
-    setTranslate: () => {},
-    saveRoute: async (route: RouteEntry) => { saves.push(route); return true },
+    saveRoute: async (route: RouteEntry) => { calls.push('save'); saves.push(route); return true },
     toggleWhitelist: async (id: string) => { toggles.push(id); return true },
     createRoute: async (name: string) => { creates.push(name); return { id: 'p-1', name, members: [] } },
     renameRoute: async (oldId: string, newName: string) => {
+      calls.push('rename')
       renames.push({ oldId, newName })
       return state.nextRename === undefined ? undefined : { ...state.nextRename, name: newName }
     },
@@ -101,6 +106,7 @@ function fakeModel(snapshot: RoutesSnapshot): RoutesListModel & {
     creates,
     renames,
     deletes,
+    calls,
     get nextRename() { return state.nextRename },
     set nextRename(value) { state.nextRename = value },
   } as unknown as RoutesListModel & {
@@ -109,6 +115,7 @@ function fakeModel(snapshot: RoutesSnapshot): RoutesListModel & {
     creates: string[]
     renames: { oldId: string; newName: string }[]
     deletes: string[]
+    calls: string[]
     nextRename: { id: string; name: string; members: RouteMember[] } | undefined
   }
 }
@@ -121,12 +128,14 @@ function renderCard(snapshot: RoutesSnapshot, route: RouteEntry, model: RoutesLi
     onToast: () => {},
     onRenamed: () => {},
     onDeleted,
+    flushDrafts: () => Promise.resolve(),
+    onFlushDraftsChange: () => {},
   }))
 }
 
 /** 渲染展开卡体（生产消费点 RouteCard 内嵌；单测直挂以触达成员管线）。 */
 function renderBody(snapshot: RoutesSnapshot, route: RouteEntry, model: RoutesListModel): FakeElement[] {
-  return collectElements(viewModule.RouteCardBody({ t, route, state: snapshot, model, onToast: () => {}, onRenamed: () => {} }))
+  return collectElements(viewModule.RouteCardBody({ t, route, state: snapshot, model, onToast: () => {}, onRenamed: () => {}, onFlushDraftsChange: () => {} }))
 }
 
 /** 按 aria-label 找元素。 */
@@ -389,7 +398,8 @@ describe('RouteCardBody 成员管线（展开态）', () => {
     model.nextRename = { id: 'new-route', name: '新名', members: ROUTE.members }
     const snapshot = readySnapshot({ routes: [ROUTE], registrationFailed: ['work-route'] })
     let renamedWith: string | undefined
-    const root = viewModule.RouteCardBody({ t, route: ROUTE, state: snapshot, model, onToast: () => {}, onRenamed: (id) => { renamedWith = id } })
+  let renamedFrom: string | undefined
+    const root = viewModule.RouteCardBody({ t, route: ROUTE, state: snapshot, model, onToast: () => {}, onRenamed: (oldId, newId) => { renamedWith = newId; renamedFrom = oldId }, onFlushDraftsChange: () => {} })
     const elements = collectElements(root)
     expect(elementsWithClass(elements, 'ms-route-fix')).toHaveLength(1)
     const fixTexts = elementsWithClass(elements, 'ms-note-warn').map((note) => textOf(note))
@@ -404,5 +414,221 @@ describe('RouteCardBody 成员管线（展开态）', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(model.renames).toEqual([{ oldId: 'work-route', newName: '新名' }])
     expect(renamedWith).toBe('new-route')
+  })
+})
+
+/** 自由输入回落分支的夹具：provider 行在场但 models[] 空（目录默认态——模型 id 手输）。 */
+const FREE_INPUT_SELECTABLE = [{ key: 'alpha', name: 'Alpha', models: [] as { id: string; name: string }[] }]
+const FREE_INPUT_ROUTE: RouteEntry = { id: 'work-route', name: '工作路由', members: [member('alpha', '', 1)] }
+
+describe('模型 id 自由输入的草案 + blur/Enter 提交（MF-1-4）', () => {
+  it('连续击键不落盘（onChange N 次 → saveRoute 零调用）；blur 恰一次落盘终值', async () => {
+    const model = fakeModel(readySnapshot({ routes: [FREE_INPUT_ROUTE], selectableProviders: FREE_INPUT_SELECTABLE }))
+    const elements = renderBody(
+      readySnapshot({ routes: [FREE_INPUT_ROUTE], selectableProviders: FREE_INPUT_SELECTABLE }),
+      FREE_INPUT_ROUTE,
+      model,
+    )
+    const modelInputs = withAria(elements, modelServiceZh['route.memberModel'])
+    expect(modelInputs).toHaveLength(1)
+    const onChange = modelInputs[0].props.onChange as (event: { target: { value: string } }) => void
+    onChange({ target: { value: 'g' } })
+    onChange({ target: { value: 'gl' } })
+    onChange({ target: { value: 'glm-4' } })
+    expect(model.saves).toHaveLength(0) // 击键只改草案：configForm.set 零次
+    ;(modelInputs[0].props.onBlur as () => void)()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(model.saves).toHaveLength(1)
+    expect(model.saves[0].members[0].model).toBe('glm-4')
+  })
+
+  it('Enter 提交后 blur 不重复落盘；未改动直接 blur 零写入', async () => {
+    const model = fakeModel(readySnapshot({ routes: [FREE_INPUT_ROUTE], selectableProviders: FREE_INPUT_SELECTABLE }))
+    const elements = renderBody(
+      readySnapshot({ routes: [FREE_INPUT_ROUTE], selectableProviders: FREE_INPUT_SELECTABLE }),
+      FREE_INPUT_ROUTE,
+      model,
+    )
+    const input = withAria(elements, modelServiceZh['route.memberModel'])[0]
+    ;(input.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'm-2' } })
+    ;(input.props.onKeyDown as (event: { key: string }) => void)({ key: 'Enter' })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(model.saves).toHaveLength(1)
+    ;(input.props.onBlur as () => void)()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(model.saves).toHaveLength(1) // 脏标记已随 save 清除，blur 不二次写盘
+
+    const untouched = fakeModel(readySnapshot({ routes: [FREE_INPUT_ROUTE], selectableProviders: FREE_INPUT_SELECTABLE }))
+    const untouchedElements = renderBody(
+      readySnapshot({ routes: [FREE_INPUT_ROUTE], selectableProviders: FREE_INPUT_SELECTABLE }),
+      FREE_INPUT_ROUTE,
+      untouched,
+    )
+    ;(withAria(untouchedElements, modelServiceZh['route.memberModel'])[0].props.onBlur as () => void)()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(untouched.saves).toHaveLength(0)
+  })
+
+  it('击键中途切卡（卡体卸载）：脏草案经卸载补盘出口落盘，不静默丢输入', async () => {
+    const model = fakeModel(readySnapshot({ routes: [FREE_INPUT_ROUTE], selectableProviders: FREE_INPUT_SELECTABLE }))
+    // cleanupsBefore 先于渲染取（fixture 的 useEffect 同步执行、cleanup 即时登记）。
+    const cleanupsBefore = loader.effectCleanups.length
+    const elements = renderBody(
+      readySnapshot({ routes: [FREE_INPUT_ROUTE], selectableProviders: FREE_INPUT_SELECTABLE }),
+      FREE_INPUT_ROUTE,
+      model,
+    )
+    ;(withAria(elements, modelServiceZh['route.memberModel'])[0].props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'draft-model' } })
+    expect(model.saves).toHaveLength(0)
+    for (const cleanup of loader.effectCleanups.slice(cleanupsBefore)) cleanup()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(model.saves).toHaveLength(1)
+    expect(model.saves[0].members[0].model).toBe('draft-model')
+  })
+})
+
+describe('改名 × 脏草案串行补盘（MF-4-2：先 flush 后 rename 唯一序）', () => {
+  /** 手工接线卡体补盘出口（夹具不递归函数组件，卡头编辑器与卡体无法同树直挂——以注册表
+   * 复刻 RoutesView 的 setRouteFlush / flushRouteDrafts 接线，两入口共用同一补盘序）。 */
+  function wireRegistry(): {
+    registry: Map<string, () => Promise<void>>
+    onFlushDraftsChange: (id: string, flush: (() => Promise<void>) | undefined) => void
+    flushDrafts: (id: string) => Promise<void>
+  } {
+    const registry = new Map<string, () => Promise<void>>()
+    return {
+      registry,
+      onFlushDraftsChange: (id, flush) => {
+        if (flush === undefined) registry.delete(id)
+        else registry.set(id, flush)
+      },
+      flushDrafts: async (id) => { await registry.get(id)?.() },
+    }
+  }
+
+  it('卡头 commitRename：脏模型 id 草案下改名——补盘先于 renameRoute（save→rename 调用序）且落盘成员含草案值', async () => {
+    const snapshot = readySnapshot({ routes: [FREE_INPUT_ROUTE], selectableProviders: FREE_INPUT_SELECTABLE })
+    const model = fakeModel(snapshot)
+    model.nextRename = { id: 'renamed-route', name: '新名', members: FREE_INPUT_ROUTE.members }
+    const wiring = wireRegistry()
+    const body = collectElements(viewModule.RouteCardBody({
+      t, route: FREE_INPUT_ROUTE, state: snapshot, model,
+      onToast: () => {}, onRenamed: () => {}, onFlushDraftsChange: wiring.onFlushDraftsChange,
+    }))
+    // 击键改草案（脏、不落盘）；卡体挂载即登记补盘出口。
+    ;(withAria(body, modelServiceZh['route.memberModel'])[0].props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'draft-model' } })
+    expect(model.saves).toHaveLength(0)
+    expect(wiring.registry.get('work-route')).toBeTypeOf('function')
+    // 卡头编辑器（startEditing 直挂输入分支——夹具无法从按钮态翻到输入态；flushDrafts 接线
+    // 同 RoutesView：按路由 id 从注册表取卡体出口）。
+    let renamedWith: string | undefined
+  let renamedFrom: string | undefined
+    const head = collectElements(viewModule.RouteNameEditor({
+      t, route: FREE_INPUT_ROUTE, model,
+      onRenamed: (oldId, newId) => { renamedWith = newId; renamedFrom = oldId },
+      flushDrafts: () => wiring.flushDrafts(FREE_INPUT_ROUTE.id),
+      startEditing: true,
+    }))
+    const nameInput = head.filter((element) => element.props.className === 'ms-input ms-route-name-input')
+    expect(nameInput).toHaveLength(1)
+    ;(nameInput[0].props.onChange as (event: { target: { value: string } }) => void)({ target: { value: '新名' } })
+    ;(nameInput[0].props.onBlur as () => void)()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(model.calls).toEqual(['save', 'rename'])
+    expect(model.saves).toHaveLength(1)
+    expect(model.saves[0].members[0].model).toBe('draft-model')
+    expect(model.renames).toEqual([{ oldId: 'work-route', newName: '新名' }])
+    expect(renamedWith).toBe('renamed-route')
+  })
+
+  it('修复条 applyFixRename：脏时间窗草案下改名——补盘先于 renameRoute 且落盘格点在场', async () => {
+    const windowed: RouteEntry = {
+      id: 'work-route',
+      name: '工作路由',
+      members: [{ ...member('alpha', 'a1', 1), condition: { type: 'window', window: emptyRouteWindowMask() } }],
+    }
+    const snapshot = readySnapshot({ routes: [windowed], registrationFailed: ['work-route'], selectableProviders: SELECTABLE })
+    const model = fakeModel(snapshot)
+    model.nextRename = { id: 'renamed-route', name: '新名', members: windowed.members }
+    const wiring = wireRegistry()
+    const body = collectElements(viewModule.RouteCardBody({
+      t, route: windowed, state: snapshot, model,
+      onToast: () => {}, onRenamed: () => {}, onFlushDraftsChange: wiring.onFlushDraftsChange,
+    }))
+    // 时间窗格点草案（脏、不落盘）。
+    const grids = body.filter((element) => element.type === TimeGridComponent)
+    expect(grids).toHaveLength(1)
+    const edited = emptyRouteWindowMask()
+    edited.days[0][0] = true
+    ;(grids[0].props.onChange as (mask: RouteWindowMask) => void)(edited)
+    expect(model.saves).toHaveLength(0)
+    // 修复条就地改名（输入 + 动作钮同屏在场，直调）。
+    const fixInput = body.filter((element) => element.props['aria-label'] === modelServiceZh['route.nameField'] && element.props.className === 'ms-input')
+    expect(fixInput).toHaveLength(1)
+    ;(fixInput[0].props.onChange as (event: { target: { value: string } }) => void)({ target: { value: '新名' } })
+    const apply = elementsWithClass(body, 'ms-button').filter((button) => textOf(button) === modelServiceZh['route.fixRenameApply'])
+    ;(apply[0].props.onClick as () => Promise<void>)()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(model.calls).toEqual(['save', 'rename'])
+    expect(model.saves).toHaveLength(1)
+    expect(model.saves[0].members[0].condition.window?.days[0][0]).toBe(true)
+    expect(model.renames).toEqual([{ oldId: 'work-route', newName: '新名' }])
+  })
+
+  it('非脏状态下改名零额外写盘（flushDrafts 只认脏标记，空操作不产生 save）', async () => {
+    const snapshot = readySnapshot({ routes: [ROUTE], registrationFailed: ['work-route'] })
+    const model = fakeModel(snapshot)
+    model.nextRename = { id: 'renamed-route', name: '新名', members: ROUTE.members }
+    const wiring = wireRegistry()
+    const body = collectElements(viewModule.RouteCardBody({
+      t, route: ROUTE, state: snapshot, model,
+      onToast: () => {}, onRenamed: () => {}, onFlushDraftsChange: wiring.onFlushDraftsChange,
+    }))
+    // 无草案击键：直接修复条改名。
+    const fixInput = body.filter((element) => element.props['aria-label'] === modelServiceZh['route.nameField'] && element.props.className === 'ms-input')
+    ;(fixInput[0].props.onChange as (event: { target: { value: string } }) => void)({ target: { value: '新名' } })
+    const apply = elementsWithClass(body, 'ms-button').filter((button) => textOf(button) === modelServiceZh['route.fixRenameApply'])
+    ;(apply[0].props.onClick as () => Promise<void>)()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(model.calls).toEqual(['rename'])
+    expect(model.saves).toHaveLength(0)
+    expect(model.renames).toEqual([{ oldId: 'work-route', newName: '新名' }])
+  })
+})
+
+describe('空态矩阵消费派生可用成员计数（MF-1-14）', () => {
+  /** 夹具不递归函数组件：EmptyMatrix 直挂（导出面 = RoutesView 生产消费 + 单测直挂）；
+   * 无空态时组件返回 null，collectElements 以空清单承接。 */
+  const emptyMatrix = (snapshot: RoutesSnapshot): FakeElement[] => {
+    const root = (viewModule as unknown as { EmptyMatrix: (props: Record<string, unknown>) => FakeElement | null }).EmptyMatrix({ t, state: snapshot })
+    return root === null ? [] : collectElements(root)
+  }
+
+  it('可见路由全员不可用（usableMembers 全 0）→ 第三空态；有可用成员 → 不渲染', () => {
+    const allUnavailable = readySnapshot({
+      routes: [ROUTE],
+      whitelist: ['work-route'],
+      usableMembers: new Map([['work-route', 0]]),
+    })
+    const elements = emptyMatrix(allUnavailable)
+    const titles = elementsWithClass(elements, 'ms-empty-title').map((title) => textOf(title))
+    expect(titles).toContain(modelServiceZh['routes.emptyMembersUnavailable'])
+
+    const hasUsable = readySnapshot({
+      routes: [ROUTE],
+      whitelist: ['work-route'],
+      usableMembers: new Map([['work-route', 2]]),
+    })
+    expect(elementsWithClass(emptyMatrix(hasUsable), 'ms-empty')).toHaveLength(0)
+  })
+
+  it('前两空态分流不变：无路由 / 有路由无一可见（第三态判定不越位）', () => {
+    const noRoutes = readySnapshot({ routes: [], whitelist: [] })
+    const titlesNoRoutes = elementsWithClass(emptyMatrix(noRoutes), 'ms-empty-title').map((title) => textOf(title))
+    expect(titlesNoRoutes).toEqual([modelServiceZh['routes.emptyNoRoutes']])
+
+    const noneVisible = readySnapshot({ routes: [ROUTE], whitelist: [], usableMembers: new Map([['work-route', 1]]) })
+    const titlesNoneVisible = elementsWithClass(emptyMatrix(noneVisible), 'ms-empty-title').map((title) => textOf(title))
+    expect(titlesNoneVisible).toEqual([modelServiceZh['routes.emptyNotWhitelisted']])
   })
 })

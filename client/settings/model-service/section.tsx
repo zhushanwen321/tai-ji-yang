@@ -120,8 +120,9 @@ export function ModelServiceSection({ t, close, remote, configForm }: ModelServi
   useEffect(() => {
     const providers = new ProvidersListModel({ remote, t, configForm })
     const models = new ModelsListModel({ remote, t })
-    // 路由视图模型（M2）：Config 快照 + 注册探测 + 成员可用性；翻译座位由 RoutesView 挂载时注入。
-    const routes = new RoutesListModel({ remote, configForm })
+    // 路由视图模型（M2）：Config 快照 + 注册探测 + 成员可用性；翻译座位构造器注入
+    //（providers/models 视图模型同款——构造到挂载之间 commit 双败的上报不落中文硬编码）。
+    const routes = new RoutesListModel({ remote, configForm, t })
     const unsubscribeProviders = providers.subscribe(() => rerender((count) => count + 1))
     const unsubscribeModels = models.subscribe(() => rerender((count) => count + 1))
     const unsubscribeRoutes = routes.subscribe(() => rerender((count) => count + 1))

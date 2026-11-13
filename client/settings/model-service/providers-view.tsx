@@ -26,8 +26,8 @@
  */
 import { useEffect, useSyncExternalStore } from 'react'
 import { isSelfManagedRef, registerPendingUnset, type PluginConfigFormLike } from '../../model-service/credentials-client'
+import { ROUTES_FIELD } from '../../model-service/config-fields'
 import { sanitizeRoutes } from '../../model-service/route-evaluate'
-import { ROUTES_FIELD } from '../../model-service/route-store'
 import {
   LLM_PI_AI_NS,
   listProviderDirectory,
@@ -75,23 +75,29 @@ export interface BuiltinCandidate {
   catalogType: boolean
 }
 
+/**
+ * 表单挂载态（单判别字段）：同一时间只有一个表单挂载——互斥由类型构造保证，不再靠
+ * 多字段写点纪律与逐字复位清单维持（对齐 models-view 的单判别对象形态）。
+ */
+export type ProvidersFormState =
+  | { kind: 'none' }
+  | { kind: 'addflow'; step: 'choose' | 'pick-builtin'; candidates: BuiltinCandidate[] }
+  | { kind: 'edit'; model: ProviderEditModel; mount: 'inline' | 'standalone' }
+
 /** 供应商视图快照（引用稳定）。 */
 export interface ProvidersListSnapshot {
   status: 'loading' | 'ready' | 'unavailable'
   rows: ProviderRow[]
-  /** 展开中的编辑模型（新建与编辑共用）。 */
-  editing: ProviderEditModel | undefined
-  /** 当前编辑是否新建。 */
-  addingNew: boolean
   /**
-   * 添加流程步骤态：choose = 选接入方式（内置/自定义两卡）；pick-builtin = 内置目录候选
-   * 列表；undefined = 不在添加流（编辑体挂载或纯列表）。与 editing 互斥（同一时间只有
-   * 一个表单挂载）。
+   * 表单挂载态：none = 纯列表；addflow = 添加流（choose = 选接入方式两卡；
+   * pick-builtin = 内置目录候选列表，candidates 进入该步骤时计算）；edit = 展开体
+   * （mount: inline = 行内展开编辑，standalone = 添加流落表单后的独立新建挂载点）。
    */
-  addingStep: 'choose' | 'pick-builtin' | undefined
-  /** pick-builtin 步骤的候选清单（进入该步骤时计算）。 */
-  builtinCandidates: BuiltinCandidate[]
-  /** 删除确认态（两段确认第一击后；routes = 受影响路由名——D3 删除流程的警告数据源）。 */
+  form: ProvidersFormState
+  /**
+   * 删除确认态（两段确认第一击后；routes = 受影响路由名——D3 删除流程的警告数据源）。
+   * 与表单挂载真交可并存：武装不清 form（两段确认第一击不拆表单），挂载翻转清武装。
+   */
   deleteArmed: { key: string; crossProfile: boolean; ref: string | undefined; name: string; routes: string[] } | undefined
   notice: string | undefined
   error: string | undefined
@@ -127,10 +133,7 @@ export class ProvidersListModel {
     this.state = {
       status: 'loading',
       rows: [],
-      editing: undefined,
-      addingNew: false,
-      addingStep: undefined,
-      builtinCandidates: [],
+      form: { kind: 'none' },
       deleteArmed: undefined,
       notice: undefined,
       error: undefined,
@@ -197,10 +200,10 @@ export class ProvidersListModel {
       // 目录型 key 集合（declared=false）：探测请求归一判据（目录型宿主短路不看 baseURL，
       // 见 discovery.discoverProviderModels 第三参说明）。
       catalogProviderKeys: new Set(this.state.rows.filter((candidate) => candidate.catalogType).map((candidate) => candidate.key)),
-      onSaved: () => { void this.reloadKeepingEditing(editing) },
+      onSaved: () => { void this.reloadAfterSave() },
     })
     this.focusModelId = focusModel
-    this.state = { ...this.state, editing, addingNew: false, addingStep: undefined, builtinCandidates: [], deleteArmed: undefined }
+    this.state = { ...this.state, form: { kind: 'edit', model: editing, mount: 'inline' }, deleteArmed: undefined }
     this.notify()
   }
 
@@ -208,7 +211,7 @@ export class ProvidersListModel {
   startAddFlow(): void {
     if (this.snapshot === undefined) return
     this.focusModelId = undefined
-    this.state = { ...this.state, editing: undefined, addingNew: false, addingStep: 'choose', builtinCandidates: [], deleteArmed: undefined }
+    this.state = { ...this.state, form: { kind: 'addflow', step: 'choose', candidates: [] }, deleteArmed: undefined }
     this.notify()
   }
 
@@ -216,24 +219,24 @@ export class ProvidersListModel {
   pickBuiltin(): void {
     if (this.snapshot === undefined) return
     const occupied = new Set(Object.keys(this.snapshot.providers))
-    const builtinCandidates: BuiltinCandidate[] = this.directory
+    const candidates: BuiltinCandidate[] = this.directory
       .filter((entry) => entry.settingsNs === LLM_PI_AI_NS && !occupied.has(entry.provider))
       .map((entry) => ({ key: entry.provider, name: entry.displayName, catalogType: entry.declared !== true }))
     this.focusModelId = undefined
-    this.state = { ...this.state, editing: undefined, addingNew: false, addingStep: 'pick-builtin', builtinCandidates, deleteArmed: undefined }
+    this.state = { ...this.state, form: { kind: 'addflow', step: 'pick-builtin', candidates }, deleteArmed: undefined }
     this.notify()
   }
 
   /** 添加流程返回第一步（候选清单丢弃）。 */
   backToChoose(): void {
-    if (this.state.addingStep === undefined) return
-    this.state = { ...this.state, addingStep: 'choose', builtinCandidates: [] }
+    if (this.state.form.kind !== 'addflow') return
+    this.state = { ...this.state, form: { kind: 'addflow', step: 'choose', candidates: [] } }
     this.notify()
   }
 
   /** 退出添加流程（不落任何草稿）。 */
   cancelAddFlow(): void {
-    this.state = { ...this.state, addingStep: undefined, builtinCandidates: [] }
+    this.state = { ...this.state, form: { kind: 'none' } }
     this.notify()
   }
 
@@ -249,10 +252,10 @@ export class ProvidersListModel {
       providers: this.snapshot.providers,
       // 与编辑流同形：保存成功保持展开——回执（已保存/凭据警告）可见可读，用户经「取消」
       // 返回列表（立即收起会让成功回执在渲染后几十毫秒内随卸载消失，任何人都看不到）。
-      onSaved: () => { void this.reloadKeepingEditing(editing) },
+      onSaved: () => { void this.reloadAfterSave() },
     })
     this.focusModelId = undefined
-    this.state = { ...this.state, editing, addingNew: true, addingStep: undefined, builtinCandidates: [], deleteArmed: undefined }
+    this.state = { ...this.state, form: { kind: 'edit', model: editing, mount: 'standalone' }, deleteArmed: undefined }
     this.notify()
   }
 
@@ -268,16 +271,16 @@ export class ProvidersListModel {
       providers: this.snapshot.providers,
       // 与编辑流同形：保存成功保持展开——回执（已保存/凭据警告）可见可读，用户经「取消」
       // 返回列表（立即收起会让成功回执在渲染后几十毫秒内随卸载消失，任何人都看不到）。
-      onSaved: () => { void this.reloadKeepingEditing(editing) },
+      onSaved: () => { void this.reloadAfterSave() },
     })
     this.focusModelId = undefined
-    this.state = { ...this.state, editing, addingNew: true, addingStep: undefined, builtinCandidates: [], deleteArmed: undefined }
+    this.state = { ...this.state, form: { kind: 'edit', model: editing, mount: 'standalone' }, deleteArmed: undefined }
     this.notify()
   }
 
   /** 收起编辑体（不落任何草稿）。 */
   collapse(): void {
-    this.state = { ...this.state, editing: undefined, addingNew: false, addingStep: undefined, builtinCandidates: [] }
+    this.state = { ...this.state, form: { kind: 'none' } }
     this.notify()
   }
 
@@ -306,31 +309,27 @@ export class ProvidersListModel {
     return sanitizeRoutes(section[ROUTES_FIELD])
   }
 
-  /** 第二击：真正删除（跨 profile 确认语义 = 用户点了第二击即确认）。全链路统一异常捕获
-   * （MF-1-4）：mutate 传输层 reject 向上抛时给可重试的错误条，不静默卡流程。 */
+  /** 第二击：真正删除（跨 profile 确认语义 = 用户点了第二击即确认）。写通道 rejection
+   * 契约 = 结果值不外抛（settings-client mutateLlmPiAiOps 单点收敛；待清理登记的 Config
+   * 写通道同为结果值，config-form-rmw attemptRMW），无 catch。 */
   async confirmDelete(): Promise<void> {
     const armed = this.state.deleteArmed
     if (armed === undefined || this.snapshot === undefined) return
     this.state = { ...this.state, deleteArmed: undefined, notice: undefined, error: undefined }
-    try {
-      const result = await deleteProvider(this.deps.remote, {
-        key: armed.key,
-        existing: this.snapshot.providers[armed.key],
-        crossProfileConfirmed: true,
-        registerPendingUnset: (ref) => registerPendingUnset(this.deps.configForm, ref),
-      })
-      if (result.kind === 'rejected') {
-        this.state = { ...this.state, error: result.message }
-        this.notify()
-        return
-      }
-      await this.load()
-      if (result.pendingUnset !== undefined) {
-        this.state = { ...this.state, notice: result.unsetMessage }
-        this.notify()
-      }
-    } catch (error) {
-      this.state = { ...this.state, error: this.deps.t('delete.failed', { detail: messageOf(error) }) }
+    const result = await deleteProvider(this.deps.remote, {
+      key: armed.key,
+      existing: this.snapshot.providers[armed.key],
+      crossProfileConfirmed: true,
+      registerPendingUnset: (ref) => registerPendingUnset(this.deps.configForm, ref),
+    })
+    if (result.kind === 'rejected') {
+      this.state = { ...this.state, error: result.message }
+      this.notify()
+      return
+    }
+    await this.load()
+    if (result.pendingUnset !== undefined) {
+      this.state = { ...this.state, notice: result.unsetMessage }
       this.notify()
     }
   }
@@ -346,7 +345,7 @@ export class ProvidersListModel {
     this.notify()
   }
 
-  private async reloadKeepingEditing(_editing: ProviderEditModel): Promise<void> {
+  private async reloadAfterSave(): Promise<void> {
     // 保存成功：刷新行数据与徽章（编辑模型的 diff 基线与 revision 已随回执自更新），保持展开。
     await this.load()
     this.deps.onSaved?.()
@@ -455,8 +454,8 @@ export function ProvidersView({ t, model, jumpTarget, onJumpConsumed }: Provider
           </button>
         </div>
       )}
-      {/* 添加流程（choose / pick-builtin）：与编辑体互斥挂载——同一时间只有一个表单在树上。 */}
-      {state.addingStep === 'choose' && (
+      {/* 添加流程（choose / pick-builtin）：与编辑体互斥挂载——form 单判别字段，同一时间只有一个表单在树上。 */}
+      {state.form.kind === 'addflow' && state.form.step === 'choose' && (
         <div className="ms-addflow">
           <div className="ms-addflow-cards">
             <button type="button" className="ms-addflow-card" onClick={() => { model.pickBuiltin() }}>
@@ -473,13 +472,13 @@ export function ProvidersView({ t, model, jumpTarget, onJumpConsumed }: Provider
           </div>
         </div>
       )}
-      {state.addingStep === 'pick-builtin' && (
+      {state.form.kind === 'addflow' && state.form.step === 'pick-builtin' && (
         <div className="ms-addflow">
           <div className="ms-compat-head">{t('addflow.pickTitle')}</div>
           <div className="ms-note">{t('addflow.pickNote')}</div>
-          {state.builtinCandidates.length === 0 && <div className="ms-note">{t('addflow.pickEmpty')}</div>}
+          {state.form.candidates.length === 0 && <div className="ms-note">{t('addflow.pickEmpty')}</div>}
           <div className="ms-addflow-list">
-            {state.builtinCandidates.map((candidate) => (
+            {state.form.candidates.map((candidate) => (
               <div key={candidate.key} className="ms-addflow-item">
                 <span className="ms-addflow-item-name">{candidate.name}</span>
                 <span className="ms-addflow-item-note">{candidate.key}</span>
@@ -501,12 +500,12 @@ export function ProvidersView({ t, model, jumpTarget, onJumpConsumed }: Provider
           </div>
         </div>
       )}
-      {/* 新建供应商（addingNew）：编辑体独立挂载点。行循环内 expanded 条件含 !addingNew 对新建
-          恒 false，且目录为空时循环体不存在——不加该分支新建体永远不渲染。 */}
-      {state.addingNew && state.editing !== undefined && (
+      {/* 新建供应商（standalone 挂载）：编辑体独立挂载点。行循环内 expanded 条件限定
+          mount: inline 对新建恒 false，且目录为空时循环体不存在——不加该分支新建体永远不渲染。 */}
+      {state.form.kind === 'edit' && state.form.mount === 'standalone' && (
         <ProviderEditBody
           t={t}
-          model={state.editing}
+          model={state.form.model}
           focusModel={model.focusModelId}
           onCancel={() => { model.collapse() }}
         />
@@ -520,7 +519,8 @@ export function ProvidersView({ t, model, jumpTarget, onJumpConsumed }: Provider
           </div>
         ))}
         {editableRows.map((row) => {
-          const expanded = state.editing !== undefined && !state.addingNew && state.editing.key === row.key
+          const inlineEdit = state.form.kind === 'edit' && state.form.mount === 'inline' ? state.form : undefined
+          const expanded = inlineEdit !== undefined && inlineEdit.model.key === row.key
           // armed = 行是否处于删除确认态（布尔）；armedInfo = 确认态数据本体（警示文案的数据源）。
           const armedInfo = state.deleteArmed?.key === row.key ? state.deleteArmed : undefined
           const armed = armedInfo !== undefined
@@ -561,10 +561,10 @@ export function ProvidersView({ t, model, jumpTarget, onJumpConsumed }: Provider
                   <button type="button" className="ms-button" onClick={() => { model.cancelDelete() }}>{t('action.cancel')}</button>
                 </div>
               )}
-              {expanded && state.editing !== undefined && (
+              {expanded && inlineEdit !== undefined && (
                 <ProviderEditBody
                   t={t}
-                  model={state.editing}
+                  model={inlineEdit.model}
                   focusModel={model.focusModelId}
                   onCancel={() => { model.collapse() }}
                 />
@@ -581,9 +581,4 @@ export function ProvidersView({ t, model, jumpTarget, onJumpConsumed }: Provider
 
 function isNonEmptyRecord(value: unknown): boolean {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length > 0
-}
-
-/** 异常 → 展示消息（删除链路 catch 的 detail 插值源，MF-1-4）。 */
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
