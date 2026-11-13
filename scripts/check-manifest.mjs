@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * 最小 manifest 自检：package.json 契约（五字段齐备 + exports 各条件路径存在）+ cordis.patch.yml 结构
- * + 依赖键集边界 + **浏览器半场的宿主服务声明**。多包适配（opendesign-design-mode 设计 D10）：对 workspace 每个包
+ * + 依赖键集边界 + **浏览器半场的宿主服务声明**。多包适配（设计 D10）：对 workspace 每个包
  * 逐包执行（包清单来自 scripts/workspace-packages.mjs，与 pnpm-workspace.yaml 声明对账）；
  * 断言逻辑仍单处归属本文件——通用断言逐包跑，包特有断言按包声明选择。
  *
@@ -70,7 +70,7 @@ const REQUIRED_SERVICE_INJECT = [
 const ROOT_ONLY_CHECKS = new Set(['tai-ji-yang-shell'])
 
 /**
- * preset 注册断言（opendesign-design-mode U1 验收条款③ / p1-shell-identity RL1 的注册面机器化）：**按登记执行**——只有
+ * preset 注册断言（U1 验收条款③ / p1-shell-identity RL1 的注册面机器化）：**按登记执行**——只有
  * scripts/workspace-packages.mjs 登记了 `preset` 字段的包才跑本断言（config.id 裁决值取
  * 自登记，单一权威）；未登记的子包显式播报不适用，避免「所有子包都被假定有 preset」的
  * 误伤（未来出现无 preset 的功能子包时无需改本文件）。

@@ -1,6 +1,6 @@
 {
   "name": "tai-ji-yang-shell",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "TaiJi visual identity and project-grouped sidebar as a DeepSeek Harness (DSH) plugin bundle",
   "license": "MIT",
   "type": "module",
@@ -13,7 +13,6 @@
     "build": "node scripts/build-client.mjs",
     "build:self-test": "node scripts/build-client.mjs --self-test",
     "test": "node node_modules/vitest/vitest.mjs run --exclude \".agents/workflows/tests/**\" --exclude \"packages/*/tests/e2e/**\"",
-    "test:e2e:design-mode": "node packages/opendesign-design-mode/tests/e2e/web.spec.mjs",
     "check": "node scripts/check-all.mjs",
     "check:static": "node scripts/check-all.mjs --static",
     "workflows:build": "node .agents/workflows/scripts/build-workflows.mjs",

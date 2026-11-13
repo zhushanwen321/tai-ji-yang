@@ -9,9 +9,8 @@
 | 包 | 目录 | 职责 | 用户文档 |
 |----|------|------|----------|
 | `tai-ji-yang-shell`（根包） | `.`（仓根） | 太极视觉身份（染色三层 + 槽位贡献）与项目分组侧栏 | 仓库根 `README.md`（正文主体） |
-| `opendesign-design-mode`（子包） | `packages/opendesign-design-mode` | OpenDesign 设计模式：preset 入口 + 设计预览面板 + 资产定位 / 会话组装 / 材质化 / 质量环 / 协议登记 | `packages/opendesign-design-mode/README.md` |
 
-本文以下章节描述根包 tai-ji-yang-shell 的架构；子包架构见文末「子包 opendesign-design-mode 架构简述」节。
+本文以下章节描述根包 tai-ji-yang-shell 的架构。
 
 ## 1. 包形态：单包承载两个半场
 
@@ -190,26 +189,6 @@ single 槽的槽规则 = 按 priority 升序、数值最小者渲染，同优先
 - 代码高亮、工具 JSON 面板、附件文件图标的功能色保持不动（这些颜色承载高差异化信息，改色会削弱信息功能）。
 - 字号与字族轴完全交回宿主；分区独立字号不做（宿主字号维度按内容类型分轴，与按界面分区定档的两套维度对不上，硬映射只能造出无语义档位）。
 - 第三方主题插件不承诺共存（覆盖层叠加结果不可保证）；产品图标不替换（逐 id 图标契约需逐个重制）。
-
-## 子包 opendesign-design-mode 架构简述
-
-子包交付 OpenDesign 设计模式：新会话选择器出现「OpenDesign 设计模式」preset 入口，定位本机 OpenDesign（下称 OD）安装资产驱动设计会话，产物在右侧栏设计面板预览；未装 OD 时入口显式降级提示。形态与根包同构的双半场：Node 半场源码在 `lib/*.ts`（经 esbuild transform 成同名 `.js` 同仓入库，不打包——每个 exports 子路径是宿主 loader 独立 import 的入口），浏览器半场在 `client/`。本节是索引级简述，模块级设计裁决以各源码文件头注释为权威（内含设计编号的依据链）。
-
-- `cordis.patch.yml`：两行 insert——本包主行（`id: opendesign-design-mode`，承载包级生命周期与跨子插件协调）+ 设计模式 preset 行（`@deepseek-ai/dsh-agent-preset`，新会话选择器入口）。preset 的 `config.plugins` 无隐式工具基线，全部子插件逐项显式声明：DSH standard 模式全量基线（含跨版本缺包行的 disabled 声明）+ 本包四子插件（persona / doctor 命令 / 设计面板 client / 产物伺服 host），其注册声明由 `scripts/check-manifest.mjs` 逐项断言。
-- `lib/index.js`：包主行的 host 半入口——订阅宿主 `agent-preset/selected` 事件，在会话选定设计 preset 时触发设备壳文件材质化；同一事件接线质量环监听（`startQualityWatchForSession`，presetId 过滤，监听器集合挂进程 effect），链路 = watcher 监听 → lint 检查 → feedback 仅 P0 回注。
-- `lib/persona.ts`：persona 子插件——启动时探测 OD 资产，探测成功则调用组装器产出设计模式系统提示词并注册为 preset 作用域 section；探测失败以携带恢复动作的 diagnostic 激活失败，宿主把该 preset 标记 broken（选择器自动过滤、设置页显示诊断与恢复动作），绝不进入提示词残缺的坏会话。
-- `lib/locate/`：OD 资产定位。`manifest-discovery.ts` 搜索式清单发现（受限深度遍历找 `open-design.json` + 内容特征校验 + roster 核验，缺件显式失败）；`version-profile.ts` 版本画像（多候选按「环境变量覆盖 > 渠道优先级 > 路径序」选定，终态三分——可用 / missing（未安装）/ error（已装但资产损坏），供 persona 区分降级文案）+ 默认资产读取器；`asset-catalog.ts` 资产目录摘要扫描（craft / design-templates / design-systems 三目录逐包摘要与三态降级，compose 三个自产段与 doctor ⑨ 的唯一数据源，路径由 `version-profile.ts` 的 `deriveCatalogDirs` 派生）；`platform.ts` / `platform-macos.ts` 平台策略（枚举候选资源根，V1 仅 macOS 有实策略，其余平台留接口空位返回空候选）。
-- `lib/compose/`：设计会话组装。`bundle.ts` 组装编排（从清单读声明路径 → 逐字直读 core / orchestration 两文本 → 改写 → 占位符 → 事实块 → 路由指令段）；`context-facts.ts` 基本事实块（设备壳可用性 + layout.css 指针两个最小字段）；`placeholders.ts` 占位符替换（OD 升级防御，渲染经与路由段共用的白名单过滤）；`task-routing.ts` 路由指令段（列出八类可交付任务及其任务档路径 + 形状包清单段 + ppt 条目 deck 协议指针，任务档由模型首轮问答选定后用文件工具自读）；`design-systems.ts` manifest 感知设计系统清单段（name + category + USAGE/components/tailwind 深层文件指路）。
-- `lib/materialize/copy.ts`：材质化器——会话创建时把设备壳支撑文件与 deck 协议文件（共 5 个小文件，含 `.od-frames/deck-framework.md` 三段结构：适用限定句 / Existing deck 兼容段 / New deck 规范段——文件名对齐 OD 上游管理名约定，OD 升级后任务档 fallback 直达）无条件全量重铺进会话工作目录的 `.od-frames/` 子目录；纯复制器语义，源侧只读，写侧收在 `.od-frames/` 约定子目录内，失败 fail-fast 由包主行监听记日志（不阻断会话）。
-- `lib/rewrite/`：降级改写器。`rules.ts` 五族规则（cli-path / ui-guidance / two-turn-protocol / question-form / media-missing）按资产代际分单（代际按文本标记探测，每条规则声明生效代际）；`apply.ts` 逐条应用并产出逐条命中记录——代际适用规则零命中即规则失配信号，是 OD 升级漂移的第一发现通道。
-- `lib/protocols/`：协议文本登记层（本轮 AX3 范围化例外——安装盘无静态源、正源在 OD 源码仓的 daemon 侧协议文本，派生副本进插件仓并承担对账义务）。`panel.ts` 评审团协议骨架（五面板角色/输出标记语法/收敛规则；阈值与轮数从 preset config 读、缺省沿用 OD 缺省 8.0/3；正源 brand/skill 输入槽转为协议段内占位指引）；`deck.ts` deck 协议三段结构派生；`anchors.ts` 版本锚登记与比对纯函数（正源 commit + 骨架 sha256）。对账通道 = doctor 第⑩节。
-- `lib/quality/`：质量环。`lint.ts` 反 AI 味检查器纯函数（检查项清单派生自 OD daemon lint-artifact 并附出处标注与版本锚；纯文本匹配零 npm 依赖）；`watcher.ts` 会话目录监听（fs.watch 递归 + .html/.htm 过滤 + 排除 `.od-frames/`、`.od-quality/` 与 `.od-comments/` + 防抖 + 完整性哨兵（文末 `</html>` 判定）+ 快照豁免集（按 report.jsonl 身份记录三类命中分类）+ 补写步骤接线（三类分类后、lint 前调用补写器并写回磁盘——lint 与回注恒见补写后内容；资格谓词 = 会话产物两类，用户项目文件字节不变；写回前 mtime/size 并发复核，窗口内模型再写盘即放弃保新内容）+ 错误自毁写回记录）；`backfill.ts` 锚属性补写器纯函数（产物写盘完整后为缺锚属性的 section 起始标签补写 `data-od-id`：判定口径与 lint P2-1 完全对齐——全部 section 起始标签 + 注释区间排除 + 已带锚属性跳过，另加引号配对写盘防线；id 内容指纹式 `od-sec-<hash8>` 同文件查重唯一；UTF-8 无损校验未过整体放弃保持原字节；引号配对不完整的标签逐个跳过——被拦标签处保持原字节）；`feedback.ts` P0 回注器（steer/followup 双通道经宿主 agents 服务；UserMessage 字面量构造，source.kind='opendesign-design-mode/lint' 自报身份 + 作用域句；内容指纹去重 + 每会话每文件回注上限；P1/P2 与超限发现落 `.od-quality/report.jsonl`，行 type 词表四值 watcher / artifact / finding / anchor-backfill——第四值为补写计数行，no-op 与防线放弃也记行，doctor 第⑪节逐行可回查）。机器检查是宿主侧行为，不解除模型 ship-on-write 禁令；监听器生命周期 = 进程 effect + 错误自毁（宿主无会话结束事件）。
-- `lib/comments/`：评论回路。`contract.ts` 共享契约（thread schema、可选元素锚点 `CommentAnchor {level, sel}`（三级降级词表 id / data / path，sel 上限 500；data 级对齐产物既有锚属性 `data-od-id` / `data-screen-label`，与 lint P2-1 与 deck 协议模板的锚属性同源——不新造属性名；读侧宽容，旧文件无 anchor 照常载入）、lifecycle × delivery 词表、五条写通道路由、来源 kind 的单一归属，U1-U4 一律 import 禁止字面量复制）；`store.ts` 会话工作目录下 `.od-comments/comments.json` 为唯一权威（进程内互斥队列 + lock 文件 + tmp/rename 原子写；损坏文件读侧报错不重建、写侧拒写不覆盖；create 写入侧校验锚点词表与 sel 长度）；`thread.ts` 显式状态机（lifecycle × delivery 双维正交，17 条转移表，表外 fail-fast）；`feedback.ts` 三段回注消息（自报身份行 + 围栏 JSON 载荷（线程带锚点时含同一 anchor）+ 改稿指引（含锚点选择器定位说明与「重写保留 id 与 data-od-id / data-screen-label 锚属性」指令）；source.kind='opendesign-design-mode/comment' 独立 kind + 五字段；追加评论回注载荷恒带线程首评锚点）并复用质量环 `deliverFeedback` 双通道投递、回写线程 delivery；`pick-script.ts` 拾取脚本源串（沙箱 iframe 内浏览器 JS：悬停高亮 / 点击选中 / 评论输入框 / 编号徽章 / 锚点三级降级生成 / locate 定位，桥报文收发见 client 拾取桥条目）。
-- `lib/serve/`：产物伺服与评论写通道。`artifacts-route.ts` 注册 webServer 前缀路由 `/opendesign/artifacts/<sessionId>/<产物相对路径>`（伺服根 = 会话工作目录，不可得即 404，绝不回退部署级目录；每请求先过鉴权围栏，路径拼接后防穿越校验）；HTML 响应在响应拼接点动态注入拾取脚本标签（磁盘产物字节不变——注入只发生在内存响应体；注入谓词 = GET × text/html × 产物相对路径不以 `.od-frames/` 前缀开头，HEAD 请求与非 HTML 资源不注入；HTML 响应附内容版本 ETag 标头（mtime+size 摘要），供面板改稿可见性探针比对）；同文件装配 `comments-api.ts`——经 connection.fetch 注册器注册五条 `/api/opendesign-design-mode.comments` 路由（GET 基路径列表 + POST .create/.reply/.retry/.resolve；.create 载荷校验含可选 anchor 分支——level 词表外 / sel 越界 400，缺省向后兼容），鉴权由宿主 /api 共享层承担（插件 handler 不自查），落点经 `session-cwd.ts` 解析后做词法 resolve + realpath 包含双层校验；`session-cwd.ts` 是会话工作目录的唯一解析通道（材质化写入目标、伺服根与评论落点共用同一函数）。
-- `lib/commands/doctor.ts`：`/opendesign-doctor` 诊断命令——十二节结构化文本报告（V1 八节：安装形态与资源根、清单路径与版本、roster 完整性、改写规则命中清单、材质化状态、资产代际提示、逐项恢复动作、止损警示；+ ⑨ 资产丰富度（craft 册数/形状包数与解析异常/manifest 命中/清单段注入行数与降级恢复动作）+ ⑩ 协议与检查器对账（版本锚、源码仓 clone 探测——clone 路径经命令参数登记不写死、ok/drift/无法比对三态）+ ⑪ 质量发现（`.od-quality/report.jsonl` 读侧：发现清单、产物写盘身份记录、锚属性补写记录与监听器状态——状态按最后记录推定呈现，resume 新进程未刷新时如实标注）+ ⑫ 评论环（`.od-comments/comments.json` 读侧：文件存在性与线程计数、delivery 状态分布、parse 健康度（损坏时给手工修复或删除重建的恢复动作，插件不自动重建）、写通道路由族声明与注册状态口径））。
-- `client/`：浏览器半场。`preview-tab/index.tsx` 注册右侧栏 design tab 与面板体（地址可解析为产物时呈现 iframe 视图，否则回落产物列表，行点击在本面板内载入）；面板体是拾取桥的宿主侧端点与评论编排方（picked → 补齐落点调写通道 → submit-result 回执；就绪态管理——ready 握手前评论模式开关与定位按钮禁用；anchors 按线程集下发、anchors-status 失效回报驱动侧栏标注；桥报文判定与控制器独立于渲染在 `preview-tab/pick-bridge.ts`，报文契约 = {v:1, type:'odp-pick:<动作>', payload}，来源经 event.source 对象同一性校验）；面板体同时消费宿主 ctx.layout 做布局联动（面板挂载生命周期内首次进入 iframe 模式 × 设计会话时自动收起左侧边栏并记还原义务，实例卸载时反向还原恰一次，面板头部「侧栏」按钮手动接管）；`comments/panel.tsx` / `comments/api.ts` 是评论侧栏（仅设计会话 × iframe 模式 × 有当前产物时出现；头部评论模式开关 / 线程列表 / 锚点行与失效态 / 定位 / 追加输入 / 四值投递徽标 / 重试投递 / resolve / 损坏错误态；首评无直发输入框，唯一入口为产物内拾取）与写通道 fetch 封装；`preview-tab/artifact-list.tsx` / `iframe-view.tsx` / `locales.ts` / `panel.css` 是面板的产物列表（含行内评论计数徽标）、iframe 视图（sandbox="allow-scripts" 沙箱 + 桥 message 监听 + 内容版本 HEAD 探针——ETag 变化即重挂 iframe 触发 ready 二次握手与徽章重建）、双语字典与样式；`present-card-link.ts` 是产物地址契约（present 交付卡片点击 → 设计面板的路由链路，tab 注册与面板体共用同一份解析判定）。
-
-用户侧说明（功能、安装、诊断命令、V1 边界）见 `packages/opendesign-design-mode/README.md`。
 
 ---
 

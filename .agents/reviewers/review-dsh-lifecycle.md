@@ -20,7 +20,6 @@ task prompt 中必须包含：
 1. `AGENTS.md` ——「包结构」「领域边界」节（贡献点挂 `ctx.effect` 并返回 disposer）。
 2. `docs/ARCHITECTURE.md` ——第 2 节（Node 半场与探针）、第 3 节（物化契约与装配序）、第 5 节（覆盖层 disposer 托管）、第 12 节（禁用与卸载语义）。
 3. `docs/DSH-PLUGIN-RULES.md` ——第 4 节（生命周期与持久状态）。
-4. `packages/opendesign-design-mode/README.md` ——全文：子包用户说明（功能、安装、诊断命令、V1 边界）。
 
 ## 通用判据（read 引用，不内嵌）
 
@@ -42,14 +41,6 @@ task prompt 中必须包含：
 7. **首装与迟到值**：主题覆盖层首装即注册（新装用户不等第一次点选就看到默认色玄）；持久值首次到达换层、经 `ctx.effect` 托管；持久通道装载期只读初值不写——装载期出现「读持久值后立刻写回」的形态必须有对应理由。
 8. **服务缺失降级**：可选服务缺失时保持不激活或给出可行动诊断，不在正常 web profile 上误报、不静默吞错；诊断信息指向恢复动作。
 9. **每包两半场生命周期一致**：每个包 = profile 里的单行条目，包内两个半场（Node 半场 + 浏览器半场）同装、同卸、同禁用；根包与子包是两条互不牵连的独立条目，卸载其一不影响另一包——改到任一半场的装载 / 清理路径时核对同包另一半不受牵连（Node 半场探针反注册与浏览器半场装配序各自独立成立）。
-
-## 子包判据（opendesign-design-mode）
-
-diff 触及 `packages/opendesign-design-mode/` 时逐条核对本节；未触及则跳过。机器分工：`tests/uninstall-cleanliness.spec.ts` 是根包护栏，子包卸载清洁度当前无机器护栏——本节各条由本维度人工核对。
-
-1. **贡献点 disposer 全覆盖**：子包每个贡献点（`/opendesign/artifacts` 伺服路由、`/opendesign-doctor` 命令、右侧栏设计 tab 类型与面板槽位注册、locale 字典）挂 `ctx.effect` 并返回 disposer，卸载即撤除；diff 新增贡献点而无清理路径，按最高级发现处理。
-2. **preset 撤销语义**：卸载子包后 preset 行与其 `config` 痕迹（面板入口、命令、伺服路由、子插件行）随 profile 行移除一并回落——核对本包主行与 preset 行各自可被独立撤销，撤销后不在宿主 profile 里残留 config 片段；禁用（disable，贡献点撤除、Config 数据留存）与卸载（remove，profile 行移除、Config 随行消失）的痕迹差异不混淆。
-3. **失败不拖垮宿主启动**：`/opendesign-doctor` 命令注册与 `/opendesign/artifacts` 路由注册失败时降级留痕（诊断信息指向恢复动作），不以上抛异常拖垮宿主启动或其他插件装载；OpenDesign 未安装是预期形态，按显式降级处理而非故障。
 
 ## 执行步骤
 

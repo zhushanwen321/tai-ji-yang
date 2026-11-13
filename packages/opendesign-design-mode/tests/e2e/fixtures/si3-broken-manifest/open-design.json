@@ -1,7 +1,0 @@
-{
-  "$fixtureSource": "SI3 假阳性形态 fixture：本文件是故意损坏的清单（截断 JSON，无法解析），用于断言诊断文案区分「未检测到 OpenDesign」与「检测失败请重启 DSH 重试」（信号-蕴涵表 SI3）。截断点选在 od.kind 行后，文件名与结构开头与真清单无异。禁止修复——损坏即其功能。对账基准见 tests/fixtures/mini-od 同名文件。",
-  "specVersion": "1.0.0",
-  "name": "od-next-strategy",
-  "version": "3.3.8",
-  "od": {
-    "kind": "scenario",

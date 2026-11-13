@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 多包 workspace 的包枚举单源（opendesign-design-mode 设计 D10：单包仓 → 多包容器）。
+ * 多包 workspace 的包枚举单源。
  *
  * 仓根 = tai-ji-yang-shell；功能型子包逐个落 `packages/<name>/`。构建（build-client.mjs）
  * 与六个静态检查脚本（check-*.mjs）都从这里拿包清单与每包的构建声明——清单改动只动本
@@ -36,19 +36,7 @@ export const ROOT_PACKAGE = {
 }
 
 /** 子包登记（每加一个功能型子包：此处登记一行 + pnpm-workspace.yaml 已有 packages/* 通配）。 */
-export const CHILD_PACKAGES = [
-  {
-    name: 'opendesign-design-mode',
-    dir: 'packages/opendesign-design-mode',
-    clientEntry: 'client/preview-tab/index.tsx',
-    nodeHalf: { kind: 'transpile-lib' },
-    // preset 登记：该包 cordis.patch.yml 声明 agent-preset 行时在此登记其 config.id 裁决值
-    // （roster / 新会话选择器 / 会话归属记录以它作标识）。check-manifest 的 preset 注册断言
-    // 按本字段判定与取值；无 preset 的子包不登记本字段，断言显式播报不适用——判定权威在
-    // 登记表，不在「是否根包」的二分。
-    preset: { id: 'opendesign' },
-  },
-]
+export const CHILD_PACKAGES = []
 
 /**
  * 展开 pnpm-workspace.yaml 的 packages 声明为实际包目录集合。

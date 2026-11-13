@@ -50,7 +50,7 @@ const ROOT = WORKSPACE_ROOT
 const SELF = fileURLToPath(import.meta.url)
 
 /**
- * 默认扫描根（相对仓库根），按包枚举（opendesign-design-mode 设计 D10）：每包扫「真实会被装载的源码」——
+ * 默认扫描根（相对仓库根），按包枚举（设计 D10）：每包扫「真实会被装载的源码」——
  * 根包的 Node 半场入口与浏览器半场目录；子包为 lib/（host 半源码与产物同批入库，内容
  * 等价）与 client/（浏览器半场源）。包清单来自 scripts/workspace-packages.mjs，新包落盘
  * 后自动进入扫描范围，无需改本脚本。也可在命令行追加路径供人工核对。

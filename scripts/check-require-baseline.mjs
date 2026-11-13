@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * p1-shell-identity 红灯 RL5 静态自检：每个包浏览器半场产物 `lib/client.js` 里的 `require("…")` 字面量集合 ⊆ 宿主
- * 模块表基线。多包适配（opendesign-design-mode 设计 D10）：包清单来自 scripts/workspace-packages.mjs，逐包审计
+ * 模块表基线。多包适配（设计 D10）：包清单来自 scripts/workspace-packages.mjs，逐包审计
  * 同一基线（宿主模块表是仓级契约，各包共用）。
  *
  * 为什么需要这条断言（p1-shell-identity 设计 AS7 / D1 / D3）：宿主只 seed 11 个平台模块（`PLATFORM_MODULES`）。

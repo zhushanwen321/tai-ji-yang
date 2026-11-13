@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * p1-shell-identity 红灯 RL7 静态自检：每个包的 dependencies 与 peerDependencies 键集不含 @deepseek-ai/dsh-client-*。
- * 多包适配（opendesign-design-mode 设计 D10）：包清单来自 scripts/workspace-packages.mjs，逐包执行同一断言。
+ * 多包适配（设计 D10）：包清单来自 scripts/workspace-packages.mjs，逐包执行同一断言。
  *
  * 为什么需要这条断言（p1-shell-identity 设计 §3.3.3 / D3「零 npm 运行时依赖」裁决）：npm 上 @deepseek-ai/dsh-client-*
  * 的 latest 与 DSH 当前主版本差两代（ui-slots latest = 0.0.1-rc.1，next 才是 0.2.2-rc.1），

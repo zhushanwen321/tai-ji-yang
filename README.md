@@ -73,7 +73,7 @@ token **每次启动都重新生成**，且只绑 127.0.0.1（本机访问）。
 
 ### npm 安装
 
-两个包都发布在 npm（`tai-ji-yang-shell` 与 `opendesign-design-mode`）。npm 安装得到的目录含产物与 patch，可像本地路径一样安装：
+`tai-ji-yang-shell` 发布在 npm。npm 安装得到的目录含产物与 patch，可像本地路径一样安装：
 
 ```bash
 npm install tai-ji-yang-shell
@@ -286,22 +286,12 @@ cd ~/.dsh/profiles/<profile> && pnpm install
 
 ## 多包结构
 
-本仓是 pnpm 多包 workspace：根包 = `tai-ji-yang-shell`（本 README 主体描述的包），功能型子包逐个落 `packages/<name>/`。当前子包：`packages/opendesign-design-mode`——OpenDesign 设计模式插件包（新会话选择器出现「OpenDesign 设计模式」入口，定位本机 OpenDesign 资产驱动设计会话：资产清单注入 + 工艺手册指路 + 产物机器检查回注 + 协议级演示稿，产物在右侧栏设计面板预览；未装 OpenDesign 时入口显式降级提示）。
+本仓是 pnpm 多包 workspace：根包 = `tai-ji-yang-shell`（本 README 主体描述的包），功能型子包逐个落 `packages/<name>/`（当前无子包）。
 
 - **包清单**：`pnpm-workspace.yaml` 声明 `packages/*`；`scripts/workspace-packages.mjs` 登记每包构建声明并与之对账（不同步即构建/检查失败）。
 - **构建**：`pnpm build`（= `node scripts/build-client.mjs`）逐包产出各包 `lib/`；各包产物随仓库交付（与根包同一纪律：`lib/` 入库、先构建再安装）。
 - **检查**：`pnpm check:static` / `pnpm check` 对每包执行同一套静态断言（包特有断言按包选择）；任一包红灯即整体红灯。
 - **安装**：每包是独立的 DSH 插件（各自的 `cordis.patch.yml` 与 `package.json` 双字段版本门禁），可独立安装到不同 profile；根包与子包互不牵连，卸载其一不影响另一包。
-
-### opendesign-design-mode 的 V1 边界与交付说明
-
-- **可交付范围（V1）**：八类 HTML 文件产物——原型、演示稿（ppt）、文档、营销源码、动效源码（HTML 部分）、HyperFrames 动效源码、网页复刻、webgl。**图片/视频/音频成片生成不在 V1 范围**（依赖 OpenDesign 自身的 media 管线，纯 DSH 环境无等价物）：会话中提出此类请求时模型会如实说明并以 HTML 源码形态替代交付。live-artifact（数据看板自动刷新类产物）同样归后续版本。
-- **资产注入**：设计会话系统提示词含本机资产清单——形状包清单段（一行一包：目录名 + 模式 + 描述首句 + 中文触发词摘录）、craft 工艺手册指路块（形状包 `craft.requires` 声明的手册按根路径自读并遵循）、manifest 感知设计系统清单段（品牌名 + 品类 + USAGE.md / components.html / tailwind-v4.css 深层文件指路）；任一目录缺失时对应段显式降级为空清单指引，会话仍可用。
-- **演示稿形态**：演示稿带 deck 协议信号——会话目录铺 `.od-frames/deck-framework.md` 协议文件（协议级翻页 / 打印分页 / OD Deck Protocol v1），ppt 任务档条目带指针，模型自读协议文件后按规范产出（协议级翻页与 Save-as-PDF 多页分页可用）。
-- **产物质量环**：设计会话工作目录落盘的 HTML 产物经宿主侧机器检查（反 AI 味检查项，与 OpenDesign 上游检查器同源移植）；P0 发现自动回注会话（消息自报 `opendesign-design-mode/lint` 身份，含检查项 / 片段 / 修复指引，模型自纠——用户不转发、不盯守）；P1/P2 建议仅记录进诊断可查。同内容重写按指纹去重、每文件回注上限 2 次；会话开始前已存在的陌生 HTML 只记录不回注；非设计会话零监听零回注。检查记录存于会话目录 `.od-quality/report.jsonl`（可随时删除）。
-- **`.od-frames/` 目录**：设计会话会向会话工作目录的 `.od-frames/` 子目录写入 OpenDesign 设备壳支撑文件与 deck 协议文件（5 个小文件，会话创建时全量重铺）。它是产物运行时依赖：删除会断开既有原型对手持壳的引用。建议把 `.od-frames/`（与 `.od-quality/`）加进项目 `.gitignore`（两个目录都可随时删除，下次设计会话自动重建）。
-- **诊断**：会话内执行 `/opendesign-doctor` 可查看十一节报告——资产定位、清单版本、roster 完整性、改写命中、材质化状态、代际提示、异常恢复、止损位（前八节），以及资产丰富度（craft 册数 / 形状包数 / manifest 命中）、协议与检查器对账（panel / deck / 检查项清单版本锚与源码仓 clone 三态比对，clone 路径以 `/opendesign-doctor <clone 路径>` 登记）、质量发现（P0/P1/P2 记录、监听器状态、产物写盘身份）；逐项降级带恢复动作。改写规则出现大面积失配（核心段失配 ≥3 条 / 默认读取器不可用 / 连续两版升级全量重写）时 doctor 会输出「建议方案级重审」警示。
-- **资产代际**：插件按文本标记自动识别安装版 OpenDesign 的资产代际并适配（已对 2.0.4 安装资产实测锚定）；doctor 对未能识别代际的版本给出警告。
 
 ## 开发约定（本包自身的边界）
 
@@ -345,8 +335,6 @@ pnpm build:self-test  # 12 项自证，含四条失败支证明会红
 
 真实 DSH 验收使用 [.agents/skills/verify-taiji-yang](.agents/skills/verify-taiji-yang/SKILL.md) 与 `scripts/verify/run.mjs`：连接显式测试 URL，或在隔离 DSH_HOME 自启实例。覆盖品牌、会话头、主题、项目列表、模型服务（供应商接入 / 密钥零泄漏 / 路由与白名单 / 删除清除）和卸载回落；证据包含 `verdict.json`、`summary.jsonl`、截图与控制台。该入口不读取用户浏览器 profile，不修改用户真实 DSH profile，不发送模型请求。
 
-brand/projects/lifecycle 三场景的回归命题是「新插件（opendesign-design-mode）安装进同一 profile 后，preset 注册与 UI 注入不干扰 shell 包」——只在两包共存 profile 上可证明。runner 自启形态只装本仓 shell 包，单装态结果不能登记为共存回归通过。共存前提的手工准备：对同一隔离 profile 先后执行 `dsh plugin --profile web add <本仓根>`（shell）与 `dsh plugin --profile web add packages/opendesign-design-mode`（两包共存），再以 `--dsh-home <该目录>`（lifecycle 须自启形态）或 `--url <实例认证 URL>`（brand/projects）跑 runner；该串接已由 web 版 e2e 场景 S9 自动化（`packages/opendesign-design-mode/tests/e2e/web.spec.mjs`）。
-
 ## 发布（npm）
 
 发布走 GitHub Actions（`.github/workflows/release-npm.yml`），**本机一律不执行 publish**。流程（changesets）：
@@ -372,4 +360,4 @@ brand/projects/lifecycle 三场景的回归命题是「新插件（opendesign-de
 
 ## License
 
-[MIT](LICENSE)（根包见仓库根 `LICENSE`，子包见 `packages/opendesign-design-mode/LICENSE`）
+[MIT](LICENSE)

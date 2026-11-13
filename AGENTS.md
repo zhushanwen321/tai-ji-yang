@@ -1,6 +1,6 @@
 # tai-ji-yang 项目规范（多包 workspace）
 
-本文件是 main worktree（仓库根）的 agent 协作规范。本仓是 pnpm 多包 workspace，交付物是若干**独立的 DSH 插件包**（DSH 组合包 bundle：装进 DeepSeek Harness（下称 DSH）web 类型 profile 的单行插件条目）：根包 `tai-ji-yang-shell` 交付太极视觉身份、项目分组侧栏与模型服务能力（自有供应商接入 + 路由虚拟模型），子包 `packages/opendesign-design-mode` 交付 OpenDesign 设计模式。包与包互不牵连，各自可独立安装到不同 profile。对话流、工具调用等日常能力全部走 DSH 原生，插件不接管；模型清单在宿主原生能力之上叠加根包的路由虚拟模型（`taiji-route-*`），其余模型面仍归宿主。
+本文件是 main worktree（仓库根）的 agent 协作规范。本仓是 pnpm 多包 workspace，交付物是**独立的 DSH 插件包**（DSH 组合包 bundle：装进 DeepSeek Harness（下称 DSH）web 类型 profile 的单行插件条目）：根包 `tai-ji-yang-shell` 交付太极视觉身份、项目分组侧栏与模型服务能力（自有供应商接入 + 路由虚拟模型），功能型子包逐个落 `packages/<name>/`（当前无子包）。对话流、工具调用等日常能力全部走 DSH 原生，插件不接管；模型清单在宿主原生能力之上叠加根包的路由虚拟模型（`taiji-route-*`），其余模型面仍归宿主。
 
 构建、安装、版本门禁、发布与排障的权威文档是 `README.md`；本文件只写开发协作规范。
 
@@ -9,7 +9,6 @@
 | 包 | 目录 | 形态 | 职责 |
 |----|------|------|------|
 | `tai-ji-yang-shell`（根包） | `.`（仓根） | 单包双半场 | 太极视觉身份（染色三层 + 槽位贡献）、项目分组侧栏（项目是插件侧逻辑分组概念，与 DSH 工作区无关）与模型服务（自有供应商接入 + 路由虚拟模型，设置页「模型服务」分区） |
-| `opendesign-design-mode` | `packages/opendesign-design-mode` | 双半场（Node 半场源码内联在 `lib/*.ts`） | OpenDesign 设计模式：preset 入口 + 设计预览面板 + 资产定位 / 会话组装 / 材质化 |
 
 - **包清单登记处（两处、一处对账）**：`pnpm-workspace.yaml` 声明 `packages/*` 通配；`scripts/workspace-packages.mjs` 登记每包的构建声明（包名 / 目录 / 浏览器半场入口 / Node 半场产物形态 / preset 登记），并在每次构建与检查时与 `pnpm-workspace.yaml` 的实际包目录对账——两边不同步即失败。加新子包：`packages/<name>/` 建包 + 两处同批登记；带 preset 的包在登记表加 `preset` 字段（preset 注册断言按登记执行，无登记的子包显式播报不适用）。
 - **构建与检查逐包执行**：`node scripts/build-client.mjs` 逐包产出各包 `lib/`；七个 check 脚本对每包跑同一套通用断言，包特有断言按登记选择（断言逻辑仍单处归属各自脚本）。`pnpm check:static` / `pnpm check` 的覆盖范围 = 全部包，任一包红灯即整体红灯。
@@ -23,8 +22,6 @@
 
   `client/` 按职责分目录（theme / brand / head / input / locale / projects / settings / settings/model-service / model-service / persist / testing），目录级设计见 `docs/ARCHITECTURE.md`。
 
-- **子包形态**：Node 半场源码在 `lib/*.ts`，经 esbuild transform 成同名 `.js` 同仓入库（不打包——每个 exports 子路径是宿主 loader 独立 import 的入口）；浏览器半场在 `client/preview-tab/`；`cordis.patch.yml` 声明本包主行 + preset 行（preset 的 `config.plugins` = DSH standard 模式全量基线 + 本包四子插件，逐项显式声明——DSH preset 无隐式工具基线）。用户侧说明见 `packages/opendesign-design-mode/README.md`。
-
 ## 文档索引
 
 | 文档 | 内容 |
@@ -32,7 +29,6 @@
 | `README.md` | 权威入口：构建、安装（web / desktop profile）、profile 适用性、版本门禁、模型服务能力、发布、已知差异、排障、静态自检 |
 | `docs/ARCHITECTURE.md` | 架构与设计裁决：多包总览、半场职责、染色三层、槽位贡献、持久模型 |
 | `docs/DSH-PLUGIN-RULES.md` | DSH 插件开发纪律（对每个包生效）：宿主契约、版本门禁双字段、安装期行为、宿主设置文档跨命名空间写入（模型服务）、有意偏离登记（P 系列 + D 系列）、宿主破坏性变更跟进 |
-| `packages/opendesign-design-mode/README.md` | 子包用户说明：功能、安装、诊断命令、V1 边界 |
 
 文档修改一律终态模式：只写当前怎么做，不写沿革与迁移史；历史靠 git 可追溯。
 
@@ -116,9 +112,8 @@ pnpm workflows:test          # workflow 构建与双平台结构测试
 |------|------|
 | 技术设计与方案裁决 | tech-design-wf（全局技能） |
 | 功能实现 / 修复的开发流程 | dev-flow-wf（全局技能） |
-| 审查问题的批量修复循环 | review-fix-loop（全局 saved workflow；项目 reviewer 在 `.agents/reviewers/`，含子包判据） |
-| 真实 DSH 宿主自动化验收（根包 tai-ji-yang-shell；CLI `dsh web` 隔离通道，非桌面版） | verify-taiji-yang（项目入口，`.agents/`；只验根包）；桌面版真机复核在此通道之外、按测试纪律执行 |
-| 真实 DSH 宿主验收（design-mode 子包） | `pnpm test:e2e:design-mode`（`packages/opendesign-design-mode/tests/e2e/`，node 直跑，双版本宿主） |
+| 审查问题的批量修复循环 | review-fix-loop（全局 saved workflow；项目 reviewer 在 `.agents/reviewers/`） |
+| 真实 DSH 宿主自动化验收（根包 tai-ji-yang-shell；CLI `dsh web` 隔离通道，非桌面版） | verify-taiji-yang（项目入口，`.agents/`）；桌面版真机复核在此通道之外、按测试纪律执行 |
 | PR 审查修复与交付前编排 | pr-cr-fix（项目入口，`.agents/`）；完整链路由仓内 pr-lifecycle workflow 承载 |
 
 ## 领域边界（改代码前必读）

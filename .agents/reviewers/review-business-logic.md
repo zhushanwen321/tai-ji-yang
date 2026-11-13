@@ -20,7 +20,6 @@ task prompt 中必须包含：
 1. `AGENTS.md` ——「包结构」「领域边界」「测试纪律」「产物与依赖纪律」节。
 2. `docs/ARCHITECTURE.md` ——第 2 节（Node 半场）、第 6 节（持久通道）、第 8 节（项目分组浏览器）、第 12 节（禁用与卸载语义）。
 3. `docs/DSH-PLUGIN-RULES.md` ——第 4 节（生命周期与持久状态）、第 7 节（测试与审查分工）。
-4. `packages/opendesign-design-mode/README.md` ——全文：子包用户说明（功能、安装、诊断命令、V1 边界）。
 
 ## 通用判据（read 引用，不内嵌）
 
@@ -42,16 +41,6 @@ task prompt 中必须包含：
 7. **配色控制器单一实例**：设置页外观行与 composer 快速配色 chip 共用同一控制器实例与持久通道，无双写；「太极」设置分区只读状态 + 项目管理，不得出现第二个换色写入口。
 8. **首绘/装载取值一致性**：Node 半场首绘最小 token 集与浏览器半场基值表逐 token 同值——改动任一侧取值时另一侧必须同批同步，否则默认色用户在页面装载瞬间看到一次跳色。
 9. **错误处理分级**（按 code-harden 策略裁决表）：核心功能 fail-fast 且日志含恢复动作；辅助功能主流程接入点降级留痕；用户可见降级显形并反馈（如版本行解析不到降级只显本包版本、探针失败形态是「不生效」而非「错配」）。
-
-## 子包判据（opendesign-design-mode）
-
-diff 触及 `packages/opendesign-design-mode/` 时逐条核对本节；未触及则跳过。机器分工：六个 check 脚本已对该包逐包执行，子包单测（`packages/opendesign-design-mode/tests/*.test.ts`）随全仓 vitest 收集，子包真实宿主验收走 `pnpm test:e2e:design-mode`——本节只补机器未覆盖的语义问题。
-
-1. **compose 组装正确性**（`lib/compose/`）：上下文事实（context-facts）只收录实际核实过的来源（资产定位与材质化的真实产出），不臆造环境信息；占位符（placeholders）替换完整，组装产物中不得残留未替换占位符；任务路由（task-routing）失败必须显式上报，不吞错、不静默落入错误任务形态。
-2. **locate 定位降级三态语义**（`lib/locate/`）：资产定位与版本画像的结局三态（found / missing / error）语义不混淆——未安装 OpenDesign（missing）时入口必须显式降级提示，不许静默假装可用；error 态（存在损坏候选）不得降格按 missing 处理而掩盖故障。
-3. **materialize 拷贝的幂等与失败恢复**（`lib/materialize/copy.ts`）：重复材质化不产生重复副作用或半成品目录；拷贝失败显式上报且可恢复（设计会话创建时对 `.od-frames/` 全量重铺的语义保持），失败不许静默成功。
-4. **rewrite 规则的代际感知**（`lib/rewrite/`）：改写规则锚定安装版 OpenDesign 资产并按资产代际分流生效；规则失配（该命中而零命中、命中错代）必须有 `/opendesign-doctor` 可见信号（核心段失配 ≥3 条等情形输出「建议方案级重审」警示），不许静默跳过。
-5. **serve 路由的读取边界**（`lib/serve/`）：`/opendesign/artifacts` 只伺服会话产物目录内的文件；路径穿越判定（`..`、绝对路径、编码形态逃逸）不被削弱，不越权读取产物目录以外的路径。
 
 ## 执行步骤
 

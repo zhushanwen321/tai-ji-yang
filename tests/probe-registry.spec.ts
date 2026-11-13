@@ -14,7 +14,7 @@ describe('parseReleaseTag', () => {
     expect(parseReleaseTag('@zhushanwen/pi-ask-user@4.0.0')).toEqual({ name: '@zhushanwen/pi-ask-user', version: '4.0.0' })
   })
   it('预发布版本号可解析', () => {
-    expect(parseReleaseTag('opendesign-design-mode@0.2.0-rc.1')).toEqual({ name: 'opendesign-design-mode', version: '0.2.0-rc.1' })
+    expect(parseReleaseTag('tai-ji-yang-shell@0.0.1-rc.1')).toEqual({ name: 'tai-ji-yang-shell', version: '0.0.1-rc.1' })
   })
   it('非 name@version 形态（触发 tag / 纯包名 / 无版本数字）返回 null', () => {
     expect(parseReleaseTag('npm-release-20261109')).toBeNull()

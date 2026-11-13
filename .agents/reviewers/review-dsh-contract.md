@@ -20,7 +20,6 @@ task prompt 中必须包含：
 1. `AGENTS.md` ——「包结构」「领域边界」「产物与依赖纪律」节。
 2. `docs/DSH-PLUGIN-RULES.md` ——全文：第 1 节（权威顺序）、第 2 节（Manifest、组合与版本）、第 3 节（依赖与 Client 模块边界）、第 4 节（生命周期与持久状态）、第 6 节（有意偏离登记）。
 3. `docs/ARCHITECTURE.md` ——第 1 节（包形态）、第 3 节（浏览器半场物化契约）、第 7 节（槽位贡献总表）。
-4. `packages/opendesign-design-mode/README.md` ——全文：子包用户说明（功能、安装、诊断命令、V1 边界）。
 
 ## 通用判据（read 引用，不内嵌）
 
@@ -40,15 +39,6 @@ task prompt 中必须包含：
 8. **Config 声明通道**：Config 导出在 Node 半场、字段全部 `.volatile()`、不设 default 的缺省语义（缺席 = 从未点选；脏数据由装载期 sanitize 收敛）——diff 改动这些形态时必须有对应理由，不静默变更。
 9. **会话事件边界**：不新增 DSH Session 事件 `type`，不写实验性 `plugin:` 记录。
 10. **分发包完整性**：新增运行时需要的文件必须同步进 **diff 所触及对应包** 的 `package.json` 的 `exports` / `files`（机检按包检查 exports 路径存在性，本维度查「新增文件是否实际进该包分发包」的语义问题——根包与子包各有自己的 `package.json`，登记进错包即漏发）。
-
-## 子包判据（opendesign-design-mode）
-
-diff 触及 `packages/opendesign-design-mode/` 时逐条核对本节；未触及则跳过。机器分工：六个 check 脚本已对该包逐包执行，preset 注册结构断言按 `scripts/workspace-packages.mjs` 的登记对该包执行——本节只补机器未覆盖的语义问题。
-
-1. **preset 注册声明**（`cordis.patch.yml`）：agent-preset 行的 `config` 五字段（id / name / description / order / plugins）齐备且语义完整（存在性机检看守）；`config.plugins` 全部子插件逐项显式声明——preset 无隐式工具基线，声明集 = 两版本 standard 基线并集 + 本包四子插件（本包子插件以本包名为前缀的 exports 子路径说明符声明），diff 增删成员行时核对归属侧（本包 / standard 基线）与跨版本 disabled 语义仍成立；`config.id` 固定为 `opendesign`，不许漂移（roster：新会话选择器与会话归属记录以它为标识）。
-2. **exports 子路径与文件实存对齐**：六条 exports 子路径（`.` / `./client` / `./client-entry` / `./persona` / `./commands/doctor` / `./serve/artifacts-route`）指向的文件实存（存在性机检看守）；本维度查三处同批对齐的语义问题——exports 子路径、patch 子插件行的 name 说明符、宿主 loader 实际 import 的入口，新增运行时入口时三处缺一即漏装载。
-3. **patch insert 不越界**：`cordis.patch.yml` 只声明本包两行 insert（包主行 + preset 行），不改动宿主已有行或其他包的声明；行 id 与宿主或他包同 id 时核对是否触发遮蔽语义且有意为之。
-4. **manifest 五字段契约与版本门禁双字段**：`name` / `dsh.bundle.patch` / `dsh.client.platform` / `engines.dsh` / `exports` 五字段齐备（存在性机检看守），`engines.dsh` 与 `peerDependencies["@deepseek-ai/dsh"]` 同范围（一致性机检看守）；本维度补查声明的兼容范围是否有真实验收支撑——engines 范围内两版本宿主（0.1.7 / 0.2.x）的差异行为（如跨版本缺包行必须 disabled 声明）是否有源码级核实或真机验收依据，无证据时标注「未核实」并披露。
 
 ## 执行步骤
 

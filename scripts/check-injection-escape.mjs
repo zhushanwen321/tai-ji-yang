@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * p1-shell-identity 红灯 RL6 / 验收 V10 静态自检：Node 半场推入注入表的行不含结束标签。多包适配（opendesign-design-mode 设计 D10）：包清单
+ * p1-shell-identity 红灯 RL6 / 验收 V10 静态自检：Node 半场推入注入表的行不含结束标签。多包适配（设计 D10）：包清单
  * 来自 scripts/workspace-packages.mjs，逐包加载 Node 半场入口——有 index-inject 注入贡献的
  * 包按注入行契约断言（根包形态），无注入贡献的包显式播报跳过（不冒充覆盖）。
  *
