@@ -1,4 +1,4 @@
-# tai-ji-yang-shell
+# @zhushanwen/tai-ji-yang-shell
 
 ## 0.0.1
 

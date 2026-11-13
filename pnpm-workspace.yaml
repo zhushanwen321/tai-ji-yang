@@ -1,4 +1,4 @@
-# workspace 包清单：仓根是 tai-ji-yang-shell，功能型子包逐个落 packages/<name>/（各自
+# workspace 包清单：仓根是 @zhushanwen/tai-ji-yang-shell，功能型子包逐个落 packages/<name>/（各自
 # 独立 package.json / cordis.patch.yml / lib 产物）。检查与构建脚本按本清单逐包枚举。
 # '.' 必须显式列出：changesets 的包识别（@manypkg/get-packages）只按本清单通配展开，
 # 不含根包——而根包是发布物，缺了这行 changeset 会报「package 不在 workspace」。

@@ -1,6 +1,6 @@
 # 架构（当前实际形态）
 
-本文描述 tai-ji-yang-shell 的当前实际架构：一个以 DSH（DeepSeek Harness）组合包形态交付的插件，负责「打开就认得出是太极」与「会话按项目组织」。本文解释每个机制是什么、为什么这样设计。上游权威来源与开发审查规则见 `docs/DSH-PLUGIN-RULES.md`；用户手册（安装/卸载/排障）见仓库根 `README.md`。本包是本仓 pnpm 多包 workspace 的根包；容器级包结构见下节「多包总览」。
+本文描述 @zhushanwen/tai-ji-yang-shell 的当前实际架构：一个以 DSH（DeepSeek Harness）组合包形态交付的插件，负责「打开就认得出是太极」与「会话按项目组织」。本文解释每个机制是什么、为什么这样设计。上游权威来源与开发审查规则见 `docs/DSH-PLUGIN-RULES.md`；用户手册（安装/卸载/排障）见仓库根 `README.md`。本包是本仓 pnpm 多包 workspace 的根包；容器级包结构见下节「多包总览」。
 
 ## 多包总览
 
@@ -8,9 +8,9 @@
 
 | 包 | 目录 | 职责 | 用户文档 |
 |----|------|------|----------|
-| `tai-ji-yang-shell`（根包） | `.`（仓根） | 太极视觉身份（染色三层 + 槽位贡献）与项目分组侧栏 | 仓库根 `README.md`（正文主体） |
+| `@zhushanwen/tai-ji-yang-shell`（根包） | `.`（仓根） | 太极视觉身份（染色三层 + 槽位贡献）与项目分组侧栏 | 仓库根 `README.md`（正文主体） |
 
-本文以下章节描述根包 tai-ji-yang-shell 的架构。
+本文以下章节描述根包 @zhushanwen/tai-ji-yang-shell 的架构。
 
 ## 1. 包形态：单包承载两个半场
 

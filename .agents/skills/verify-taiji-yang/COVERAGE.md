@@ -1,6 +1,6 @@
 # verify-taiji-yang 场景覆盖矩阵
 
-P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工）↔ 场景断言行的对账。维护单元 = 本表矩阵行：交付触达某行时同步改场景并在本表更新状态。覆盖范围 = 根包 tai-ji-yang-shell。
+P0 验收项（来自 README 承诺层与 DSH-PLUGIN-RULES 的真实验收分工）↔ 场景断言行的对账。维护单元 = 本表矩阵行：交付触达某行时同步改场景并在本表更新状态。覆盖范围 = 根包 @zhushanwen/tai-ji-yang-shell。
 
 状态：`covered`（场景断言已锁定）/ `degraded-channel`（有断言但缺通道，显式降级）/ `uncovered`（登记未做）/ `notProvable`（验收项在 runner 通道不可自然构造，显式登记不判定，转单测或 D3 真机承接；与 runner 证据原语 `ev.notProvable` 及 verdict.json 顶层 notProvable 清单同名）。
 

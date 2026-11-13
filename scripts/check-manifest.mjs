@@ -67,7 +67,7 @@ const REQUIRED_SERVICE_INJECT = [
 /** 包特有断言的登记：断言逻辑仍在本文件内，按包名选择执行集合（单处归属的两层含义）。 */
 
 /** 根包特有：dsh.client.inject 的精确裁决（8 项）与浏览器半场 inject 服务覆盖。 */
-const ROOT_ONLY_CHECKS = new Set(['tai-ji-yang-shell'])
+const ROOT_ONLY_CHECKS = new Set(['@zhushanwen/tai-ji-yang-shell'])
 
 /**
  * preset 注册断言（U1 验收条款③ / p1-shell-identity RL1 的注册面机器化）：**按登记执行**——只有

@@ -1,4 +1,4 @@
-# tai-ji-yang-shell
+# @zhushanwen/tai-ji-yang-shell
 
 太极（TaiJi）的视觉身份、会话组织与模型服务插件，以 **DSH 组合包**（bundle）形态交付：装进 DeepSeek Harness（下称 DSH）的 web 类型 profile 后，打开即呈现太极的全套外观——六种配色与全量染色、圆角与字重行高、空会话首屏品牌区、composer 快速配色入口、设置页的外观行与「太极」分区——以及太极式的左侧栏会话区：**项目（Project）分组列表**（整槽替换宿主工作区列表；项目是本包的逻辑分组概念，与目录无关，跨设备随 profile 持久）；设置页另有「**模型服务**」分区（见下节「模型服务能力」）。
 
@@ -73,12 +73,14 @@ token **每次启动都重新生成**，且只绑 127.0.0.1（本机访问）。
 
 ### npm 安装
 
-`tai-ji-yang-shell` 发布在 npm。npm 安装得到的目录含产物与 patch，可像本地路径一样安装：
+`@zhushanwen/tai-ji-yang-shell` 发布在 npm。npm 安装得到的目录含产物与 patch，可像本地路径一样安装：
 
 ```bash
-npm install tai-ji-yang-shell
-dsh plugin --profile web add ./node_modules/tai-ji-yang-shell
+npm install @zhushanwen/tai-ji-yang-shell
+dsh plugin --profile web add ./node_modules/@zhushanwen/tai-ji-yang-shell
 ```
+
+宿主 profile 里的插件行 id 仍是 `tai-ji-yang-shell`（`cordis.patch.yml` 声明，与 npm 包名解耦）：`dsh plugin remove`、`allow-version`、`--dump-config` 输出等宿主命令与标识都用行 id。
 
 ### git 安装
 
@@ -90,8 +92,8 @@ git 安装拉取的是**源码，不是构建产物**：pnpm 只在包声明了 
 
 ```bash
 # 构建产物打包后安装（推荐：不需要任何安装期构建权限，也不依赖 pnpm 的 prepare 放行）
-pnpm pack                                  # 产出 tai-ji-yang-shell-<version>.tgz
-dsh plugin --profile web add ./tai-ji-yang-shell-<version>.tgz
+pnpm pack                                  # 产出 zhushanwen-tai-ji-yang-shell-<version>.tgz
+dsh plugin --profile web add ./zhushanwen-tai-ji-yang-shell-<version>.tgz
 ```
 
 无论本地路径、tarball 还是 git，都建议锁定具体 commit 或具体版本，避免后续推送悄悄改变实际运行的代码。
@@ -286,7 +288,7 @@ cd ~/.dsh/profiles/<profile> && pnpm install
 
 ## 多包结构
 
-本仓是 pnpm 多包 workspace：根包 = `tai-ji-yang-shell`（本 README 主体描述的包），功能型子包逐个落 `packages/<name>/`（当前无子包）。
+本仓是 pnpm 多包 workspace：根包 = `@zhushanwen/tai-ji-yang-shell`（本 README 主体描述的包），功能型子包逐个落 `packages/<name>/`（当前无子包）。
 
 - **包清单**：`pnpm-workspace.yaml` 声明 `packages/*`；`scripts/workspace-packages.mjs` 登记每包构建声明并与之对账（不同步即构建/检查失败）。
 - **构建**：`pnpm build`（= `node scripts/build-client.mjs`）逐包产出各包 `lib/`；各包产物随仓库交付（与根包同一纪律：`lib/` 入库、先构建再安装）。

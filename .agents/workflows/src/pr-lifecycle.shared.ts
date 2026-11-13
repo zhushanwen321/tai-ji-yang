@@ -223,7 +223,7 @@ const runAbsDir = wt === "" ? `${runDir}/${runId}` : `${wt}/.review/pr-lifecycle
 
 function reviewerPersona(dimension: string): string {
   return [
-    `你是 tai-ji-yang 多包仓库（根包 tai-ji-yang-shell 与 packages/ 子包）的 ${dimension} 审查员：diff 可能涉及任一包，按 reviewer 定义中对应包的判据审（定义含子包判据节）。`,
+    `你是 tai-ji-yang 多包仓库（根包 @zhushanwen/tai-ji-yang-shell，当前无子包）的 ${dimension} 审查员：diff 触及根包，按 reviewer 定义的判据审。`,
     "先完整读取派发 prompt 给出的项目 reviewer 定义，并按它的判据、只报告不改代码的约束、报告格式与结构化返回协议执行。",
     "所有 git/diff 命令都必须先进入派发 prompt 给出的 worktree 目录；不要依赖当前 shell cwd。",
     "若定义或项目规范文件缺失，立即返回说明缺失路径的结论，不要凭记忆空审。",

@@ -2,7 +2,7 @@
 /**
  * 多包 workspace 的包枚举单源。
  *
- * 仓根 = tai-ji-yang-shell；功能型子包逐个落 `packages/<name>/`。构建（build-client.mjs）
+ * 仓根 = @zhushanwen/tai-ji-yang-shell；功能型子包逐个落 `packages/<name>/`。构建（build-client.mjs）
  * 与六个静态检查脚本（check-*.mjs）都从这里拿包清单与每包的构建声明——清单改动只动本
  * 文件，检查脚本与构建器不各自维护包列表（两处漂移会让「新包漏检」静默通过）。
  *
@@ -27,9 +27,9 @@ export const WORKSPACE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..'
  * 两种形态下「源码与产物同批入库」纪律不变。
  */
 
-/** 根包：tai-ji-yang-shell（单包时代的全部资产仍在仓根）。 */
+/** 根包：@zhushanwen/tai-ji-yang-shell（单包时代的全部资产仍在仓根）。 */
 export const ROOT_PACKAGE = {
-  name: 'tai-ji-yang-shell',
+  name: '@zhushanwen/tai-ji-yang-shell',
   dir: '.',
   clientEntry: 'client/apply.ts',
   nodeHalf: { kind: 'copy-entry', source: 'index.js' },

@@ -10,15 +10,15 @@ const noSleep = () => Promise.resolve()
 
 describe('parseReleaseTag', () => {
   it('普通包名与 scoped 包名都按最后一个 @ 切分', () => {
-    expect(parseReleaseTag('tai-ji-yang-shell@0.1.0')).toEqual({ name: 'tai-ji-yang-shell', version: '0.1.0' })
+    expect(parseReleaseTag('@zhushanwen/tai-ji-yang-shell@0.0.1')).toEqual({ name: '@zhushanwen/tai-ji-yang-shell', version: '0.0.1' })
     expect(parseReleaseTag('@zhushanwen/pi-ask-user@4.0.0')).toEqual({ name: '@zhushanwen/pi-ask-user', version: '4.0.0' })
   })
   it('预发布版本号可解析', () => {
-    expect(parseReleaseTag('tai-ji-yang-shell@0.0.1-rc.1')).toEqual({ name: 'tai-ji-yang-shell', version: '0.0.1-rc.1' })
+    expect(parseReleaseTag('@zhushanwen/tai-ji-yang-shell@0.0.1-rc.1')).toEqual({ name: '@zhushanwen/tai-ji-yang-shell', version: '0.0.1-rc.1' })
   })
   it('非 name@version 形态（触发 tag / 纯包名 / 无版本数字）返回 null', () => {
     expect(parseReleaseTag('npm-release-20261109')).toBeNull()
-    expect(parseReleaseTag('tai-ji-yang-shell')).toBeNull()
+    expect(parseReleaseTag('@zhushanwen/tai-ji-yang-shell')).toBeNull()
     expect(parseReleaseTag('pkg@latest')).toBeNull()
     expect(parseReleaseTag('')).toBeNull()
   })

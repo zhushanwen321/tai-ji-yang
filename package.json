@@ -1,5 +1,5 @@
 {
-  "name": "tai-ji-yang-shell",
+  "name": "@zhushanwen/tai-ji-yang-shell",
   "version": "0.0.1",
   "description": "TaiJi visual identity and project-grouped sidebar as a DeepSeek Harness (DSH) plugin bundle",
   "license": "MIT",

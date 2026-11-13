@@ -35,7 +35,7 @@ description: >-
 - `base`：默认 `main`。
 - `worktree`：目标 git worktree 绝对路径；会话 cwd 不是该 worktree 时必传。
 - `maxRounds`：审查修复循环上限，默认 5。
-- `verifyUrl` / `verifyEvidenceDir`：真实 DSH 验收二选一。`verifyUrl` 让 workflow 现跑 brand/head/theme/projects 四场景（根包 tai-ji-yang-shell 场景）；`verifyEvidenceDir` 指向已生成的验收证据根（内含 `verdict.json`）。都不传时 workflow 终态显式标 acceptance skipped，不得对外声称已真机验收。
+- `verifyUrl` / `verifyEvidenceDir`：真实 DSH 验收二选一。`verifyUrl` 让 workflow 现跑 brand/head/theme/projects 四场景（根包 @zhushanwen/tai-ji-yang-shell 场景）；`verifyEvidenceDir` 指向已生成的验收证据根（内含 `verdict.json`）。都不传时 workflow 终态显式标 acceptance skipped，不得对外声称已真机验收。
 - `taskId` / `executionId` / `sampleType`：阶段观测可选参数。
 
 workflow 行为：preflight（要求工作区全提交）→ `pnpm check` → 四份固定项目 reviewer 审查/聚合/分组修复循环 → final `pnpm check` → acceptance → PR title/body 起草 → `awaiting-push`。它不执行 `git push`，不创建 PR。`failed` 终态按 `error/recovery` 处置；`awaiting-push` 时向用户披露 review、acceptance、prMeta、residualFiles 和 skipped。
@@ -52,7 +52,7 @@ pnpm check
 
 失败按输出逐项修复后重跑；`client/theme/host-font-sheet.spec.ts` 需要 `DSH_FONT_SHEET` 指向宿主源样式表，缺失时按错误信息设置，不绕过。CI 环境（`CI=true`）没有宿主源码仓，该 spec 显式跳过并播报说明——这条字体复合简写护栏由本地承担。
 
-再按 `.agents/skills/verify-taiji-yang/SKILL.md` 执行真实 DSH 验收（brand/head/theme/projects；卸载用隔离自启模式）。该入口只验根包 tai-ji-yang-shell——跑不了的场合显式登记 skipped，不冒充通过。无法执行真机验收时显式披露原因，停回用户裁决是否继续，不静默跳过。
+再按 `.agents/skills/verify-taiji-yang/SKILL.md` 执行真实 DSH 验收（brand/head/theme/projects；卸载用隔离自启模式）。该入口只验根包 @zhushanwen/tai-ji-yang-shell——跑不了的场合显式登记 skipped，不冒充通过。无法执行真机验收时显式披露原因，停回用户裁决是否继续，不静默跳过。
 
 ## 3. review-fix-loop（手工兜底的审查循环）
 
@@ -116,6 +116,6 @@ node --test .agents/workflows/tests/*.test.mjs
 
 ## 约束
 
-- 审查基线默认 `base=main`；不设 dev 队列与覆盖率/度量门禁。本仓是 pnpm 多包 workspace（根包 tai-ji-yang-shell，当前无子包），每包零 npm 运行时依赖；发布走 changesets + GitHub Actions（见 AGENTS.md「发布」节），PR 流程不含发布与变更集步骤。
+- 审查基线默认 `base=main`；不设 dev 队列与覆盖率/度量门禁。本仓是 pnpm 多包 workspace（根包 @zhushanwen/tai-ji-yang-shell，当前无子包），每包零 npm 运行时依赖；发布走 changesets + GitHub Actions（见 AGENTS.md「发布」节），PR 流程不含发布与变更集步骤。
 - push 与建 PR 都不在自动动作集内：push 须当场授权，PR 创建不在本流程。
 - 四份 reviewer 定义（`.agents/reviewers/review-*.md`，文件名 `review-<维度>.md` 是循环的维度接口）是循环的审查判据来源；调整审查维度时同步维护定义文件与本节的固定清单。

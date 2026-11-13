@@ -2,7 +2,7 @@
 /**
  * p1-shell-identity 验收 V8 自检：装错 profile 时 Node 半场给出可行动诊断，装在 web profile 时不误报。
  * 多包适配（设计 D10）：包清单来自 scripts/workspace-packages.mjs；profile 探针机制
- * （NO_WEB_CARRIER 诊断）是 tai-ji-yang-shell 的契约——按「入口是否导出探针标志
+ * （NO_WEB_CARRIER 诊断）是 @zhushanwen/tai-ji-yang-shell 的契约——按「入口是否导出探针标志
  * NO_WEB_CARRIER_MESSAGE」逐包判定：有探针的包跑六场景断言，无探针的包显式播报跳过
  * （设计模式包的降级形态是 preset broken 诊断，归 persona 探测，不经本机制）。
  *
